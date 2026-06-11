@@ -1,0 +1,72 @@
+import {
+  createNextopdEventStreamClient,
+  type NextopdEventStreamClient
+} from "@tutti-os/client-nextopd-ts";
+import type { DesktopThemeSource } from "../shared/theme/index.ts";
+import type { DesktopHostPreferencesState } from "./desktopHostPreferences.ts";
+import type { DesktopLogger } from "./logging.ts";
+import {
+  resolveDesktopBusinessEventStreamUrl,
+  type DesktopDaemonEndpoint
+} from "./transport/paths.ts";
+
+export interface DesktopHostPreferencesEventStream {
+  dispose(): void;
+}
+
+export interface DesktopHostPreferencesEventStreamDependencies {
+  applyThemeSource: (source: DesktopThemeSource) => unknown;
+  eventStreamClient: NextopdEventStreamClient;
+  logger: DesktopLogger;
+  preferences: DesktopHostPreferencesState;
+  syncWindowBackgroundColors: () => void;
+}
+
+export function createDesktopHostPreferencesEventStreamClient(
+  endpoint: DesktopDaemonEndpoint
+): NextopdEventStreamClient {
+  return createNextopdEventStreamClient({
+    resolveUrl: () => resolveDesktopBusinessEventStreamUrl(endpoint)
+  });
+}
+
+export function connectDesktopHostPreferencesEventStream(
+  deps: DesktopHostPreferencesEventStreamDependencies
+): DesktopHostPreferencesEventStream {
+  const unsubscribe = deps.eventStreamClient.subscribe(
+    "preferences.desktop.updated",
+    (event) => {
+      const nextPreferences = event.payload.preferences;
+      const themeSourceChanged =
+        deps.preferences.getThemeSource() !== nextPreferences.themeSource;
+
+      deps.preferences.sync({
+        agentComposerDefaultsByProvider:
+          nextPreferences.agentComposerDefaultsByProvider,
+        defaultAgentProvider: nextPreferences.defaultAgentProvider,
+        dockPlacement: nextPreferences.dockPlacement,
+        locale: nextPreferences.locale,
+        sleepPreventionMode: nextPreferences.sleepPreventionMode,
+        themeSource: nextPreferences.themeSource
+      });
+
+      if (themeSourceChanged) {
+        deps.applyThemeSource(nextPreferences.themeSource);
+        deps.syncWindowBackgroundColors();
+      }
+    }
+  );
+
+  void deps.eventStreamClient.connect().catch((error: unknown) => {
+    deps.logger.warn("failed to connect desktop preferences event stream", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  });
+
+  return {
+    dispose() {
+      unsubscribe();
+      deps.eventStreamClient.dispose();
+    }
+  };
+}

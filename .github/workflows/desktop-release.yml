@@ -1,0 +1,545 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - "tutti-desktop-v*"
+  schedule:
+    - cron: "23 1 * * *"
+  workflow_dispatch:
+    inputs:
+      release_mode:
+        description: What to build and publish
+        required: true
+        type: choice
+        default: patch_rc_release
+        options:
+          - unsigned_dry_run
+          - patch_rc_release
+          - patch_release
+          - minor_release
+          - major_release
+          - explicit_version_release
+      version:
+        description: Release semver for explicit_version_release, such as 0.1.0 or 0.1.0-rc.0
+        required: false
+        type: string
+      target_commitish:
+        description: Optional commit-ish override
+        required: false
+        type: string
+      notify_feishu:
+        description: Send a Feishu card after publishing
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  resolve:
+    if: ${{ vars.NEXTOP_DESKTOP_RELEASE_WORKFLOW_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    outputs:
+      release_dry_run: ${{ steps.mode.outputs.dry_run }}
+      release_make_latest: ${{ steps.release.outputs.release_make_latest }}
+      release_prerelease: ${{ steps.release.outputs.release_prerelease }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      release_target: ${{ steps.target.outputs.release_target }}
+      release_version: ${{ steps.release.outputs.release_version }}
+      notify_feishu: ${{ steps.notify.outputs.notify_feishu }}
+
+    steps:
+      - name: Resolve target commit
+        id: target
+        shell: bash
+        run: |
+          release_target="${{ inputs.target_commitish || github.sha }}"
+          echo "release_target=${release_target}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.target.outputs.release_target }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+
+      - name: Resolve release mode
+        id: mode
+        shell: bash
+        env:
+          RELEASE_EVENT_NAME: ${{ github.event_name }}
+          RELEASE_MODE: ${{ inputs.release_mode }}
+        run: |
+          dry_run=false
+          strategy=patch
+
+          if [[ "${RELEASE_EVENT_NAME}" == "schedule" ]]; then
+            strategy=patch_rc
+          else
+          case "${RELEASE_MODE:-}" in
+            "")
+              strategy=explicit_tag
+              ;;
+            unsigned_dry_run)
+              dry_run=true
+              strategy=explicit_version
+              ;;
+            patch_release)
+              strategy=patch
+              ;;
+            minor_release)
+              strategy=minor
+              ;;
+            major_release)
+              strategy=major
+              ;;
+            patch_rc_release)
+              strategy=patch_rc
+              ;;
+            minor_rc_release)
+              strategy=minor_rc
+              ;;
+            major_rc_release)
+              strategy=major_rc
+              ;;
+            explicit_version_release)
+              strategy=explicit_version
+              ;;
+            *)
+              echo "Unknown release_mode: ${RELEASE_MODE}" >&2
+              exit 1
+              ;;
+          esac
+          fi
+
+          echo "dry_run=${dry_run}" >> "$GITHUB_OUTPUT"
+          echo "strategy=${strategy}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        env:
+          RELEASE_STRATEGY: ${{ steps.mode.outputs.strategy }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            args=(--strategy explicit_tag --tag "${{ github.ref_name }}" --json)
+          else
+            args=(--strategy "${RELEASE_STRATEGY}" --json)
+            if [[ "${RELEASE_STRATEGY}" == "explicit_version" ]]; then
+              version="${INPUT_VERSION:-0.1.0}"
+              args+=(--version "${version}")
+            fi
+            args+=(--target "${{ steps.target.outputs.release_target }}")
+            args=(node apps/desktop/scripts/reserve-release-tag.mjs "${args[@]}")
+          fi
+
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            release_json="$(node apps/desktop/scripts/resolve-release-tag.mjs "${args[@]}")"
+          else
+            release_json="$("${args[@]}")"
+          fi
+          release_make_latest="$(node -e "process.stdout.write(String(JSON.parse(process.argv[1]).makeLatest))" "${release_json}")"
+          release_prerelease="$(node -e "process.stdout.write(String(JSON.parse(process.argv[1]).prerelease))" "${release_json}")"
+          release_tag="$(node -e "process.stdout.write(JSON.parse(process.argv[1]).tag)" "${release_json}")"
+          release_version="$(node -e "process.stdout.write(JSON.parse(process.argv[1]).version)" "${release_json}")"
+          echo "release_make_latest=${release_make_latest}" >> "$GITHUB_OUTPUT"
+          echo "release_prerelease=${release_prerelease}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
+          echo "release_version=${release_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Feishu notification
+        id: notify
+        shell: bash
+        run: echo "notify_feishu=${{ github.event_name != 'workflow_dispatch' || inputs.notify_feishu != false }}" >> "$GITHUB_OUTPUT"
+
+  build-macos:
+    name: Build macOS
+    needs: resolve
+    runs-on: macos-latest
+    env:
+      NEXTOP_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+      NEXTOP_DESKTOP_RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
+      NEXTOP_DESKTOP_DRY_RUN: ${{ needs.resolve.outputs.release_dry_run }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.NEXTOP_DESKTOP_RELEASE_TARGET }}
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.5"
+          cache-dependency-path: |
+            go.work
+            go.work.sum
+            packages/workbench/service/go.mod
+            packages/workspace/files/go.mod
+            packages/workspace/issues/go.mod
+            services/nextopd/go.mod
+            services/nextopd/go.sum
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Align package version with release tag
+        working-directory: apps/desktop
+        run: node scripts/apply-ci-release-version.mjs "${NEXTOP_DESKTOP_RELEASE_TAG}"
+
+      - name: Prepare Apple notarization API key
+        if: env.NEXTOP_DESKTOP_DRY_RUN != 'true'
+        env:
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          if [ -z "${APPLE_API_KEY_P8_BASE64}" ] || [ -z "${APPLE_API_KEY_ID}" ]; then
+            echo "APPLE_API_KEY_P8_BASE64 and APPLE_API_KEY_ID secrets are required for signed macOS releases." >&2
+            exit 1
+          fi
+          apple_api_key_path="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
+          node -e "require('node:fs').writeFileSync(process.argv[1], Buffer.from(process.env.APPLE_API_KEY_P8_BASE64, 'base64'))" "${apple_api_key_path}"
+          chmod 600 "${apple_api_key_path}"
+          echo "APPLE_API_KEY=${apple_api_key_path}" >> "${GITHUB_ENV}"
+
+      - name: Build release artifacts
+        env:
+          CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          if [[ "${NEXTOP_DESKTOP_DRY_RUN}" == "true" ]]; then
+            unset CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER
+            pnpm --filter @tutti-os/desktop build:mac:unsigned
+          else
+            pnpm --filter @tutti-os/desktop build:mac:signed
+          fi
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: tutti-desktop-release-assets-macos
+          compression-level: 0
+          path: |
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  build-windows:
+    name: Build Windows
+    needs: resolve
+    runs-on: windows-latest
+    env:
+      NEXTOP_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+      NEXTOP_DESKTOP_RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.NEXTOP_DESKTOP_RELEASE_TARGET }}
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.5"
+          cache-dependency-path: |
+            go.work
+            go.work.sum
+            packages/workbench/service/go.mod
+            packages/workspace/files/go.mod
+            packages/workspace/issues/go.mod
+            services/nextopd/go.mod
+            services/nextopd/go.sum
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Align package version with release tag
+        working-directory: apps/desktop
+        run: node scripts/apply-ci-release-version.mjs "$env:NEXTOP_DESKTOP_RELEASE_TAG"
+
+      - name: Build release artifacts
+        shell: bash
+        run: pnpm --filter @tutti-os/desktop build:win
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: tutti-desktop-release-assets-windows
+          compression-level: 0
+          path: |
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  build-linux:
+    name: Build Linux
+    needs: resolve
+    runs-on: ubuntu-latest
+    env:
+      NEXTOP_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+      NEXTOP_DESKTOP_RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.NEXTOP_DESKTOP_RELEASE_TARGET }}
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.5"
+          cache-dependency-path: |
+            go.work
+            go.work.sum
+            packages/workbench/service/go.mod
+            packages/workspace/files/go.mod
+            packages/workspace/issues/go.mod
+            services/nextopd/go.mod
+            services/nextopd/go.sum
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Align package version with release tag
+        working-directory: apps/desktop
+        run: node scripts/apply-ci-release-version.mjs "${NEXTOP_DESKTOP_RELEASE_TAG}"
+
+      - name: Build release artifacts
+        run: pnpm --filter @tutti-os/desktop build:linux
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: tutti-desktop-release-assets-linux
+          compression-level: 0
+          path: |
+            apps/desktop/dist/*.AppImage
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish Release
+    needs: [resolve, build-macos, build-windows, build-linux]
+    if: ${{ github.event_name == 'push' || needs.resolve.outputs.release_dry_run != 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      NEXTOP_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+      NEXTOP_DESKTOP_RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
+      NEXTOP_ARTIFACTS_AWS_ROLE_ARN: ${{ vars.NEXTOP_ARTIFACTS_AWS_ROLE_ARN }}
+      NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL: ${{ vars.NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL }}
+      NEXTOP_DESKTOP_RELEASE_ASSETS_S3_BUCKET: ${{ vars.NEXTOP_DESKTOP_RELEASE_ASSETS_S3_BUCKET }}
+      NEXTOP_DESKTOP_RELEASE_ASSETS_S3_PREFIX: ${{ vars.NEXTOP_DESKTOP_RELEASE_ASSETS_S3_PREFIX }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.NEXTOP_DESKTOP_RELEASE_TARGET }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tutti-desktop-release-assets-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Generate checksums
+        run: node apps/desktop/scripts/generate-checksums.mjs release-assets
+
+      - name: Install AWS CLI
+        if: ${{ env.NEXTOP_DESKTOP_RELEASE_ASSETS_S3_BUCKET != '' || env.NEXTOP_DESKTOP_RELEASE_ASSETS_S3_PREFIX != '' || env.NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL != '' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends unzip
+          if ! command -v aws >/dev/null 2>&1; then
+            case "$(uname -m)" in
+              x86_64) awscli_arch="x86_64" ;;
+              aarch64|arm64) awscli_arch="aarch64" ;;
+              *)
+                echo "Unsupported architecture for AWS CLI installer: $(uname -m)" >&2
+                exit 1
+                ;;
+            esac
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${awscli_arch}.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp
+            sudo /tmp/aws/install --update
+          fi
+          aws --version
+
+      - name: Validate AWS S3 release asset configuration
+        if: ${{ env.NEXTOP_DESKTOP_RELEASE_ASSETS_S3_BUCKET != '' || env.NEXTOP_DESKTOP_RELEASE_ASSETS_S3_PREFIX != '' || env.NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL != '' }}
+        run: |
+          missing=()
+          for name in AWS_REGION NEXTOP_ARTIFACTS_AWS_ROLE_ARN NEXTOP_DESKTOP_RELEASE_ASSETS_S3_BUCKET NEXTOP_DESKTOP_RELEASE_ASSETS_S3_PREFIX; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "Missing required AWS S3 release asset configuration: ${missing[*]}" >&2
+            exit 1
+          fi
+
+          if [[ -z "${NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL:-}" ]]; then
+            echo "NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL=https://${NEXTOP_DESKTOP_RELEASE_ASSETS_S3_BUCKET}.s3-accelerate.amazonaws.com/${NEXTOP_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ env.NEXTOP_DESKTOP_RELEASE_TAG }}
+          target_commitish: ${{ env.NEXTOP_DESKTOP_RELEASE_TARGET }}
+          name: ${{ env.NEXTOP_DESKTOP_RELEASE_TAG }}
+          prerelease: ${{ needs.resolve.outputs.release_prerelease == 'true' }}
+          make_latest: ${{ needs.resolve.outputs.release_make_latest == 'true' }}
+          generate_release_notes: true
+          files: |
+            release-assets/*
+
+      - name: Configure AWS credentials
+        if: ${{ env.NEXTOP_DESKTOP_RELEASE_ASSETS_S3_BUCKET != '' || env.NEXTOP_DESKTOP_RELEASE_ASSETS_S3_PREFIX != '' || env.NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.NEXTOP_ARTIFACTS_AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload release assets to AWS S3
+        if: ${{ env.NEXTOP_DESKTOP_RELEASE_ASSETS_S3_BUCKET != '' || env.NEXTOP_DESKTOP_RELEASE_ASSETS_S3_PREFIX != '' || env.NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL != '' }}
+        run: |
+          remote_dir="s3://${NEXTOP_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${NEXTOP_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}/${NEXTOP_DESKTOP_RELEASE_TAG}"
+          aws s3 cp release-assets "${remote_dir}" \
+            --recursive \
+            --cache-control "public, max-age=31536000, immutable"
+
+      - name: Update release notes with direct downloads
+        if: ${{ env.NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ASSET_BASE_URL: ${{ env.NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL }}
+          RELEASE_TAG: ${{ env.NEXTOP_DESKTOP_RELEASE_TAG }}
+        run: |
+          gh release view "${NEXTOP_DESKTOP_RELEASE_TAG}" --json body --jq .body > release-body.md
+          node apps/desktop/scripts/upsert-release-download-links.mjs \
+            release-body.md \
+            release-assets \
+            updated-release-body.md
+          gh release edit "${NEXTOP_DESKTOP_RELEASE_TAG}" --notes-file updated-release-body.md
+
+  notify-feishu:
+    name: Notify Feishu
+    needs: [resolve, publish]
+    if: ${{ needs.publish.result == 'success' && needs.resolve.outputs.notify_feishu == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_RELEASE_WEBHOOK_URL }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL: ${{ vars.NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL }}
+      NEXTOP_DESKTOP_RELEASE_ASSETS_S3_BUCKET: ${{ vars.NEXTOP_DESKTOP_RELEASE_ASSETS_S3_BUCKET }}
+      NEXTOP_DESKTOP_RELEASE_ASSETS_S3_PREFIX: ${{ vars.NEXTOP_DESKTOP_RELEASE_ASSETS_S3_PREFIX }}
+      RELEASE_ACTOR: ${{ github.actor }}
+      RELEASE_BRANCH: ${{ github.ref_type == 'branch' && github.ref_name || '' }}
+      RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+      RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
+      RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.resolve.outputs.release_tag }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      - name: Checkout notification script
+        if: env.FEISHU_WEBHOOK_URL != ''
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve.outputs.release_target }}
+
+      - name: Setup Node.js
+        if: env.FEISHU_WEBHOOK_URL != ''
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+
+      - name: Download built artifacts
+        if: env.FEISHU_WEBHOOK_URL != ''
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tutti-desktop-release-assets-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Send release card
+        if: env.FEISHU_WEBHOOK_URL != ''
+        env:
+          RELEASE_ASSET_DIRECTORY: release-assets
+        run: node apps/desktop/scripts/send-release-feishu-card.mjs
+
+      - name: Skip Feishu card
+        if: env.FEISHU_WEBHOOK_URL == ''
+        run: echo "FEISHU_RELEASE_WEBHOOK_URL is not configured; skipping Feishu notification."

@@ -1,0 +1,145 @@
+import type { AgentGUINodeData } from "../../../types";
+import type {
+  AgentGUIApprovalRequest,
+  AgentGUIConversationSummary,
+  AgentGUIConversationUserProject,
+  AgentGUIInteractivePrompt
+} from "./agentGuiConversationModel";
+import type {
+  AgentSessionCommand,
+  AgentSessionComposerSettings,
+  AgentSessionPermissionConfig,
+  AgentSessionReasoningEffort,
+  AgentSessionState
+} from "../../../shared/agentSessionTypes";
+import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
+import type { WorkspaceAgentSessionDetailViewModel } from "../../../shared/workspaceAgentSessionDetailViewModel";
+
+export interface AgentGUISessionChrome {
+  auth: {
+    message: string;
+  } | null;
+  approval: AgentGUIApprovalRequest | null;
+  recovery: {
+    kind: "activating" | "failed" | "warning";
+    message: string;
+    canRetry?: boolean;
+    followupAction?: "continue-in-new-conversation";
+  } | null;
+  rawState: AgentSessionState | null;
+}
+
+export interface OpenclawGatewayViewState {
+  status: "starting" | "ready" | "failed";
+  error: string | null;
+}
+
+export interface AgentGUIInlineNotice {
+  id: string;
+  message: string;
+  tone: "warning" | "error";
+  autoDismissMs: number | null;
+}
+
+export interface AgentGUIProjectConversationDeleteTarget {
+  conversationCount: number;
+  label: string;
+  path: string;
+}
+
+export interface AgentGUIComposerSettingOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export interface AgentGUIProviderSkillOption {
+  name: string;
+  trigger: string;
+  sourceKind:
+    | "project"
+    | "personal"
+    | "bundled"
+    | "plugin"
+    | "system"
+    | "nextop-injected";
+  description?: string;
+  pluginName?: string;
+}
+
+export interface AgentGUIComposerSettingsVM {
+  sessionSettings: AgentSessionComposerSettings | null;
+  draftSettings: {
+    model: string | null;
+    reasoningEffort: AgentSessionReasoningEffort | null;
+    planMode: boolean;
+    permissionModeId?: string | null;
+  };
+  effectivePlanMode?: boolean;
+  supportsModel: boolean;
+  supportsReasoningEffort: boolean;
+  supportsPermissionMode?: boolean;
+  supportsPlanMode: boolean;
+  isSettingsLoading: boolean;
+  modelUnavailable: boolean;
+  reasoningUnavailable: boolean;
+  permissionModeUnavailable?: boolean;
+  planUnavailable: boolean;
+  selectedModelValue?: string | null;
+  selectedReasoningEffortValue?: AgentSessionReasoningEffort | null;
+  selectedPermissionModeValue?: string | null;
+  permissionConfig?: AgentSessionPermissionConfig | null;
+  selectedProjectPath?: string | null;
+  projectLocked?: boolean;
+  availableModels: AgentGUIComposerSettingOption[];
+  availableReasoningEfforts: AgentGUIComposerSettingOption[];
+  availablePermissionModes?: AgentGUIComposerSettingOption[];
+}
+
+export interface AgentGUIQueuedPromptVM {
+  id: string;
+  prompt: string;
+  createdAtUnixMs: number;
+}
+
+export interface AgentGUINodeViewModel {
+  workspaceId: string;
+  workspacePath?: string | null;
+  currentUserId?: string | null;
+  data: AgentGUINodeData;
+  conversations: AgentGUIConversationSummary[];
+  userProjects: AgentGUIConversationUserProject[];
+  activeConversation: AgentGUIConversationSummary | null;
+  activeConversationId: string | null;
+  availableCommands: AgentSessionCommand[];
+  availableSkills: AgentGUIProviderSkillOption[];
+  draftPrompt: string;
+  isLoadingConversations: boolean;
+  isLoadingMessages: boolean;
+  isCreatingConversation: boolean;
+  isSubmitting: boolean;
+  isInterrupting: boolean;
+  isRespondingApproval: boolean;
+  promptImagesSupported: boolean;
+  listError: string | null;
+  isDeletingConversation: boolean;
+  isDeletingProjectConversations: boolean;
+  pendingDeleteConversation: AgentGUIConversationSummary | null;
+  pendingDeleteProjectConversations: AgentGUIProjectConversationDeleteTarget | null;
+  pendingApproval: AgentGUIApprovalRequest | null;
+  pendingInteractivePrompt: AgentGUIInteractivePrompt | null;
+  activeLiveState: "inactive" | "activating" | "active" | "failed";
+  activationError: string | null;
+  openclawGateway: OpenclawGatewayViewState | null;
+  canSubmit: boolean;
+  composerSettings: AgentGUIComposerSettingsVM;
+  queuedPrompts: AgentGUIQueuedPromptVM[];
+  drainingQueuedPromptId: string | null;
+  canQueueWhileBusy: boolean;
+  hasSentUserMessage: boolean;
+  avoidGroupingEdits: boolean;
+  conversation?: AgentConversationVM | null;
+  conversationDetail: WorkspaceAgentSessionDetailViewModel | null;
+  sessionChrome: AgentGUISessionChrome;
+  inlineNotice: AgentGUIInlineNotice | null;
+}

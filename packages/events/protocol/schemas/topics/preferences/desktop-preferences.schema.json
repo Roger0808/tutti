@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextop.dev/schemas/events/preferences/desktop-preferences.schema.json",
+  "title": "DesktopPreferences",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "agentComposerDefaultsByProvider",
+    "defaultAgentProvider",
+    "dockIconStyle",
+    "dockPlacement",
+    "locale",
+    "sleepPreventionMode",
+    "themeSource"
+  ],
+  "properties": {
+    "agentComposerDefaultsByProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "claude-code": { "$ref": "#/$defs/agentComposerDefaults" },
+        "codex": { "$ref": "#/$defs/agentComposerDefaults" },
+        "nexight": { "$ref": "#/$defs/agentComposerDefaults" },
+        "gemini": { "$ref": "#/$defs/agentComposerDefaults" },
+        "hermes": { "$ref": "#/$defs/agentComposerDefaults" },
+        "openclaw": { "$ref": "#/$defs/agentComposerDefaults" }
+      }
+    },
+    "defaultAgentProvider": {
+      "type": "string",
+      "enum": [
+        "claude-code",
+        "codex",
+        "nexight",
+        "gemini",
+        "hermes",
+        "openclaw"
+      ]
+    },
+    "dockIconStyle": {
+      "type": "string",
+      "enum": ["default", "flat"]
+    },
+    "dockPlacement": {
+      "type": "string",
+      "enum": ["bottom", "left"]
+    },
+    "locale": {
+      "type": "string",
+      "enum": ["en", "zh-CN"]
+    },
+    "sleepPreventionMode": {
+      "type": "string",
+      "enum": ["never", "whileAgentRunning", "always"]
+    },
+    "themeSource": {
+      "type": "string",
+      "enum": ["system", "dark", "light"]
+    }
+  },
+  "$defs": {
+    "agentComposerDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "model": { "type": "string" },
+        "permissionModeId": { "type": "string" },
+        "reasoningEffort": { "type": "string" }
+      }
+    }
+  }
+}

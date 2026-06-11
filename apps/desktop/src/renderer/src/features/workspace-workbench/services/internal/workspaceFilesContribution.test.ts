@@ -1,0 +1,167 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type { WorkspaceFileManagerPersistedState } from "@tutti-os/workspace-file-manager/services";
+import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
+import type { ReporterEventInput } from "@renderer/features/analytics";
+import { createWorkspaceFilesContribution } from "./workspaceFilesContribution.ts";
+import { workspaceFilesNodeID } from "./workspaceWorkbenchComposition.ts";
+
+test("workspace files contribution exposes file manager state through runtime and snapshot node state", () => {
+  const snapshotState: WorkspaceFileManagerPersistedState = {
+    currentDirectoryPath: "/workspace/docs",
+    navigationBackStack: ["/workspace"],
+    navigationForwardStack: [],
+    schemaVersion: 2
+  };
+  const service = createFileManagerServiceStub(snapshotState);
+  const contribution = createWorkspaceFilesContribution({
+    filesLabel: "Files",
+    icon: null,
+    renderFilesNodeBody: () => null,
+    workspaceFileManagerService: service,
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(
+    contribution.externalStateSource?.getNodeState({
+      instanceId: workspaceFilesNodeID,
+      nodeId: workspaceFilesNodeID,
+      typeId: workspaceFilesNodeID,
+      workspaceId: "workspace-1"
+    }),
+    snapshotState
+  );
+  assert.deepEqual(
+    contribution.externalStateSource?.getSnapshotNodeState?.({
+      instanceId: workspaceFilesNodeID,
+      nodeId: workspaceFilesNodeID,
+      typeId: workspaceFilesNodeID,
+      workspaceId: "workspace-1"
+    }),
+    snapshotState
+  );
+  assert.equal(
+    contribution.externalStateSource?.getNodeState({
+      instanceId: "browser",
+      nodeId: "browser",
+      typeId: "browser",
+      workspaceId: "workspace-1"
+    }),
+    null
+  );
+
+  let notified = false;
+  const dispose = contribution.externalStateSource?.subscribe?.(() => {
+    notified = true;
+  });
+  service.emit();
+  assert.equal(notified, true);
+  dispose?.();
+});
+
+test("workspace files contribution passes restored state to the node body renderer", () => {
+  const restoredState: WorkspaceFileManagerPersistedState = {
+    currentDirectoryPath: "/workspace/docs",
+    navigationBackStack: [],
+    navigationForwardStack: ["/workspace/archive"],
+    schemaVersion: 2
+  };
+  let capturedState: WorkspaceFileManagerPersistedState | null = null;
+  const contribution = createWorkspaceFilesContribution({
+    filesLabel: "Files",
+    icon: null,
+    renderFilesNodeBody: (context) => {
+      capturedState = context.externalNodeState;
+      return null;
+    },
+    workspaceFileManagerService: createFileManagerServiceStub(null),
+    workspaceId: "workspace-1"
+  });
+
+  contribution.nodes?.[0]?.renderBody({
+    activation: null,
+    externalNodeState: restoredState
+  } as never);
+
+  assert.deepEqual(capturedState, restoredState);
+});
+
+test("workspace files launch uses responsive cascade placement", async () => {
+  const contribution = createWorkspaceFilesContribution({
+    filesLabel: "Files",
+    icon: null,
+    renderFilesNodeBody: () => null,
+    workspaceFileManagerService: createFileManagerServiceStub(null),
+    workspaceId: "workspace-1"
+  });
+
+  const result = await Promise.resolve(
+    contribution.onLaunchRequest?.({
+      reason: "dock",
+      typeId: workspaceFilesNodeID,
+      workspaceId: "workspace-1"
+    })
+  );
+
+  assert.equal(result?.framePolicy, "cascade");
+});
+
+test("workspace files contribution reports opened from the node lease once", () => {
+  const reporterCalls: ReporterEventInput[][] = [];
+  const contribution = createWorkspaceFilesContribution({
+    filesLabel: "Files",
+    icon: null,
+    renderFilesNodeBody: () => null,
+    reporterService: createReporterService(reporterCalls),
+    workspaceFileManagerService: createFileManagerServiceStub(null),
+    workspaceId: "workspace-1"
+  });
+
+  contribution.nodes?.[0]?.createLease?.({} as never);
+
+  assert.equal(reporterCalls.length, 1);
+  assert.deepEqual(reporterCalls[0], [
+    {
+      clientTS: reporterCalls[0]?.[0]?.clientTS,
+      name: "file_manager.opened",
+      params: {
+        source: "restore",
+        trigger: "automatic"
+      }
+    }
+  ]);
+});
+
+function createFileManagerServiceStub(
+  snapshotState: WorkspaceFileManagerPersistedState | null
+): IWorkspaceFileManagerService & { emit(): void } {
+  const listeners = new Set<() => void>();
+  return {
+    _serviceBrand: undefined,
+    hostOs: "darwin",
+    emit() {
+      for (const listener of listeners) {
+        listener();
+      }
+    },
+    getSession() {
+      throw new Error("getSession should not be called");
+    },
+    getSnapshotState() {
+      return snapshotState;
+    },
+    setCanvasFilePreviewLauncher() {},
+    subscribe(_workspaceID, listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    }
+  };
+}
+
+function createReporterService(calls: ReporterEventInput[][] = []) {
+  return {
+    async trackEvents(events: ReporterEventInput[]) {
+      calls.push(events);
+    }
+  };
+}

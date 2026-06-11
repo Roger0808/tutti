@@ -1,0 +1,97 @@
+# Runtime Overrides
+
+This document indexes supported runtime override environment variables for local state, transport, logging, diagnostics, and tests.
+
+Use the owner documents linked below for detailed behavior. This file exists to make the supported override surface easy to scan before adding another `NEXTOP_*` or `NEXTOPD_*` variable.
+
+## Rules
+
+- prefer repository-owned generated defaults when no override is required
+- prefer shared root overrides such as `NEXTOP_STATE_DIR` or `NEXTOP_LOG_DIR` before adding per-file variables
+- treat override variables as development, packaging, test, and diagnostics controls, not primary product settings
+- document a new supported override here and in the narrow owner document in the same change
+
+## Local State And Runtime Paths
+
+| Variable                     | Owner document                                                                                             | Purpose                                                                               |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `NEXTOP_ENV`                 | [Local State Storage](./local-state-storage.md)                                                            | Selects production or development default state roots.                                |
+| `NEXTOP_STATE_DIR`           | [Local State Storage](./local-state-storage.md)                                                            | Overrides the shared local state root.                                                |
+| `NEXTOP_LOG_DIR`             | [Local State Storage](./local-state-storage.md), [Logging](./logging.md)                                   | Overrides the shared log directory under the state model.                             |
+| `NEXTOPD_DB_PATH`            | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon SQLite database path for narrow operational needs.               |
+| `NEXTOPD_RUN_DIR`            | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon runtime directory for files such as listener info and pid files. |
+| `NEXTOPD_PID_PATH`           | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon pid file path.                                                   |
+| `NEXTOPD_LISTENER_INFO_PATH` | [Local State Storage](./local-state-storage.md), [Desktop Transport](../architecture/desktop-transport.md) | Overrides the listener-info file path used by managed desktop-to-daemon transport.    |
+
+## Workspace App Catalog
+
+| Variable                  | Owner document                                      | Purpose                                                                                                              |
+| ------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `NEXTOP_APP_CATALOG_FILE` | [Workspace App Catalog](./workspace-app-catalog.md) | Loads remote built-in app catalog entries from a local JSON file for mocks.                                          |
+| `NEXTOP_APP_CATALOG_URL`  | [Workspace App Catalog](./workspace-app-catalog.md) | Overrides the default remote built-in app catalog URL. Set to an empty string to disable the default remote catalog. |
+
+## Workspace App Runtime
+
+| Variable                        | Owner document                                      | Purpose                                                                                           |
+| ------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `NEXTOP_APP_RUNTIME_CATALOG`    | [Workspace App Runtime](./workspace-app-runtime.md) | Overrides the default HTTP(S) runtime catalog for first-use runtime downloads. Empty disables it. |
+| `NEXTOP_APP_RUNTIME_CACHE_ROOT` | [Workspace App Runtime](./workspace-app-runtime.md) | Overrides the daemon-owned managed runtime cache root.                                            |
+| `NEXTOP_APP_RUNTIME_ROOT`       | [Workspace App Runtime](./workspace-app-runtime.md) | Points nextopd at one exact prepared runtime root, mainly for tests and local debugging.          |
+| `NEXTOP_APP_PYTHON`             | [Workspace App Runtime](./workspace-app-runtime.md) | Injected by nextopd into workspace app processes; app packages should use it to launch Python.    |
+| `NEXTOP_APP_NODE`               | [Workspace App Runtime](./workspace-app-runtime.md) | Injected by nextopd into workspace app processes; app packages should use it to launch Node.js.   |
+| `NEXTOP_APP_NPM`                | [Workspace App Runtime](./workspace-app-runtime.md) | Injected by nextopd into workspace app processes; prepare scripts should use it for npm work.     |
+
+## Desktop Transport
+
+| Variable                     | Owner document                                                                                             | Purpose                                                       |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `NEXTOPD_ACCESS_TOKEN`       | [Desktop Transport](../architecture/desktop-transport.md)                                                  | Supplies the desktop-issued bearer token required by nextopd. |
+| `NEXTOPD_ADDR`               | [Desktop Transport](../architecture/desktop-transport.md)                                                  | Overrides the TCP listener or client address.                 |
+| `NEXTOPD_LISTENER_INFO_PATH` | [Desktop Transport](../architecture/desktop-transport.md), [Local State Storage](./local-state-storage.md) | Overrides the daemon listener-info file path.                 |
+
+## Analytics
+
+| Variable                          | Owner document                                              | Purpose                                                            |
+| --------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------ |
+| `NEXTOP_APP_VERSION`              | [Analytics Tracking](../architecture/analytics-tracking.md) | Supplies the shared desktop app version propagated to nextopd.     |
+| `NEXTOP_ANALYTICS_DISABLED`       | [Analytics Tracking](../architecture/analytics-tracking.md) | Disables DataFinder reporting and constructs `NoopReporter`.       |
+| `NEXTOP_ANALYTICS_APP_ID`         | [Analytics Tracking](../architecture/analytics-tracking.md) | Overrides the DataFinder app id for development or test backends.  |
+| `NEXTOP_ANALYTICS_APP_KEY`        | [Analytics Tracking](../architecture/analytics-tracking.md) | Overrides the DataFinder app key for development or test backends. |
+| `NEXTOP_ANALYTICS_CHANNEL_DOMAIN` | [Analytics Tracking](../architecture/analytics-tracking.md) | Overrides the DataFinder reporting endpoint.                       |
+| `NEXTOP_ANALYTICS_APP_VERSION`    | [Analytics Tracking](../architecture/analytics-tracking.md) | Compatibility override for the analytics app version common param. |
+
+## Logging And Diagnostics
+
+| Variable                    | Owner document                                                           | Purpose                                                               |
+| --------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `NEXTOP_LOG_DIR`            | [Logging](./logging.md), [Local State Storage](./local-state-storage.md) | Overrides the shared log directory.                                   |
+| `NEXTOP_LOG_MAX_SIZE_MB`    | [Logging](./logging.md)                                                  | Overrides per-file rotation size budget.                              |
+| `NEXTOP_LOG_MAX_BACKUPS`    | [Logging](./logging.md)                                                  | Overrides rotated file count budget.                                  |
+| `NEXTOP_LOG_MAX_AGE_DAYS`   | [Logging](./logging.md)                                                  | Overrides rotated file age budget.                                    |
+| `NEXTOP_LOG_MAX_TOTAL_MB`   | [Logging](./logging.md)                                                  | Overrides managed log directory total size budget.                    |
+| `NEXTOPD_LOG_PATH`          | [Logging](./logging.md)                                                  | Overrides the daemon log file path.                                   |
+| `NEXTOPD_LOG_OUTPUT`        | [Logging](./logging.md)                                                  | Selects daemon log output mode.                                       |
+| `NEXTOPD_LOG_LEVEL`         | [Logging](./logging.md)                                                  | Selects daemon log level.                                             |
+| `NEXTOP_DESKTOP_LOG_PATH`   | [Logging](./logging.md)                                                  | Overrides the desktop main-process log file path.                     |
+| `NEXTOP_DESKTOP_LOG_OUTPUT` | [Logging](./logging.md)                                                  | Selects desktop main-process log output mode.                         |
+| `NEXTOP_DESKTOP_LOG_LEVEL`  | [Logging](./logging.md)                                                  | Selects desktop main-process log level.                               |
+| `NEXTOPD_FORWARD_STDIO`     | [Logging](./logging.md)                                                  | Requests desktop forwarding of managed daemon stdout for diagnostics. |
+| `NEXTOP_SESSION_ID`         | [Logging](./logging.md)                                                  | Correlates desktop and daemon logs for one local run.                 |
+
+## Agent Runtime Diagnostics
+
+| Variable                      | Owner document                                  | Purpose                                                                                 |
+| ----------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `NEXTOP_AGENT_CONTEXT_CONFIG` | [Local State Storage](./local-state-storage.md) | Overrides the migrated agent context config path for tests and diagnostics.             |
+| `NEXTOP_AGENT_ROUTING`        | This document                                   | Marks provider subprocesses launched through the migrated agent routing path.           |
+| `NEXTOP_ACP_TOOL_DEBUG`       | This document                                   | Enables verbose migrated ACP tool-call normalization diagnostics.                       |
+| `NEXTOP_WORKSPACE_ID`         | This document                                   | Supplies a workspace id to migrated agent context readers when no input id is provided. |
+
+## Review Questions
+
+When adding or changing an override, ask:
+
+1. Can an existing generated default or shared root override express this?
+2. Is the variable owned by state, transport, logging, or a narrower subsystem?
+3. Is the variable for diagnostics or packaging rather than normal product configuration?
+4. Which convention or architecture document must change with this registry?

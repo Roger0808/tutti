@@ -1,0 +1,262 @@
+export type AgentActivitySessionStatus =
+  | "queued"
+  | "working"
+  | "waiting"
+  | "completed"
+  | "failed"
+  | "canceled"
+  | "unknown";
+
+export type AgentActivityDisplayStatus =
+  | "working"
+  | "waiting"
+  | "idle"
+  | "completed"
+  | "canceled"
+  | "failed";
+
+export interface AgentActivitySession {
+  workspaceId: string;
+  agentSessionId: string;
+  provider: string;
+  providerSessionId?: string | null;
+  model?: string | null;
+  cwd: string;
+  title: string;
+  status: AgentActivitySessionStatus | (string & {});
+  visible?: boolean;
+  resumable?: boolean;
+  currentPhase?: string | null;
+  lastError?: string | null;
+  messageVersion?: number;
+  lastEventUnixMs?: number;
+  startedAtUnixMs?: number;
+  endedAtUnixMs?: number;
+  pinnedAtUnixMs?: number | null;
+  createdAtUnixMs?: number;
+  updatedAtUnixMs?: number;
+}
+
+export interface AgentActivityMessage {
+  workspaceId?: string;
+  agentSessionId: string;
+  messageId: string;
+  id?: number;
+  version: number;
+  turnId?: string | null;
+  role: string;
+  kind: string;
+  status?: string | null;
+  payload: Record<string, unknown>;
+  occurredAtUnixMs?: number;
+  startedAtUnixMs?: number;
+  completedAtUnixMs?: number;
+}
+
+export interface AgentActivitySessionList {
+  sessions: AgentActivitySession[];
+  presences?: AgentActivityPresence[];
+}
+
+export interface AgentActivityPresence {
+  id: string | number;
+  workspaceId: string;
+  provider: string;
+  status: string;
+  userId?: string | null;
+}
+
+export interface AgentActivityMessagePage {
+  messages: AgentActivityMessage[];
+  hasMore: boolean;
+  latestVersion: number;
+}
+
+export type AgentActivityMessageOrder = "asc" | "desc";
+
+export interface AgentActivityComposerSettingOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export interface AgentActivityComposerSkillOption {
+  name: string;
+  trigger: string;
+  sourceKind:
+    | "project"
+    | "personal"
+    | "bundled"
+    | "plugin"
+    | "system"
+    | "nextop-injected";
+  description?: string;
+  pluginName?: string;
+}
+
+export interface AgentActivityComposerPermissionModeOption {
+  id: string;
+  label?: string;
+  description?: string;
+  semantic?: string;
+}
+
+export interface AgentActivityComposerPermissionConfig {
+  configurable: boolean;
+  defaultValue?: string | null;
+  modes: AgentActivityComposerPermissionModeOption[];
+}
+
+export interface AgentActivityComposerSettings {
+  model?: string | null;
+  reasoningEffort?: string | null;
+  planMode?: boolean | null;
+  permissionModeId?: string | null;
+}
+
+export interface AgentActivityComposerOptions {
+  provider: string;
+  models: AgentActivityComposerSettingOption[];
+  reasoningEfforts: AgentActivityComposerSettingOption[];
+  permissionConfig?: AgentActivityComposerPermissionConfig | null;
+  runtimeContext?: Record<string, unknown>;
+  skills: AgentActivityComposerSkillOption[];
+  loadedAtUnixMs: number;
+}
+
+export interface AgentActivityLoadComposerOptionsInput {
+  workspaceId: string;
+  provider: string;
+  cwd?: string | null;
+  settings?: AgentActivityComposerSettings | null;
+  signal?: AbortSignal;
+}
+
+export interface AgentActivitySnapshot {
+  workspaceId: string;
+  sessions: AgentActivitySession[];
+  presences: AgentActivityPresence[];
+  sessionMessagesById: Record<string, AgentActivityMessage[]>;
+  composerOptionsByProvider?: Record<string, AgentActivityComposerOptions>;
+}
+
+export interface AgentActivitySessionEventEnvelope {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: string;
+  data?: unknown;
+}
+
+export interface AgentActivityUpdatedEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: string;
+  data?: unknown;
+}
+
+export interface AgentActivityStatePatch {
+  agentSessionId: string;
+  currentPhase?: string;
+  cwd?: string;
+  lastError?: string;
+  lastEventUnixMs?: number;
+  lifecycleStatus?: string;
+  model?: string;
+  occurredAtUnixMs?: number;
+  provider?: string;
+  providerSessionId?: string;
+  startedAtUnixMs?: number;
+  endedAtUnixMs?: number;
+  title?: string;
+  turn?: {
+    completedAtUnixMs?: number;
+    fileChanges?: unknown;
+    outcome?: string;
+    phase?: string;
+    startedAtUnixMs?: number;
+    turnId: string;
+  };
+  workspaceId?: string;
+}
+
+export interface AgentActivityUpdatedApplyResult {
+  applied: boolean;
+  messages: AgentActivityMessage[];
+  session: AgentActivitySession | null;
+  statePatch: AgentActivityStatePatch | null;
+}
+
+export interface AgentActivityCreateSessionInput {
+  workspaceId: string;
+  agentSessionId?: string | null;
+  cwd?: string | null;
+  initialContent?: AgentPromptContentBlock[] | null;
+  model?: string | null;
+  planMode?: boolean | null;
+  permissionModeId?: string | null;
+  provider: string;
+  reasoningEffort?: string | null;
+  title?: string | null;
+  visible?: boolean | null;
+  signal?: AbortSignal;
+}
+
+export interface AgentActivitySendInput {
+  workspaceId: string;
+  agentSessionId: string;
+  content: AgentPromptContentBlock[];
+  signal?: AbortSignal;
+}
+
+export interface AgentPromptContentBlock {
+  type: "text" | "image";
+  text?: string;
+  mimeType?: "image/png" | "image/jpeg" | "image/webp";
+  data?: string;
+  attachmentId?: string;
+  name?: string;
+}
+
+export interface AgentActivityCancelSessionInput {
+  workspaceId: string;
+  agentSessionId: string;
+  signal?: AbortSignal;
+}
+
+export interface AgentActivitySubmitInteractiveInput {
+  workspaceId: string;
+  agentSessionId: string;
+  requestId: string;
+  action?: string | null;
+  optionId?: string | null;
+  payload?: Record<string, unknown> | null;
+  signal?: AbortSignal;
+}
+
+export interface AgentActivityDeleteSessionInput {
+  workspaceId: string;
+  agentSessionId: string;
+  signal?: AbortSignal;
+}
+
+export interface AgentActivityDeleteSessionResult {
+  removed: boolean;
+}
+
+export type AgentActivityNeedsAttentionKind =
+  | "permission"
+  | "question"
+  | "constraint"
+  | "other";
+
+export interface AgentActivityNeedsAttentionItem {
+  id: string;
+  workspaceId: string;
+  agentSessionId: string;
+  provider: string;
+  title: string;
+  cwd: string;
+  kind: AgentActivityNeedsAttentionKind;
+  summary: string;
+  occurredAtUnixMs: number;
+}

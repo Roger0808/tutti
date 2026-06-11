@@ -1,0 +1,1155 @@
+import "@testing-library/jest-dom/vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { TooltipProvider } from "@tutti-os/ui-system";
+import { describe, expect, it, vi } from "vitest";
+import {
+  WorkspaceAgentMessageCenterCard,
+  WorkspaceAgentMessageCenterPanel
+} from "./WorkspaceAgentMessageCenterPanel";
+import type {
+  WorkspaceAgentMessageCenterItem,
+  WorkspaceAgentMessageCenterModel
+} from "./workspaceAgentMessageCenterModel";
+
+const baseItem: WorkspaceAgentMessageCenterItem = {
+  id: "message-center-session-1",
+  agentSessionId: "session-1",
+  provider: "codex",
+  title: "整理本地文件夹",
+  identity: null,
+  cwd: "/workspace",
+  status: "completed",
+  lastAgentMessageSummary: "已完成。",
+  lastAgentMessageAtUnixMs: 1,
+  pendingPrompt: null,
+  needsAttentionKind: null,
+  needsAttentionSummary: null,
+  sortTimeUnixMs: 1
+};
+
+const emptyModel: WorkspaceAgentMessageCenterModel = {
+  waitingCount: 0,
+  items: [],
+  counts: {
+    all: 0,
+    working: 0,
+    waiting: 0,
+    completed: 0,
+    failed: 0
+  }
+};
+
+function createMessageCenterItem(
+  overrides: Partial<WorkspaceAgentMessageCenterItem> & {
+    agentSessionId: string;
+    title: string;
+  }
+): WorkspaceAgentMessageCenterItem {
+  return {
+    ...baseItem,
+    id: `message-center-${overrides.agentSessionId}`,
+    lastAgentMessageSummary: `${overrides.title} summary`,
+    sortTimeUnixMs: 1,
+    ...overrides
+  };
+}
+
+function createWaitingItem(
+  overrides: Partial<WorkspaceAgentMessageCenterItem> & {
+    agentSessionId: string;
+    title: string;
+  }
+): WorkspaceAgentMessageCenterItem {
+  return createMessageCenterItem({
+    status: "waiting",
+    pendingPrompt: {
+      kind: "approval",
+      id: `approval:${overrides.agentSessionId}`,
+      turnId: "turn-1",
+      requestId: `request-${overrides.agentSessionId}`,
+      callId: `request-${overrides.agentSessionId}`,
+      title: "Approval",
+      status: "waiting_approval",
+      toolName: "Bash",
+      input: null,
+      options: [],
+      output: null,
+      occurredAtUnixMs: 1
+    },
+    ...overrides
+  });
+}
+
+function createMessageCenterModel(
+  items: WorkspaceAgentMessageCenterItem[]
+): WorkspaceAgentMessageCenterModel {
+  return {
+    waitingCount: items.filter((item) => item.pendingPrompt !== null).length,
+    items,
+    counts: {
+      all: items.length,
+      working: items.filter(
+        (item) => item.status === "working" && item.pendingPrompt === null
+      ).length,
+      waiting: items.filter((item) => item.pendingPrompt !== null).length,
+      completed: items.filter((item) =>
+        ["canceled", "completed", "idle"].includes(item.status)
+      ).length,
+      failed: items.filter((item) => item.status === "failed").length
+    }
+  };
+}
+
+function openViewOptions(): void {
+  fireEvent.pointerDown(screen.getByRole("button", { name: "View options" }), {
+    button: 0,
+    ctrlKey: false
+  });
+}
+
+describe("WorkspaceAgentMessageCenterCard", () => {
+  it("stretches the empty message center viewport before centering the empty state", () => {
+    const { container } = render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={emptyModel}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    const messageCenter = screen.getByTestId("workspace-agent-message-center");
+    const scrollArea = messageCenter.querySelector(
+      ".agent-vertical-scroll-area"
+    );
+    const viewport = scrollArea?.querySelector("div");
+    const emptyState = screen.getByText("No agent messages yet");
+
+    expect(container).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View options" })).toBeTruthy();
+    expect(scrollArea).toHaveClass("flex-1");
+    expect(scrollArea).not.toHaveClass("flex");
+    expect(viewport).toHaveClass("flex", "h-full", "w-full", "flex-col");
+    expect(emptyState).toHaveClass("flex-1", "justify-center");
+  });
+
+  it("adds edge glow only for waiting message center cards", () => {
+    const { container, rerender } = render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={{
+            ...baseItem,
+            pendingPrompt: {
+              kind: "approval",
+              id: "approval:request-1",
+              turnId: "turn-1",
+              requestId: "request-1",
+              callId: "request-1",
+              title: "Approval",
+              status: "waiting_approval",
+              toolName: "Bash",
+              input: null,
+              options: [],
+              output: null,
+              occurredAtUnixMs: 1
+            }
+          }}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    expect(
+      container.querySelector(
+        '[data-message-center-item-id="message-center-session-1"]'
+      )
+    ).toHaveClass("agent-gui-edge-glow");
+    expect(
+      container.querySelector(
+        '[data-message-center-item-id="message-center-session-1"]'
+      )
+    ).toHaveClass("border-[var(--border-focus)]");
+
+    rerender(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={baseItem}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    expect(
+      container.querySelector(
+        '[data-message-center-item-id="message-center-session-1"]'
+      )
+    ).not.toHaveClass("agent-gui-edge-glow");
+  });
+
+  it("reports the provider and semantic action when submitting a notification prompt", () => {
+    const onNotificationActioned = vi.fn();
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={{
+          waitingCount: 1,
+          items: [
+            {
+              ...baseItem,
+              status: "waiting",
+              pendingPrompt: {
+                kind: "approval",
+                id: "approval:request-1",
+                turnId: "turn-1",
+                requestId: "request-1",
+                callId: "request-1",
+                title: "Approval",
+                status: "waiting_approval",
+                toolName: "Bash",
+                input: null,
+                options: [
+                  {
+                    id: "allow_once",
+                    label: "Yes",
+                    kind: "allow_once",
+                    description: ""
+                  }
+                ],
+                output: null,
+                occurredAtUnixMs: 1
+              }
+            }
+          ],
+          counts: {
+            all: 1,
+            working: 0,
+            waiting: 1,
+            completed: 0,
+            failed: 0
+          }
+        }}
+        onClose={vi.fn()}
+        onNotificationActioned={onNotificationActioned}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Yes, proceed" }));
+
+    expect(onNotificationActioned).toHaveBeenCalledWith({
+      action: "accept",
+      provider: "codex"
+    });
+  });
+
+  it("hides approval shortcut hints inside message center prompt cards", () => {
+    render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={{
+            ...baseItem,
+            status: "waiting",
+            pendingPrompt: {
+              kind: "approval",
+              id: "approval:request-1",
+              turnId: "turn-1",
+              requestId: "request-1",
+              callId: "request-1",
+              title: "Approval",
+              status: "waiting_approval",
+              toolName: "Bash",
+              input: null,
+              options: [
+                {
+                  id: "allow_once",
+                  label: "Yes",
+                  kind: "allow_once",
+                  description: ""
+                },
+                {
+                  id: "reject",
+                  label: "No, and tell Codex what to do differently",
+                  kind: "reject_once",
+                  description: ""
+                }
+              ],
+              output: null,
+              occurredAtUnixMs: 1
+            }
+          }}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByRole("button", { name: "Yes, proceed" })).toBeTruthy();
+    expect(screen.queryByText("Enter")).toBeNull();
+    expect(screen.queryByText(/Enter$/)).toBeNull();
+  });
+
+  it("shows waiting status when a completed session still has a pending prompt", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={{
+            ...baseItem,
+            status: "completed",
+            pendingPrompt: {
+              kind: "approval",
+              id: "approval:request-1",
+              turnId: "turn-1",
+              requestId: "request-1",
+              callId: "request-1",
+              title: "Approval",
+              status: "waiting_approval",
+              toolName: "Approval",
+              input: null,
+              options: [],
+              output: null,
+              occurredAtUnixMs: 1
+            }
+          }}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    const card = container.querySelector(
+      '[data-message-center-item-id="message-center-session-1"]'
+    );
+    expect(card).toHaveAttribute("data-status", "waiting");
+    expect(screen.getByText("Waiting")).toBeTruthy();
+    expect(screen.queryByText("Completed")).toBeNull();
+  });
+
+  it("shows canceled status instead of collapsing the card label to completed", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={{
+            ...baseItem,
+            status: "canceled",
+            lastAgentMessageSummary: "Stopped by user."
+          }}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    const card = container.querySelector(
+      '[data-message-center-item-id="message-center-session-1"]'
+    );
+    expect(card).toHaveAttribute("data-status", "canceled");
+    expect(screen.getByText("Canceled")).toBeTruthy();
+    expect(screen.queryByText("Completed")).toBeNull();
+  });
+
+  it("hides generic approval summaries when the prompt has structured details", () => {
+    render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={{
+            ...baseItem,
+            status: "waiting",
+            lastAgentMessageSummary: "Approval",
+            pendingPrompt: {
+              kind: "approval",
+              id: "approval:request-1",
+              turnId: "turn-1",
+              requestId: "request-1",
+              callId: "request-1",
+              title: "requestId: request-1",
+              status: "waiting_approval",
+              toolName: "Approval",
+              input: {
+                toolCall: {
+                  input: {
+                    command: "date"
+                  }
+                }
+              },
+              options: [
+                {
+                  id: "allow_once",
+                  label: "Yes",
+                  kind: "allow_once",
+                  description: ""
+                }
+              ],
+              output: null,
+              occurredAtUnixMs: 1
+            }
+          }}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("Command")).toBeTruthy();
+    expect(screen.getByText("date")).toBeTruthy();
+    expect(screen.queryByText("Approval")).toBeNull();
+  });
+
+  it("uses the card agent provider name in approval prompt headings", () => {
+    render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={{
+            ...baseItem,
+            provider: "codex",
+            status: "waiting",
+            pendingPrompt: {
+              kind: "approval",
+              id: "approval:request-1",
+              turnId: "turn-1",
+              requestId: "request-1",
+              callId: "request-1",
+              title: "Approval",
+              status: "waiting_approval",
+              toolName: "Approval",
+              input: null,
+              options: [
+                {
+                  id: "allow_once",
+                  label: "Yes",
+                  kind: "allow_once",
+                  description: ""
+                }
+              ],
+              output: null,
+              occurredAtUnixMs: 1
+            }
+          }}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("Codex requests your authorization")).toBeTruthy();
+    expect(screen.queryByText("Agent requests your authorization")).toBeNull();
+  });
+
+  it("renders caller-provided user and agent identity in the card footer", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={{
+            ...baseItem,
+            identity: {
+              userName: "Jessica",
+              userAvatarUrl: "https://cdn.example.com/jessica.png",
+              agentName: "Codex",
+              agentAvatarUrl: "https://cdn.example.com/codex.png"
+            }
+          }}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("Jessica")).toBeInTheDocument();
+    expect(screen.getByText("&")).toBeInTheDocument();
+    expect(screen.getByText("Codex")).toBeInTheDocument();
+    expect(
+      container.querySelector(".workspace-agent-message-center__identity")
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector(
+        ".workspace-agent-message-center__identity-avatar-stack"
+      )
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector('img[src="https://cdn.example.com/jessica.png"]')
+    ).toBeTruthy();
+    expect(
+      container.querySelector('img[src="https://cdn.example.com/codex.png"]')
+    ).toBeTruthy();
+  });
+
+  it("resolves summary file links through the shared workspace link action", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={{
+            ...baseItem,
+            cwd: "/Users/local/.nextop/sessions/2026-06-05-001",
+            lastAgentMessageSummary:
+              "已完成项目文件总结，并新增文档：[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)"
+          }}
+          isSubmitting={false}
+          onLinkAction={onLinkAction}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "PROJECT_SUMMARY.md" }));
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-file",
+      path: "/Users/local/.nextop/sessions/2026-06-05-001/PROJECT_SUMMARY.md",
+      directoryPath: "/Users/local/.nextop/sessions/2026-06-05-001",
+      workspaceRoot: "/Users/local/.nextop/sessions/2026-06-05-001",
+      source: "agent-markdown"
+    });
+  });
+
+  it("allows copying the card title and summary text", () => {
+    render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={{
+            ...baseItem,
+            title: "看看我最新改了哪些代码",
+            status: "failed",
+            lastAgentMessageSummary: "Codex request failed."
+          }}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "看看我最新改了哪些代码" })
+    ).toHaveClass("workspace-agent-message-center__copy-text");
+    expect(
+      screen
+        .getByText("Codex request failed.")
+        .closest(".workspace-agent-message-center__copy-text")
+    ).not.toBeNull();
+  });
+
+  it("marks message center controls with package style hooks", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={baseItem}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    expect(
+      container.querySelector(
+        '[data-message-center-item-id="message-center-session-1"]'
+      )
+    ).toHaveClass("workspace-agent-message-center__card");
+    expect(screen.getByText("Completed").parentElement).toHaveClass(
+      "workspace-agent-message-center__status"
+    );
+    expect(screen.getByRole("button", { name: "Open session" })).toHaveClass(
+      "workspace-agent-message-center__open-chat-button"
+    );
+    expect(screen.getByRole("button", { name: "/workspace" })).toHaveClass(
+      "workspace-agent-message-center__project-info-button"
+    );
+    expect(screen.getByText("Codex").parentElement).toHaveClass(
+      "workspace-agent-message-center__provider"
+    );
+  });
+
+  it("uses a shared tooltip trigger for truncated card titles", () => {
+    render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={{
+            ...baseItem,
+            title: "请基于下面这个 Issue 帮我做一个非常长的设计资讯整理任务标题"
+          }}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    expect(
+      screen.getByRole("heading", {
+        name: "请基于下面这个 Issue 帮我做一个非常长的设计资讯整理任务标题"
+      })
+    ).toHaveAttribute("data-slot", "tooltip-trigger");
+  });
+
+  it("enables zoom for markdown images in the summary", async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      bytes: new Uint8Array([137, 80, 78, 71])
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        readFile
+      }
+    } as typeof window.agentHostApi;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:message-center-image")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+
+    render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={{
+            ...baseItem,
+            cwd: "/Users/local/.nextop/sessions/2026-06-05-001",
+            lastAgentMessageSummary:
+              "![generated image](/Users/local/.nextop/sessions/2026-06-05-001/output/imagegen/sheep.png)"
+          }}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /Zoom image/
+      })
+    );
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(readFile).toHaveBeenCalledWith({
+      path: "/Users/local/.nextop/sessions/2026-06-05-001/output/imagegen/sheep.png"
+    });
+  });
+
+  it("preserves the card provider for providerless session links", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={{
+            ...baseItem,
+            provider: "claude-code",
+            lastAgentMessageSummary:
+              "继续 [Claude 会话](mention://agent-session?workspaceId=workspace-1&id=session-2)"
+          }}
+          isSubmitting={false}
+          onLinkAction={onLinkAction}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Claude 会话" }));
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-agent-session",
+      workspaceId: "workspace-1",
+      agentSessionId: "session-2",
+      provider: "claude-code",
+      source: "agent-markdown"
+    });
+  });
+});
+
+describe("WorkspaceAgentMessageCenterPanel", () => {
+  it("groups visible message center items by status when selected", () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createWaitingItem({
+            agentSessionId: "waiting-session",
+            title: "Needs approval"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "failed-session",
+            title: "Request failed",
+            status: "failed"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session",
+            title: "Running task",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "completed-session",
+            title: "Done task",
+            status: "completed"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    openViewOptions();
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Status" }));
+
+    expect(screen.getByRole("heading", { name: "Waiting · 1" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Error · 1" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Running · 1" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Completed · 1" })).toBeTruthy();
+  });
+
+  it("filters message center items by status from the view menu", () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createWaitingItem({
+            agentSessionId: "waiting-session",
+            title: "Needs approval"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "completed-session",
+            title: "Done task",
+            status: "completed"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session",
+            title: "Running task",
+            status: "working"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    openViewOptions();
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Running 1" })
+    );
+
+    expect(screen.getByText("Done task")).toBeTruthy();
+    expect(screen.getByText("Needs approval")).toBeTruthy();
+    expect(screen.queryByText("Running task")).toBeNull();
+  });
+
+  it("filters message center items by agent from view options", () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createMessageCenterItem({
+            agentSessionId: "codex-session",
+            provider: "codex",
+            title: "Codex task",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "gemini-session",
+            provider: "gemini",
+            title: "Gemini task",
+            status: "working"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    openViewOptions();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Codex 1" }));
+
+    expect(screen.queryByText("Codex task")).toBeNull();
+    expect(screen.getByText("Gemini task")).toBeTruthy();
+  });
+
+  it("collapses grouped cards into a summary card with stack edges exposed below", () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createMessageCenterItem({
+            agentSessionId: "working-session-1",
+            title: "Running task 1",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session-2",
+            title: "Running task 2",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session-3",
+            title: "Running task 3",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session-4",
+            title: "Running task 4",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session-5",
+            title: "Running task 5",
+            status: "working"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    const stack = screen.getByTestId(
+      "workspace-agent-message-stack-working:codex"
+    );
+    expect(stack).toHaveAttribute(
+      "data-stack-top-item-id",
+      "message-center-working-session-1"
+    );
+    expect(stack).toHaveAttribute("data-stack-count", "5");
+    expect(stack).toHaveAttribute("data-stack-state", "collapsed");
+    expect(stack).toHaveAttribute("data-stack-motion", "smooth");
+    expect(stack.querySelector("[data-message-center-item-id]")).toBeNull();
+
+    const summary = screen.getByTestId(
+      "workspace-agent-message-stack-summary-working:codex"
+    );
+    expect(summary).toHaveAttribute("data-stack-summary-count", "5");
+    expect(summary).toHaveAttribute("data-stack-provider", "codex");
+    expect(summary).toHaveTextContent("5 messages");
+    expect(summary).toHaveTextContent("Running task 1 summary");
+    expect(summary).not.toHaveTextContent("more");
+    expect(summary).not.toHaveTextContent("Running task 2 summary");
+    expect(screen.queryByText("Running task 3")).toBeNull();
+    expect(screen.queryByText("Running task 4")).toBeNull();
+    expect(screen.queryByText("Running task 5")).toBeNull();
+  });
+
+  it("aggregates stacked cards by agent provider inside a group", () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createMessageCenterItem({
+            agentSessionId: "codex-session-1",
+            provider: "codex",
+            title: "Codex task 1",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "codex-session-2",
+            provider: "codex",
+            title: "Codex task 2",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "gemini-session-1",
+            provider: "gemini",
+            title: "Gemini task 1",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "gemini-session-2",
+            provider: "gemini",
+            title: "Gemini task 2",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "claude-session-1",
+            provider: "claude-code",
+            title: "Claude task 1",
+            status: "working"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    const codexStack = screen.getByTestId(
+      "workspace-agent-message-stack-working:codex"
+    );
+    expect(codexStack).toHaveAttribute("data-stack-count", "2");
+    const geminiStack = screen.getByTestId(
+      "workspace-agent-message-stack-working:gemini"
+    );
+    expect(geminiStack).toHaveAttribute("data-stack-count", "2");
+    expect(
+      screen.getByTestId("workspace-agent-message-stack-summary-working:codex")
+    ).toHaveTextContent("2 messages");
+    expect(
+      screen.getByTestId("workspace-agent-message-stack-summary-working:gemini")
+    ).toHaveTextContent("2 messages");
+
+    expect(
+      screen.queryByTestId("workspace-agent-message-stack-working:claude-code")
+    ).toBeNull();
+    expect(screen.getByText("Claude task 1")).toBeTruthy();
+  });
+
+  it("expands and collapses a stacked card group", async () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createMessageCenterItem({
+            agentSessionId: "working-session-1",
+            title: "Running task 1",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session-2",
+            title: "Running task 2",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session-3",
+            title: "Running task 3",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session-4",
+            title: "Running task 4",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session-5",
+            title: "Running task 5",
+            status: "working"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand 5 collapsed messages" })
+    );
+
+    const expandedStack = screen.getByTestId(
+      "workspace-agent-message-stack-working:codex"
+    );
+    expect(expandedStack).toHaveAttribute("data-stack-state", "expanded");
+    expect(
+      expandedStack.querySelector(
+        '[data-message-center-item-id="message-center-working-session-1"]'
+      )
+    ).toBeTruthy();
+    expect(screen.getByText("Running task 3")).toBeTruthy();
+    expect(screen.getByText("Running task 4")).toBeTruthy();
+    expect(screen.getByText("Running task 5")).toBeTruthy();
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId(
+          "workspace-agent-message-stack-summary-working:codex"
+        )
+      ).toBeNull();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse expanded messages" })
+    );
+
+    const collapsedStack = screen.getByTestId(
+      "workspace-agent-message-stack-working:codex"
+    );
+    expect(collapsedStack).toHaveAttribute("data-stack-state", "collapsed");
+    await waitFor(() => {
+      expect(screen.queryByText("Running task 3")).toBeNull();
+    });
+    expect(
+      screen.getByTestId("workspace-agent-message-stack-summary-working:codex")
+    ).toHaveTextContent("5 messages");
+    expect(screen.queryByText("Running task 4")).toBeNull();
+    expect(screen.queryByText("Running task 5")).toBeNull();
+  });
+
+  it("expands a stack for a highlighted stacked item and still collapses on demand", async () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        highlightedItemId="message-center-working-session-3"
+        model={createMessageCenterModel([
+          createMessageCenterItem({
+            agentSessionId: "working-session-1",
+            title: "Running task 1",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session-2",
+            title: "Running task 2",
+            status: "working"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session-3",
+            title: "Running task 3",
+            status: "working"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    const stack = screen.getByTestId(
+      "workspace-agent-message-stack-working:codex"
+    );
+    expect(stack).toHaveAttribute("data-stack-state", "expanded");
+    expect(screen.getByText("Running task 3")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse expanded messages" })
+    );
+
+    expect(stack).toHaveAttribute("data-stack-state", "collapsed");
+    await waitFor(() => {
+      expect(screen.queryByText("Running task 3")).toBeNull();
+    });
+  });
+
+  it("summarizes completed cards in a collapsed stack", () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createMessageCenterItem({
+            agentSessionId: "completed-session-1",
+            title: "Completed task 1",
+            status: "completed"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "completed-session-2",
+            title: "Completed task 2",
+            status: "completed"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "completed-session-3",
+            title: "Completed task 3",
+            status: "completed"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    const stack = screen.getByTestId(
+      "workspace-agent-message-stack-completed:codex"
+    );
+    expect(stack).toHaveAttribute(
+      "data-stack-top-item-id",
+      "message-center-completed-session-1"
+    );
+    expect(stack).toHaveAttribute("data-stack-count", "3");
+
+    const summary = screen.getByTestId(
+      "workspace-agent-message-stack-summary-completed:codex"
+    );
+    expect(summary).toHaveTextContent("3 messages");
+    expect(summary).toHaveTextContent("Completed task 1 summary");
+    expect(summary).not.toHaveTextContent("more");
+    expect(summary).not.toHaveTextContent("Completed task 2 summary");
+    expect(screen.queryByText("Completed task 3")).toBeNull();
+  });
+
+  it("splits completions finished within ten minutes into a recent group", () => {
+    const now = Date.now();
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createMessageCenterItem({
+            agentSessionId: "recent-session",
+            title: "Just finished",
+            status: "completed",
+            sortTimeUnixMs: now - 60_000,
+            lastAgentMessageAtUnixMs: now - 60_000
+          }),
+          createMessageCenterItem({
+            agentSessionId: "old-session",
+            title: "Finished long ago",
+            status: "completed",
+            sortTimeUnixMs: now - 60 * 60_000,
+            lastAgentMessageAtUnixMs: now - 60 * 60_000
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Recently completed · 1" })
+    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Completed · 1" })).toBeTruthy();
+
+    const recentSection = screen
+      .getByRole("heading", { name: "Recently completed · 1" })
+      .closest("section");
+    expect(recentSection).not.toBeNull();
+    expect(recentSection).toHaveTextContent("Just finished");
+    expect(recentSection).not.toHaveTextContent("Finished long ago");
+  });
+
+  it("shows a filtered empty state with a clear filters action", () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createMessageCenterItem({
+            agentSessionId: "working-session",
+            title: "Running task",
+            status: "working"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    openViewOptions();
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Running 1" })
+    );
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+
+    expect(screen.queryByText("Running task")).toBeNull();
+    expect(
+      screen.getByText("No messages match the current filters")
+    ).toBeTruthy();
+    expect(screen.queryByText("No agent messages yet")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    expect(screen.getByText("Running task")).toBeTruthy();
+    expect(
+      screen.queryByText("No messages match the current filters")
+    ).toBeNull();
+  });
+});

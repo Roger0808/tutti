@@ -1,0 +1,160 @@
+import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
+import {
+  AGENT_GUI_MENTION_PROVIDER_IDS,
+  type AgentRichTextAtProvider
+} from "@tutti-os/agent-gui/agent-rich-text-at-provider";
+import { collectWorkspaceAgentGeneratedFiles } from "@tutti-os/agent-gui/workspace-agent-generated-files";
+import { createRichTextMarkdownLinkInsertResult } from "@tutti-os/ui-rich-text/plugins";
+
+const { agentGeneratedFile: AGENT_GENERATED_FILE_PROVIDER_ID } =
+  AGENT_GUI_MENTION_PROVIDER_IDS;
+
+const DEFAULT_SESSION_MESSAGE_PAGE_SIZE = 200;
+
+interface AgentGeneratedFileAtItem {
+  displayName: string;
+  path: string;
+}
+
+export function createDesktopAgentGeneratedFileMentionProvider(input: {
+  agentActivityRuntime: Pick<
+    AgentActivityRuntime,
+    "getSnapshot" | "listSessionMessages"
+  >;
+  workspaceId: string;
+}): AgentRichTextAtProvider<AgentGeneratedFileAtItem> {
+  return {
+    id: AGENT_GENERATED_FILE_PROVIDER_ID,
+    async query(searchInput) {
+      if (searchInput.abortSignal?.aborted) {
+        return [];
+      }
+      const workspaceId = metadataString(
+        searchInput.context.metadata,
+        "workspaceId",
+        input.workspaceId
+      );
+      const snapshot = input.agentActivityRuntime.getSnapshot(workspaceId);
+      await hydrateRecentSessionMessages({
+        abortSignal: searchInput.abortSignal,
+        agentActivityRuntime: input.agentActivityRuntime,
+        snapshot,
+        workspaceId
+      });
+      if (searchInput.abortSignal?.aborted) {
+        return [];
+      }
+      const refreshedSnapshot =
+        input.agentActivityRuntime.getSnapshot(workspaceId);
+      const files = collectWorkspaceAgentGeneratedFiles(refreshedSnapshot);
+      const keyword = searchInput.keyword.trim().toLowerCase();
+      const filtered = keyword
+        ? files.filter((file) =>
+            matchesAgentGeneratedFileKeyword(file, keyword)
+          )
+        : files;
+      const limited =
+        searchInput.maxResults && searchInput.maxResults > 0
+          ? filtered.slice(0, searchInput.maxResults)
+          : filtered;
+      return limited.map((file) => ({
+        displayName: file.label,
+        path: file.path
+      }));
+    },
+    getItemKey: (item) => item.path,
+    getItemLabel: (item) => item.displayName,
+    getItemSubtitle: (item) => item.path,
+    toInsertResult(item) {
+      return createRichTextMarkdownLinkInsertResult(
+        item.displayName,
+        item.path
+      );
+    }
+  };
+}
+
+async function hydrateRecentSessionMessages(input: {
+  abortSignal?: AbortSignal;
+  agentActivityRuntime: Pick<AgentActivityRuntime, "listSessionMessages">;
+  snapshot: ReturnType<AgentActivityRuntime["getSnapshot"]>;
+  workspaceId: string;
+}): Promise<void> {
+  const sessionsNeedingMessages = input.snapshot.sessions.filter((session) => {
+    const sessionId = session.agentSessionId.trim();
+    if (!sessionId) {
+      return false;
+    }
+    return shouldRefreshSessionMessages(
+      session,
+      input.snapshot.sessionMessagesById[sessionId] ?? []
+    );
+  });
+
+  if (sessionsNeedingMessages.length === 0) {
+    return;
+  }
+
+  await Promise.all(
+    sessionsNeedingMessages.map(async (session) => {
+      if (input.abortSignal?.aborted) {
+        return;
+      }
+      await input.agentActivityRuntime
+        .listSessionMessages({
+          workspaceId: input.workspaceId,
+          agentSessionId: session.agentSessionId,
+          limit: DEFAULT_SESSION_MESSAGE_PAGE_SIZE,
+          signal: input.abortSignal
+        })
+        .catch(() => undefined);
+    })
+  );
+}
+
+function shouldRefreshSessionMessages(
+  session: ReturnType<AgentActivityRuntime["getSnapshot"]>["sessions"][number],
+  messages: ReturnType<
+    AgentActivityRuntime["getSnapshot"]
+  >["sessionMessagesById"][string]
+): boolean {
+  if (!messages || messages.length === 0) {
+    return true;
+  }
+  const lastMessageAt = Math.max(
+    0,
+    ...messages.map(
+      (message) =>
+        message.occurredAtUnixMs ??
+        message.completedAtUnixMs ??
+        message.startedAtUnixMs ??
+        0
+    )
+  );
+  const sessionUpdatedAt =
+    session.updatedAtUnixMs ?? session.lastEventUnixMs ?? 0;
+  return sessionUpdatedAt > lastMessageAt;
+}
+
+function matchesAgentGeneratedFileKeyword(
+  file: { label: string; path: string },
+  keyword: string
+): boolean {
+  const haystack = `${file.label}\n${file.path}`.toLowerCase();
+  return keyword
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((token) => haystack.includes(token));
+}
+
+function metadataString(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+  key: string,
+  fallback: string
+): string {
+  const value = metadata?.[key];
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  return fallback;
+}

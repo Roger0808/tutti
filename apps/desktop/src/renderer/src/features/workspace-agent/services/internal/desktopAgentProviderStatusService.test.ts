@@ -1,0 +1,980 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type {
+  AgentProviderActionRunResponse,
+  AgentProviderStatus,
+  AgentProviderStatusListResponse,
+  AgentProviderProbeResponse,
+  AgentProviderTerminalCommand,
+  NextopdClient,
+  WorkspaceAgentProvider
+} from "@tutti-os/client-nextopd-ts";
+import type { NotificationService } from "@tutti-os/ui-notifications";
+import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
+import { DesktopAgentProviderStatusService } from "./desktopAgentProviderStatusService.ts";
+
+test("runAction executes terminal commands and refreshes the provider status", async () => {
+  const commands: AgentProviderTerminalCommand[] = [];
+  const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  const pendingSnapshots: boolean[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    nextopdClient: createNextopdClient({
+      onStatusRequest: (providers) => statusCalls.push(providers),
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [
+              {
+                command: {
+                  cwd: "/workspace",
+                  input: "codex --login\n"
+                },
+                id: "login",
+                kind: "terminal_command"
+              }
+            ],
+            availability: "auth_required"
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready"
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand(command) {
+        commands.push(command);
+      }
+    }
+  });
+  service.subscribe(() => {
+    pendingSnapshots.push(service.isActionPending("codex", "login"));
+  });
+
+  await service.refresh();
+  await service.runAction("codex", "login", { workspaceId: "workspace-1" });
+
+  assert.deepEqual(commands, [
+    {
+      cwd: "/workspace",
+      input: "codex --login\n"
+    }
+  ]);
+  assert.deepEqual(statusCalls, [undefined, ["codex"]]);
+  assert.equal(pendingSnapshots.includes(true), false);
+});
+
+test("runAction tracks provider login initiation and successful status result", async () => {
+  const events: ReporterEventInput[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    nextopdClient: createNextopdClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [
+              {
+                command: {
+                  cwd: "/workspace",
+                  input: "codex --login\n"
+                },
+                id: "login",
+                kind: "terminal_command"
+              }
+            ],
+            availability: "auth_required"
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready"
+          })
+        ])
+      ]
+    }),
+    reporterNow: () => 1749124800000,
+    reporterService: {
+      async trackEvents(nextEvents) {
+        events.push(...nextEvents);
+      }
+    },
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh();
+  await service.runAction("codex", "login", { workspaceId: "workspace-1" });
+  await flushAsyncWork();
+
+  assert.deepEqual(events, [
+    {
+      clientTS: 1749124800000,
+      name: "agent.provider_login_initiated",
+      params: {
+        provider: "codex"
+      }
+    },
+    {
+      clientTS: 1749124800000,
+      name: "agent.provider_login_result",
+      params: {
+        error_reason: null,
+        provider: "codex",
+        success: true
+      }
+    }
+  ]);
+});
+
+test("runAction installs providers silently and refreshes the status", async () => {
+  const commands: AgentProviderTerminalCommand[] = [];
+  const actionCalls: Array<
+    [WorkspaceAgentProvider, AgentProviderActionRunResponse["actionID"]]
+  > = [];
+  const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  const pendingSnapshots: boolean[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    nextopdClient: createNextopdClient({
+      onRunActionRequest: (provider, actionID) =>
+        actionCalls.push([provider, actionID]),
+      onStatusRequest: (providers) => statusCalls.push(providers),
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [
+              {
+                command: {
+                  cwd: "/workspace",
+                  input: "npm install -g @anthropic-ai/claude-code\n"
+                },
+                id: "install",
+                kind: "terminal_command"
+              }
+            ],
+            availability: "not_installed"
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready"
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand(command) {
+        commands.push(command);
+      }
+    }
+  });
+  service.subscribe(() => {
+    pendingSnapshots.push(service.isActionPending("codex", "install"));
+  });
+
+  await service.refresh();
+  await service.runAction("codex", "install", { workspaceId: "workspace-1" });
+
+  assert.deepEqual(commands, []);
+  assert.deepEqual(actionCalls, [["codex", "install"]]);
+  assert.deepEqual(statusCalls, [undefined, ["codex"]]);
+  assert.equal(service.isActionPending("codex", "install"), false);
+  assert.equal(pendingSnapshots.includes(true), true);
+});
+
+test("runAction reports daemon install action failures and skips refresh", async () => {
+  const notifications = createNotificationRecorder();
+  const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  const service = new DesktopAgentProviderStatusService(
+    {
+      nextopdClient: createNextopdClient({
+        onStatusRequest: (providers) => statusCalls.push(providers),
+        actionRuns: [
+          {
+            actionID: "install",
+            completedAt: "2026-06-02T08:00:00.000Z",
+            message: "adapter boom",
+            provider: "codex",
+            reasonCode: "post_install_probe_failed",
+            status: "failed"
+          }
+        ],
+        snapshots: [
+          createStatusResponse([
+            createProviderStatus({
+              actions: [
+                {
+                  command: {
+                    cwd: "/workspace",
+                    input:
+                      "npm install -g @openai/codex @zed-industries/codex-acp\n"
+                  },
+                  id: "install",
+                  kind: "terminal_command"
+                }
+              ],
+              availability: "not_installed"
+            })
+          ])
+        ]
+      }),
+      terminalCommandRunner: {
+        async runTerminalCommand() {}
+      }
+    },
+    notifications.service
+  );
+
+  await service.refresh();
+  await assert.rejects(() => service.runAction("codex", "install"));
+
+  assert.deepEqual(statusCalls, [undefined]);
+  assert.deepEqual(notifications.items, [
+    {
+      description: "adapter boom",
+      tone: "error",
+      title: "Installation failed"
+    }
+  ]);
+});
+
+test("runAction reports install failures and clears pending state", async () => {
+  const notifications = createNotificationRecorder();
+  const service = new DesktopAgentProviderStatusService(
+    {
+      nextopdClient: createNextopdClient({
+        actionRuns: [
+          {
+            actionID: "install",
+            completedAt: "2026-06-02T08:00:00.000Z",
+            message: "network unavailable",
+            provider: "codex",
+            reasonCode: "install_command_failed",
+            status: "failed"
+          }
+        ],
+        snapshots: [
+          createStatusResponse([
+            createProviderStatus({
+              actions: [
+                {
+                  command: {
+                    cwd: "/workspace",
+                    input: "npm install -g missing-agent\n"
+                  },
+                  id: "install",
+                  kind: "terminal_command"
+                }
+              ],
+              availability: "not_installed"
+            })
+          ])
+        ]
+      }),
+      terminalCommandRunner: {
+        async runTerminalCommand() {}
+      }
+    },
+    notifications.service
+  );
+
+  await service.refresh();
+  await assert.rejects(() => service.runAction("codex", "install"));
+
+  assert.equal(service.isActionPending("codex", "install"), false);
+  assert.deepEqual(notifications.items, [
+    {
+      description: "network unavailable",
+      tone: "error",
+      title: "Installation failed"
+    }
+  ]);
+});
+
+test("runAction reports login launch failures and clears pending state", async () => {
+  const events: ReporterEventInput[] = [];
+  const notifications = createNotificationRecorder();
+  const service = new DesktopAgentProviderStatusService(
+    {
+      nextopdClient: createNextopdClient({
+        snapshots: [
+          createStatusResponse([
+            createProviderStatus({
+              actions: [
+                {
+                  command: {
+                    cwd: "/workspace",
+                    input: "codex --login\n"
+                  },
+                  id: "login",
+                  kind: "terminal_command"
+                }
+              ],
+              availability: "auth_required"
+            })
+          ])
+        ]
+      }),
+      reporterNow: () => 1749124800000,
+      reporterService: {
+        async trackEvents(nextEvents) {
+          events.push(...nextEvents);
+        }
+      },
+      terminalCommandRunner: {
+        async runTerminalCommand() {
+          throw new Error("missing workbench host");
+        }
+      }
+    },
+    notifications.service
+  );
+
+  await service.refresh();
+  await assert.rejects(() => service.runAction("codex", "login"));
+
+  assert.equal(service.isActionPending("codex", "login"), false);
+  assert.deepEqual(events, [
+    {
+      clientTS: 1749124800000,
+      name: "agent.provider_login_initiated",
+      params: {
+        provider: "codex"
+      }
+    },
+    {
+      clientTS: 1749124800000,
+      name: "agent.provider_login_result",
+      params: {
+        error_reason: "launch_failed",
+        provider: "codex",
+        success: false
+      }
+    }
+  ]);
+  assert.deepEqual(notifications.items, [
+    {
+      description: "An unexpected service error occurred. Please try again.",
+      tone: "error",
+      title: "Sign-in failed"
+    }
+  ]);
+});
+
+test("runAction refreshes when the action is a refresh action", async () => {
+  const commands: AgentProviderTerminalCommand[] = [];
+  const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  const service = new DesktopAgentProviderStatusService({
+    nextopdClient: createNextopdClient({
+      onStatusRequest: (providers) => statusCalls.push(providers),
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [{ id: "refresh", kind: "refresh" }],
+            availability: "unknown"
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready"
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand(command) {
+        commands.push(command);
+      }
+    }
+  });
+
+  await service.refresh();
+  await service.runAction("codex", "refresh");
+
+  assert.deepEqual(commands, []);
+  assert.deepEqual(statusCalls, [undefined, ["codex"]]);
+});
+
+test("provider-scoped refresh merges the returned status into the existing snapshot", async () => {
+  const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  const service = new DesktopAgentProviderStatusService({
+    nextopdClient: createNextopdClient({
+      onStatusRequest: (providers) => statusCalls.push(providers),
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [{ id: "login", kind: "terminal_command" }],
+            availability: "auth_required",
+            provider: "codex"
+          }),
+          createProviderStatus({
+            actions: [{ id: "login", kind: "terminal_command" }],
+            availability: "auth_required",
+            provider: "claude-code"
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            provider: "codex"
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh();
+  await service.refresh(["codex"]);
+
+  assert.equal(service.getStatus("codex")?.availability.status, "ready");
+  assert.equal(
+    service.getStatus("claude-code")?.availability.status,
+    "auth_required"
+  );
+  assert.deepEqual(statusCalls, [undefined, ["codex"]]);
+});
+
+test("ensureLoaded reuses loaded provider statuses and only loads missing providers", async () => {
+  const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  const service = new DesktopAgentProviderStatusService({
+    nextopdClient: createNextopdClient({
+      onStatusRequest: (providers) => statusCalls.push(providers),
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            provider: "codex"
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            provider: "claude-code"
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh(["codex"]);
+  await service.ensureLoaded({ providers: ["codex"] });
+  await service.ensureLoaded({ providers: ["claude-code"] });
+
+  assert.deepEqual(statusCalls, [["codex"], ["claude-code"]]);
+});
+
+test("ensureLoaded waits for unrelated in-flight loads before loading missing providers", async () => {
+  const calls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  const firstStatusRequest = createDeferred<AgentProviderStatusListResponse>();
+  const secondStatusRequest = createDeferred<AgentProviderStatusListResponse>();
+  const service = new DesktopAgentProviderStatusService({
+    nextopdClient: {
+      async getAgentProviderStatuses(request) {
+        calls.push(request?.providers);
+        return calls.length === 1
+          ? firstStatusRequest.promise
+          : secondStatusRequest.promise;
+      }
+    } as Partial<NextopdClient> as NextopdClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  const codexLoad = service.refresh(["codex"]);
+  const claudeEnsure = service.ensureLoaded({ providers: ["claude-code"] });
+
+  assert.deepEqual(calls, [["codex"]]);
+
+  firstStatusRequest.resolve(
+    createStatusResponse([
+      createProviderStatus({
+        actions: [],
+        availability: "ready",
+        provider: "codex"
+      })
+    ])
+  );
+  await codexLoad;
+
+  assert.deepEqual(calls, [["codex"], ["claude-code"]]);
+
+  secondStatusRequest.resolve(
+    createStatusResponse([
+      createProviderStatus({
+        actions: [],
+        availability: "ready",
+        provider: "claude-code"
+      })
+    ])
+  );
+  await claudeEnsure;
+
+  assert.equal(service.getStatus("codex")?.availability.status, "ready");
+  assert.equal(service.getStatus("claude-code")?.availability.status, "ready");
+});
+
+test("refresh waits for an in-flight load and then requests a fresh status", async () => {
+  const calls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  const firstStatusRequest = createDeferred<AgentProviderStatusListResponse>();
+  const secondStatusRequest = createDeferred<AgentProviderStatusListResponse>();
+  const service = new DesktopAgentProviderStatusService({
+    nextopdClient: {
+      async getAgentProviderStatuses(request) {
+        calls.push(request?.providers);
+        return calls.length === 1
+          ? firstStatusRequest.promise
+          : secondStatusRequest.promise;
+      }
+    } as Partial<NextopdClient> as NextopdClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  const initialLoad = service.ensureLoaded({ providers: ["codex"] });
+  const explicitRefresh = service.refresh(["codex"]);
+
+  assert.deepEqual(calls, [["codex"]]);
+
+  firstStatusRequest.resolve(
+    createStatusResponse([
+      createProviderStatus({
+        actions: [],
+        availability: "auth_required",
+        provider: "codex"
+      })
+    ])
+  );
+  await initialLoad;
+  await Promise.resolve();
+
+  assert.deepEqual(calls, [["codex"], ["codex"]]);
+
+  secondStatusRequest.resolve(
+    createStatusResponse([
+      createProviderStatus({
+        actions: [],
+        availability: "ready",
+        provider: "codex"
+      })
+    ])
+  );
+  await explicitRefresh;
+
+  assert.equal(service.getStatus("codex")?.availability.status, "ready");
+});
+
+test("provider-scoped refresh confirms missing CLI downgrades before replacing a known installed status", async () => {
+  const missingCodexStatus = createProviderStatus({
+    actions: [{ id: "install", kind: "daemon_action" }],
+    availability: "not_installed",
+    cliInstalled: false,
+    provider: "codex",
+    reasonCode: "cli_not_found"
+  });
+  const service = new DesktopAgentProviderStatusService({
+    nextopdClient: createNextopdClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            provider: "codex"
+          })
+        ]),
+        createStatusResponse([missingCodexStatus]),
+        createStatusResponse([missingCodexStatus])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh();
+  await service.refresh(["codex"]);
+
+  assert.equal(service.getStatus("codex")?.availability.status, "ready");
+
+  await service.refresh(["codex"]);
+
+  assert.equal(
+    service.getStatus("codex")?.availability.status,
+    "not_installed"
+  );
+});
+
+test("provider-scoped refresh confirms auth downgrades before replacing a ready status", async () => {
+  const authRequiredStatus = createProviderStatus({
+    actions: [
+      {
+        command: {
+          cwd: "/workspace",
+          input: "claude auth login\n"
+        },
+        id: "login",
+        kind: "terminal_command"
+      }
+    ],
+    availability: "auth_required",
+    provider: "claude-code",
+    reasonCode: "auth_required"
+  });
+  const readyStatus = createProviderStatus({
+    actions: [],
+    availability: "ready",
+    provider: "claude-code"
+  });
+  const service = new DesktopAgentProviderStatusService({
+    nextopdClient: createNextopdClient({
+      snapshots: [
+        createStatusResponse([readyStatus]),
+        createStatusResponse([authRequiredStatus]),
+        createStatusResponse([readyStatus]),
+        createStatusResponse([authRequiredStatus]),
+        createStatusResponse([authRequiredStatus])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh();
+  await service.refresh(["claude-code"]);
+
+  assert.equal(service.getStatus("claude-code")?.availability.status, "ready");
+
+  await service.refresh(["claude-code"]);
+
+  assert.equal(service.getStatus("claude-code")?.availability.status, "ready");
+
+  await service.refresh(["claude-code"]);
+
+  assert.equal(service.getStatus("claude-code")?.availability.status, "ready");
+
+  await service.refresh(["claude-code"]);
+
+  assert.equal(
+    service.getStatus("claude-code")?.availability.status,
+    "auth_required"
+  );
+});
+
+test("runAction refreshes and executes when the requested action appears", async () => {
+  const commands: AgentProviderTerminalCommand[] = [];
+  const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  const service = new DesktopAgentProviderStatusService({
+    nextopdClient: createNextopdClient({
+      onStatusRequest: (providers) => statusCalls.push(providers),
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "auth_required"
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [
+              {
+                command: {
+                  cwd: "/workspace",
+                  input: "codex --login\n"
+                },
+                id: "login",
+                kind: "terminal_command"
+              }
+            ],
+            availability: "auth_required"
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand(command) {
+        commands.push(command);
+      }
+    }
+  });
+
+  await service.refresh();
+  await service.runAction("codex", "login");
+
+  assert.deepEqual(commands, [
+    {
+      cwd: "/workspace",
+      input: "codex --login\n"
+    }
+  ]);
+  assert.deepEqual(statusCalls, [undefined, ["codex"], ["codex"]]);
+});
+
+test("runAction reports missing login actions after refresh", async () => {
+  const commands: AgentProviderTerminalCommand[] = [];
+  const notifications = createNotificationRecorder();
+  const service = new DesktopAgentProviderStatusService(
+    {
+      nextopdClient: createNextopdClient({
+        snapshots: [
+          createStatusResponse([
+            createProviderStatus({
+              actions: [],
+              availability: "unknown"
+            })
+          ]),
+          createStatusResponse([
+            createProviderStatus({
+              actions: [],
+              availability: "unknown"
+            })
+          ])
+        ]
+      }),
+      terminalCommandRunner: {
+        async runTerminalCommand(command) {
+          commands.push(command);
+        }
+      }
+    },
+    notifications.service
+  );
+
+  await service.refresh();
+  await service.runAction("codex", "login");
+
+  assert.deepEqual(commands, []);
+  assert.deepEqual(notifications.items, [
+    {
+      description: undefined,
+      tone: "error",
+      title: "Sign-in failed"
+    }
+  ]);
+});
+
+test("refresh times out and releases the loading state when the status request hangs", async () => {
+  const service = new DesktopAgentProviderStatusService({
+    nextopdClient: {
+      getAgentProviderStatuses: async () =>
+        new Promise<AgentProviderStatusListResponse>(() => {})
+    } as Partial<NextopdClient> as NextopdClient,
+    requestTimeoutMs: 1,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh();
+
+  assert.equal(service.getSnapshot().isLoading, false);
+  assert.notEqual(service.getSnapshot().error, null);
+});
+
+function createNextopdClient(input: {
+  actionRuns?: AgentProviderActionRunResponse[];
+  onProbeRequest?: (provider: WorkspaceAgentProvider) => void;
+  onRunActionRequest?: (
+    provider: WorkspaceAgentProvider,
+    actionID: AgentProviderActionRunResponse["actionID"]
+  ) => void;
+  onStatusRequest?: (
+    providers: readonly WorkspaceAgentProvider[] | undefined
+  ) => void;
+  probes?: AgentProviderProbeResponse[];
+  snapshots: AgentProviderStatusListResponse[];
+}): NextopdClient {
+  let index = 0;
+  let actionRunIndex = 0;
+  let probeIndex = 0;
+  return {
+    async getAgentProviderStatuses(request) {
+      input.onStatusRequest?.(request?.providers);
+      const snapshot = input.snapshots[index] ?? input.snapshots.at(-1);
+      index += 1;
+      if (!snapshot) {
+        throw new Error("missing snapshot");
+      }
+      return snapshot;
+    },
+    async probeAgentProvider(provider) {
+      input.onProbeRequest?.(provider);
+      const probe =
+        input.probes?.[probeIndex] ??
+        input.probes?.at(-1) ??
+        createProbeResponse(provider, "ready");
+      probeIndex += 1;
+      return probe;
+    },
+    async runAgentProviderAction(provider, actionID) {
+      input.onRunActionRequest?.(provider, actionID);
+      const actionRun =
+        input.actionRuns?.[actionRunIndex] ??
+        input.actionRuns?.at(-1) ??
+        createActionRunResponse(provider, actionID, "completed");
+      actionRunIndex += 1;
+      return actionRun;
+    }
+  } as Partial<NextopdClient> as NextopdClient;
+}
+
+function createStatusResponse(
+  providers: AgentProviderStatus[]
+): AgentProviderStatusListResponse {
+  return {
+    capturedAt: "2026-06-02T08:00:00.000Z",
+    defaultProvider: "codex",
+    providers
+  };
+}
+
+function createProbeResponse(
+  provider: WorkspaceAgentProvider,
+  status: AgentProviderProbeResponse["status"]
+): AgentProviderProbeResponse {
+  return {
+    checkedAt: "2026-06-02T08:00:00.000Z",
+    command: ["codex-acp"],
+    provider,
+    status
+  };
+}
+
+function createActionRunResponse(
+  provider: WorkspaceAgentProvider,
+  actionID: AgentProviderActionRunResponse["actionID"],
+  status: AgentProviderActionRunResponse["status"]
+): AgentProviderActionRunResponse {
+  return {
+    actionID,
+    completedAt: "2026-06-02T08:00:00.000Z",
+    provider,
+    status
+  };
+}
+
+function createNotificationRecorder(): {
+  items: Array<{
+    description: string | undefined;
+    tone: "error" | "info" | "success" | "warning";
+    title: string;
+  }>;
+  service: NotificationService;
+} {
+  const items: Array<{
+    description: string | undefined;
+    tone: "error" | "info" | "success" | "warning";
+    title: string;
+  }> = [];
+  return {
+    items,
+    service: {
+      _serviceBrand: undefined,
+      error(input) {
+        items.push({
+          description: input.description,
+          title: input.title,
+          tone: "error"
+        });
+      },
+      info(input) {
+        items.push({
+          description: input.description,
+          title: input.title,
+          tone: "info"
+        });
+      },
+      notify(input) {
+        items.push({
+          description: input.description,
+          title: input.title,
+          tone: input.level
+        });
+      },
+      success(input) {
+        items.push({
+          description: input.description,
+          title: input.title,
+          tone: "success"
+        });
+      },
+      warning(input) {
+        items.push({
+          description: input.description,
+          title: input.title,
+          tone: "warning"
+        });
+      }
+    }
+  };
+}
+
+function createProviderStatus(input: {
+  actions: AgentProviderStatus["actions"];
+  availability: AgentProviderStatus["availability"]["status"];
+  cliInstalled?: boolean;
+  provider?: WorkspaceAgentProvider;
+  reasonCode?: string;
+}): AgentProviderStatus {
+  const cliInstalled =
+    input.cliInstalled ??
+    (input.availability !== "not_installed" &&
+      input.availability !== "unsupported");
+  return {
+    actions: input.actions,
+    adapter: {
+      command: ["codex-acp"],
+      installed:
+        input.availability !== "not_installed" &&
+        input.availability !== "unsupported"
+    },
+    auth: {
+      status: input.availability === "auth_required" ? "required" : "unknown"
+    },
+    availability: {
+      reasonCode: input.reasonCode,
+      status: input.availability
+    },
+    cli: {
+      installed: cliInstalled
+    },
+    provider: input.provider ?? "codex"
+  };
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+} {
+  let resolveValue: ((value: T) => void) | null = null;
+  const promise = new Promise<T>((resolve) => {
+    resolveValue = resolve;
+  });
+  return {
+    promise,
+    resolve(value) {
+      resolveValue?.(value);
+    }
+  };
+}
+
+async function flushAsyncWork(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}

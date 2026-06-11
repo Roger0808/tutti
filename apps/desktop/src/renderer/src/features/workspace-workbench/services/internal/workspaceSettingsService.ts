@@ -1,0 +1,720 @@
+import type { DesktopDeveloperLogKind } from "@shared/contracts/ipc";
+import type { DesktopLocale } from "@shared/i18n";
+import type {
+  DesktopAgentProvider,
+  DesktopDockIconStyle,
+  DesktopDockPlacement,
+  DesktopSleepPreventionMode
+} from "@shared/preferences";
+import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
+import {
+  INotificationService,
+  type NotificationService
+} from "@tutti-os/ui-notifications";
+import {
+  IDesktopPreferencesService,
+  type IDesktopPreferencesService as DesktopPreferencesService
+} from "../../../desktop-preferences/services/desktopPreferencesService.interface.ts";
+import { SettingsOpenedReporter } from "../../../analytics/reporters/settings-opened/settingsOpenedReporter.ts";
+import { SettingsSectionSwitchedReporter } from "../../../analytics/reporters/settings-section-switched/settingsSectionSwitchedReporter.ts";
+import { SettingsLanguageChangedReporter } from "../../../analytics/reporters/settings-language-changed/settingsLanguageChangedReporter.ts";
+import { SettingsThemeChangedReporter } from "../../../analytics/reporters/settings-theme-changed/settingsThemeChangedReporter.ts";
+import {
+  IReporterService,
+  type IReporterService as ReporterService
+} from "../../../analytics/services/reporterService.interface.ts";
+import type { DesktopPreferencesReadableStoreState } from "../../../desktop-preferences/services/desktopPreferencesTypes.ts";
+import { getActiveLocale } from "../../../../i18n/runtime.ts";
+import { createTranslator } from "../../../../../../shared/i18n/index.ts";
+import type {
+  IWorkspaceSettingsService,
+  WorkspaceSettingsOpenOptions,
+  WorkspaceSettingsSectionID,
+  WorkspaceSettingsWorkspaceInput
+} from "../workspaceSettingsService.interface";
+import type { DesktopWorkspaceSettingsClient } from "./adapters/desktopWorkspaceSettingsClient.ts";
+import { formatWorkspaceSettingsBytes } from "../workspaceSettingsFormat.ts";
+import { createWorkspaceSettingsStore } from "./workspaceSettingsStore.ts";
+import type {
+  WorkspaceManagedModel,
+  WorkspaceManagedModelProviderConfig,
+  WorkspaceManagedModelProviderDraft,
+  WorkspaceManagedModelProviderID
+} from "../workspaceSettingsTypes.ts";
+
+const managedModelProviderIDs: WorkspaceManagedModelProviderID[] = [
+  "agnes",
+  "openai",
+  "anthropic"
+];
+
+const defaultManagedModelIDs: Record<WorkspaceManagedModelProviderID, string> =
+  {
+    agnes: "agnes-2.0-flash",
+    anthropic: "claude-sonnet-4-5",
+    openai: "gpt-5.1"
+  };
+
+export interface WorkspaceSettingsServiceDependencies {
+  client: DesktopWorkspaceSettingsClient;
+}
+
+export class WorkspaceSettingsService implements IWorkspaceSettingsService {
+  readonly _serviceBrand: undefined;
+  readonly store = createWorkspaceSettingsStore();
+
+  private readonly dependencies: WorkspaceSettingsServiceDependencies;
+  private readonly desktopPreferences: DesktopPreferencesService;
+  private readonly notifications: NotificationService;
+  private readonly reporterService: Pick<ReporterService, "trackEvents"> | null;
+  private readonly reporterNow?: () => number;
+  private logsLoadSequence = 0;
+
+  constructor(
+    dependencies: WorkspaceSettingsServiceDependencies,
+    desktopPreferences: DesktopPreferencesService = noopDesktopPreferences,
+    notifications: NotificationService = noopNotifications,
+    reporterService: Pick<ReporterService, "trackEvents"> | null = null,
+    reporterNow?: () => number
+  ) {
+    this.dependencies = dependencies;
+    this.desktopPreferences = desktopPreferences;
+    this.notifications = notifications;
+    this.reporterService = reporterService;
+    this.reporterNow = reporterNow;
+  }
+
+  openPanel(
+    workspace: WorkspaceSettingsWorkspaceInput,
+    options?: WorkspaceSettingsOpenOptions
+  ): void {
+    this.syncWorkspace(workspace);
+    const managedModelsRequested = options?.pane === "managed-models";
+    if (managedModelsRequested) {
+      this.store.activeSection = "apps";
+    } else if (options?.section) {
+      this.store.activeSection = options.section;
+    }
+    if (managedModelsRequested && isManagedModelProviderID(options.provider)) {
+      this.store.managedModels.focusedProvider = options.provider;
+      this.store.managedModels.focusRequestID += 1;
+    }
+    const wasOpen = this.store.open;
+    this.store.open = true;
+
+    if (!wasOpen) {
+      this.reportSettingsOpened();
+      void this.refreshDeveloperLogs();
+      void this.refreshManagedModelProviders();
+    } else if (this.store.activeSection === "apps") {
+      void this.refreshManagedModelProviders();
+    }
+  }
+
+  closePanel(): void {
+    this.store.open = false;
+  }
+
+  syncWorkspace(workspace: WorkspaceSettingsWorkspaceInput): void {
+    if (workspace.id !== this.store.workspaceID) {
+      this.store.workspaceID = workspace.id;
+      this.store.activeSection = "general";
+      this.store.managedModels.providers = createDefaultManagedModelDrafts();
+      this.store.managedModels.focusedProvider = null;
+      this.store.managedModels.focusRequestID = 0;
+    }
+  }
+
+  selectSection(sectionID: WorkspaceSettingsSectionID): void {
+    if (this.store.activeSection === sectionID) {
+      return;
+    }
+
+    this.store.activeSection = sectionID;
+    this.reportSettingsSectionSwitched(sectionID);
+    if (sectionID === "apps") {
+      void this.refreshManagedModelProviders();
+    }
+  }
+
+  async changeLocale(nextLocale: DesktopLocale): Promise<void> {
+    if (
+      this.desktopPreferences.store.locale === nextLocale ||
+      this.desktopPreferences.store.changingLocale === nextLocale
+    ) {
+      return;
+    }
+
+    const fromLanguage = this.desktopPreferences.store.locale;
+    try {
+      await this.desktopPreferences.setLocale(nextLocale);
+      this.reportSettingsLanguageChanged({
+        fromLanguage,
+        toLanguage: nextLocale
+      });
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.localeSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeDefaultAgentProvider(
+    provider: DesktopAgentProvider
+  ): Promise<void> {
+    if (
+      this.desktopPreferences.store.defaultAgentProvider === provider ||
+      this.desktopPreferences.store.changingDefaultAgentProvider === provider
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setDefaultAgentProvider(provider);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.defaultAgentProviderSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeDockPlacement(placement: DesktopDockPlacement): Promise<void> {
+    if (
+      this.desktopPreferences.store.dockPlacement === placement ||
+      this.desktopPreferences.store.changingDockPlacement === placement
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setDockPlacement(placement);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.appearance.dockPlacementSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeDockIconStyle(style: DesktopDockIconStyle): Promise<void> {
+    if (
+      this.desktopPreferences.store.dockIconStyle === style ||
+      this.desktopPreferences.store.changingDockIconStyle === style
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setDockIconStyle(style);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.appearance.dockIconStyleSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeThemeSource(nextThemeSource: DesktopThemeSource): Promise<void> {
+    if (
+      this.desktopPreferences.store.theme.source === nextThemeSource ||
+      this.desktopPreferences.store.changingThemeSource === nextThemeSource
+    ) {
+      return;
+    }
+
+    const fromTheme = this.desktopPreferences.store.theme.source;
+    try {
+      await this.desktopPreferences.setThemeSource(nextThemeSource);
+      this.reportSettingsThemeChanged({
+        fromTheme,
+        toTheme: nextThemeSource
+      });
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.appearance.themeSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeSleepPreventionMode(
+    mode: DesktopSleepPreventionMode
+  ): Promise<void> {
+    if (
+      this.desktopPreferences.store.sleepPreventionMode === mode ||
+      this.desktopPreferences.store.changingSleepPreventionMode === mode
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setSleepPreventionMode(mode);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.preventSleepSaveFailed"
+        )
+      });
+    }
+  }
+
+  async clearDeveloperLogs(): Promise<void> {
+    if (this.store.developerLogs.clearing) {
+      return;
+    }
+
+    this.store.developerLogs.clearing = true;
+
+    try {
+      const result = await this.dependencies.client.clearLogs();
+      const translator = createActiveTranslator();
+      this.notifications.success({
+        title: translator.t("workspace.settings.developer.logsCleared", {
+          count: String(result.clearedFiles),
+          size: formatWorkspaceSettingsBytes(result.clearedSizeBytes)
+        })
+      });
+      await this.refreshDeveloperLogs();
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.developer.logsClearFailed"
+        )
+      });
+    } finally {
+      this.store.developerLogs.clearing = false;
+    }
+  }
+
+  async exportDeveloperLogs(): Promise<void> {
+    if (this.store.developerLogs.exporting) {
+      return;
+    }
+
+    this.store.developerLogs.exporting = true;
+
+    try {
+      const result = await this.dependencies.client.exportLogs();
+      if (!result.canceled) {
+        this.notifications.success({
+          title: createActiveTranslator().t(
+            "workspace.settings.developer.logsExported",
+            {
+              count: String(result.fileCount),
+              path: result.filePath ?? ""
+            }
+          )
+        });
+      }
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.developer.logsExportFailed"
+        )
+      });
+    } finally {
+      this.store.developerLogs.exporting = false;
+    }
+  }
+
+  openLogDirectory(): Promise<void> {
+    return this.dependencies.client.openLogDirectory();
+  }
+
+  openLogFile(kind: DesktopDeveloperLogKind): Promise<void> {
+    return this.dependencies.client.openLogFile(kind);
+  }
+
+  async refreshDeveloperLogs(): Promise<void> {
+    const sequence = this.startDeveloperLogsLoad();
+
+    try {
+      await this.loadDeveloperLogsState(sequence);
+    } catch {
+      if (!this.isCurrentDeveloperLogsLoad(sequence)) {
+        return;
+      }
+
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.developer.logsLoadFailed"
+        )
+      });
+      this.store.developerLogs.loading = false;
+    }
+  }
+
+  async refreshManagedModelProviders(): Promise<void> {
+    const workspaceID = this.store.workspaceID;
+    if (!workspaceID || this.store.managedModels.loading) {
+      return;
+    }
+
+    this.store.managedModels.loading = true;
+    try {
+      const providers =
+        await this.dependencies.client.listManagedModelProviders(workspaceID);
+      this.store.managedModels.providers =
+        toManagedModelProviderDrafts(providers);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.apps.managedModels.loadFailed"
+        )
+      });
+    } finally {
+      this.store.managedModels.loading = false;
+    }
+  }
+
+  updateManagedModelProviderDraft(
+    providerID: WorkspaceManagedModelProviderID,
+    patch: Partial<WorkspaceManagedModelProviderDraft>
+  ): void {
+    this.store.managedModels.providers = this.store.managedModels.providers.map(
+      (provider) =>
+        provider.provider === providerID ? { ...provider, ...patch } : provider
+    );
+  }
+
+  async saveManagedModelProvider(
+    provider: WorkspaceManagedModelProviderDraft
+  ): Promise<void> {
+    const workspaceID = this.store.workspaceID;
+    if (!workspaceID || this.store.managedModels.savingProvider) {
+      return;
+    }
+    this.store.managedModels.savingProvider = provider.provider;
+    try {
+      const saved = await this.dependencies.client.putManagedModelProvider(
+        workspaceID,
+        provider.provider,
+        {
+          ...(provider.apiKey.trim() ? { apiKey: provider.apiKey } : {}),
+          baseUrl: provider.baseUrl,
+          enabled: provider.enabled,
+          models: parseManagedModelText(provider.provider, provider.modelsText)
+        }
+      );
+      this.replaceManagedModelProviderDraft(saved);
+      this.notifications.success({
+        title: createActiveTranslator().t(
+          "workspace.settings.apps.managedModels.saveSucceeded"
+        )
+      });
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.apps.managedModels.saveFailed"
+        )
+      });
+    } finally {
+      this.store.managedModels.savingProvider = null;
+    }
+  }
+
+  async removeManagedModelProvider(
+    providerID: WorkspaceManagedModelProviderID
+  ): Promise<void> {
+    const workspaceID = this.store.workspaceID;
+    if (!workspaceID || this.store.managedModels.deletingProvider) {
+      return;
+    }
+    this.store.managedModels.deletingProvider = providerID;
+    try {
+      await this.dependencies.client.deleteManagedModelProvider(
+        workspaceID,
+        providerID
+      );
+      this.replaceManagedModelProviderDraft({
+        enabled: false,
+        hasApiKey: false,
+        models: [],
+        provider: providerID
+      });
+      this.notifications.success({
+        title: createActiveTranslator().t(
+          "workspace.settings.apps.managedModels.deleteSucceeded"
+        )
+      });
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.apps.managedModels.deleteFailed"
+        )
+      });
+    } finally {
+      this.store.managedModels.deletingProvider = null;
+    }
+  }
+
+  async testManagedModelProvider(
+    providerID: WorkspaceManagedModelProviderID
+  ): Promise<void> {
+    const workspaceID = this.store.workspaceID;
+    if (!workspaceID || this.store.managedModels.testingProvider) {
+      return;
+    }
+    this.store.managedModels.testingProvider = providerID;
+    try {
+      await this.dependencies.client.testManagedModelProvider(
+        workspaceID,
+        providerID
+      );
+      this.notifications.success({
+        title: createActiveTranslator().t(
+          "workspace.settings.apps.managedModels.testSucceeded"
+        )
+      });
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.apps.managedModels.testFailed"
+        )
+      });
+    } finally {
+      this.store.managedModels.testingProvider = null;
+    }
+  }
+
+  private replaceManagedModelProviderDraft(
+    config: WorkspaceManagedModelProviderConfig
+  ): void {
+    const draft = toManagedModelProviderDraft(config);
+    this.store.managedModels.providers = this.store.managedModels.providers.map(
+      (provider) => (provider.provider === draft.provider ? draft : provider)
+    );
+  }
+
+  private startDeveloperLogsLoad(): number {
+    this.logsLoadSequence += 1;
+    this.store.developerLogs.loading = true;
+    return this.logsLoadSequence;
+  }
+
+  private isCurrentDeveloperLogsLoad(sequence: number): boolean {
+    return sequence === this.logsLoadSequence;
+  }
+
+  private async loadDeveloperLogsState(sequence: number): Promise<void> {
+    const logs = await this.dependencies.client.getLogsState();
+    if (!this.isCurrentDeveloperLogsLoad(sequence)) {
+      return;
+    }
+
+    this.store.developerLogs.logs = logs;
+    this.store.developerLogs.loading = false;
+  }
+
+  private reportSettingsOpened(): void {
+    if (!this.reporterService) {
+      return;
+    }
+
+    void new SettingsOpenedReporter(
+      {},
+      {
+        reporterService: this.reporterService,
+        now: this.reporterNow
+      }
+    ).report();
+  }
+
+  private reportSettingsSectionSwitched(
+    section: WorkspaceSettingsSectionID
+  ): void {
+    if (!this.reporterService) {
+      return;
+    }
+
+    void new SettingsSectionSwitchedReporter(
+      {
+        section
+      },
+      {
+        reporterService: this.reporterService,
+        now: this.reporterNow
+      }
+    ).report();
+  }
+
+  private reportSettingsLanguageChanged(input: {
+    fromLanguage: DesktopLocale;
+    toLanguage: DesktopLocale;
+  }): void {
+    if (!this.reporterService) {
+      return;
+    }
+
+    void new SettingsLanguageChangedReporter(input, {
+      reporterService: this.reporterService,
+      now: this.reporterNow
+    }).report();
+  }
+
+  private reportSettingsThemeChanged(input: {
+    fromTheme: DesktopThemeSource;
+    toTheme: DesktopThemeSource;
+  }): void {
+    if (!this.reporterService) {
+      return;
+    }
+
+    void new SettingsThemeChangedReporter(input, {
+      reporterService: this.reporterService,
+      now: this.reporterNow
+    }).report();
+  }
+}
+
+function createActiveTranslator() {
+  return createTranslator(getActiveLocale());
+}
+
+function createDefaultManagedModelDrafts(): WorkspaceManagedModelProviderDraft[] {
+  return managedModelProviderIDs.map((provider) =>
+    toManagedModelProviderDraft({
+      enabled: false,
+      hasApiKey: false,
+      models: [],
+      provider
+    })
+  );
+}
+
+function isManagedModelProviderID(
+  value: string | undefined
+): value is WorkspaceManagedModelProviderID {
+  return managedModelProviderIDs.includes(
+    value as WorkspaceManagedModelProviderID
+  );
+}
+
+function toManagedModelProviderDrafts(
+  providers: WorkspaceManagedModelProviderConfig[]
+): WorkspaceManagedModelProviderDraft[] {
+  const byProvider = new Map(providers.map((item) => [item.provider, item]));
+  return managedModelProviderIDs.map((provider) =>
+    toManagedModelProviderDraft(
+      byProvider.get(provider) ?? {
+        enabled: false,
+        hasApiKey: false,
+        models: [],
+        provider
+      }
+    )
+  );
+}
+
+function toManagedModelProviderDraft(
+  provider: WorkspaceManagedModelProviderConfig
+): WorkspaceManagedModelProviderDraft {
+  const providerModels = (
+    provider as Omit<WorkspaceManagedModelProviderConfig, "models"> & {
+      models: readonly WorkspaceManagedModel[] | null;
+    }
+  ).models;
+  const models = providerModels ?? [];
+  return {
+    ...provider,
+    apiKey: "",
+    baseUrl: provider.baseUrl ?? "",
+    models,
+    modelsText:
+      models.length > 0
+        ? models.map((model) => model.id).join("\n")
+        : defaultManagedModelIDs[provider.provider]
+  };
+}
+
+function parseManagedModelText(
+  provider: WorkspaceManagedModelProviderID,
+  value: string
+) {
+  const seen = new Set<string>();
+  return value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter((id) => {
+      if (!id || seen.has(id)) {
+        return false;
+      }
+      seen.add(id);
+      return true;
+    })
+    .map((id) => ({
+      id,
+      name: id,
+      provider
+    }));
+}
+
+// Avoid decorator syntax so the renderer Babel pass can parse this file.
+IDesktopPreferencesService(WorkspaceSettingsService, undefined, 1);
+INotificationService(WorkspaceSettingsService, undefined, 2);
+IReporterService(WorkspaceSettingsService, undefined, 3);
+
+const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
+  agentComposerDefaultsByProvider: {},
+  changingDefaultAgentProvider: null,
+  changingDockIconStyle: null,
+  changingDockPlacement: null,
+  changingLocale: null,
+  changingSleepPreventionMode: null,
+  changingThemeSource: null,
+  defaultAgentProvider: "codex",
+  dockIconStyle: "default",
+  dockPlacement: "bottom",
+  locale: "en",
+  sleepPreventionMode: "never",
+  theme: createNoopTheme("dark")
+};
+
+const noopDesktopPreferences: DesktopPreferencesService = {
+  _serviceBrand: undefined,
+  store: noopDesktopPreferencesStore,
+  setDefaultAgentProvider(provider) {
+    return Promise.resolve(provider);
+  },
+  setDockPlacement(placement) {
+    return Promise.resolve(placement);
+  },
+  setDockIconStyle(style) {
+    return Promise.resolve(style);
+  },
+  setLocale(locale) {
+    return Promise.resolve(locale);
+  },
+  setSleepPreventionMode(mode) {
+    return Promise.resolve(mode);
+  },
+  setThemeSource(source) {
+    return Promise.resolve(createNoopTheme(source));
+  },
+  rememberAgentComposerDefaults() {
+    return Promise.resolve();
+  }
+};
+
+function createNoopTheme(source: DesktopThemeSource): DesktopThemeState {
+  return {
+    appearance: source === "dark" ? "dark" : "light",
+    source
+  };
+}
+
+const noopNotifications: NotificationService = {
+  _serviceBrand: undefined,
+  error() {},
+  info() {},
+  notify() {},
+  success() {},
+  warning() {}
+};

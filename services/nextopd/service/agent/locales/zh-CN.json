@@ -1,0 +1,108 @@
+{
+  "permissionModes": {
+    "claude-code": {
+      "acceptEdits": {
+        "description": "允许直接修改文件；遇到更高风险操作时仍会先询问你。",
+        "label": "接受编辑"
+      },
+      "bypassPermissions": {
+        "description": "尽量不做权限拦截，适合需要连续执行且你完全信任的任务。",
+        "label": "绕过权限"
+      },
+      "default": {
+        "description": "默认较保守；需要执行修改或高风险操作时会先询问你。",
+        "label": "默认"
+      },
+      "dontAsk": {
+        "description": "不会弹出确认；未预先允许的操作会被直接拒绝。",
+        "label": "不再询问"
+      }
+    },
+    "codex": {
+      "auto": {
+        "description": "仅在检测到可能不安全的操作时询问你",
+        "label": "代我批准"
+      },
+      "full-access": {
+        "description": "可不受限制地访问互联网和你电脑上的任何文件",
+        "label": "完全访问"
+      },
+      "read-only": {
+        "description": "编辑外部文件或使用互联网前始终询问你",
+        "label": "请求批准"
+      }
+    },
+    "gemini": {
+      "yolo": {
+        "description": "当前 provider 不支持在这里调整权限模式。",
+        "label": "固定模式"
+      }
+    },
+    "hermes": {
+      "yolo": {
+        "description": "当前 provider 不支持在这里调整权限模式。",
+        "label": "固定模式"
+      }
+    },
+    "nexight": {
+      "auto": {
+        "description": "仅在检测到可能不安全的操作时询问你",
+        "label": "代我批准"
+      },
+      "full-access": {
+        "description": "可不受限制地访问互联网和你电脑上的任何文件",
+        "label": "完全访问"
+      },
+      "read-only": {
+        "description": "编辑外部文件或使用互联网前始终询问你",
+        "label": "请求批准"
+      }
+    }
+  },
+  "permissionSemantics": {
+    "accept-edits": {
+      "description": "允许直接编辑文件，但更高风险操作仍会先询问你",
+      "label": "接受编辑"
+    },
+    "ask-before-write": {
+      "description": "编辑外部文件或使用互联网前始终询问你",
+      "label": "请求批准"
+    },
+    "auto": {
+      "description": "仅在检测到可能不安全的操作时询问你",
+      "label": "代我批准"
+    },
+    "full-access": {
+      "description": "可不受限制地访问互联网和你电脑上的任何文件",
+      "label": "完全访问"
+    },
+    "locked-down": {
+      "description": "不会弹出确认；未获允许的操作会被直接拒绝",
+      "label": "不再询问"
+    },
+    "unconfigurable": {
+      "description": "这个 provider 当前不支持在这里调整权限模式",
+      "label": "固定模式"
+    }
+  },
+  "reasoning": {
+    "high": {
+      "label": "高"
+    },
+    "low": {
+      "label": "低"
+    },
+    "max": {
+      "label": "最高"
+    },
+    "medium": {
+      "label": "中"
+    },
+    "minimal": {
+      "label": "最低"
+    },
+    "xhigh": {
+      "label": "超高"
+    }
+  }
+}

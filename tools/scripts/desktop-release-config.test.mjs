@@ -1,0 +1,319 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { access, readFile } from "node:fs/promises";
+
+const desktopPackagePath = new URL(
+  "../../apps/desktop/package.json",
+  import.meta.url
+);
+const workspaceRootPackagePath = new URL("../../package.json", import.meta.url);
+const workflowPath = new URL(
+  "../../.github/workflows/desktop-release.yml",
+  import.meta.url
+);
+const buildScriptPath = new URL(
+  "../../tools/scripts/build-desktop-package.sh",
+  import.meta.url
+);
+const electronViteConfigPath = new URL(
+  "../../apps/desktop/electron.vite.config.ts",
+  import.meta.url
+);
+const browserNodeGuestPreloadPath = new URL(
+  "../../apps/desktop/src/preload/entries/browserNodeGuest.ts",
+  import.meta.url
+);
+const loopbackPreviewProxyPath = new URL(
+  "../../packages/browser/workbench-node/src/electron-main/loopbackPreviewProxy.ts",
+  import.meta.url
+);
+const desktopBuildIconPath = new URL(
+  "../../apps/desktop/build/icon.png",
+  import.meta.url
+);
+
+test("desktop release workflow uses the published desktop package name", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+  const workflow = await readFile(workflowPath, "utf8");
+  const packageName = packageJson.name;
+
+  assert.equal(typeof packageName, "string");
+  assert.match(packageName, /^@tutti-os\/desktop$/);
+
+  const filterMatches = [
+    ...workflow.matchAll(
+      /pnpm --filter (\S+) build:(?:mac:unsigned|mac:signed|win|linux)/g
+    )
+  ];
+
+  assert.ok(
+    filterMatches.length > 0,
+    "desktop release workflow should invoke package-scoped build commands"
+  );
+
+  for (const [, filterName] of filterMatches) {
+    assert.equal(
+      filterName,
+      packageName,
+      `desktop release workflow filter should stay aligned with ${packageName}`
+    );
+  }
+});
+
+test("desktop release workflow publishes rc tags as prereleases and keeps stable tags as latest", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(workflow, /default:\s*patch_rc_release/);
+  assert.match(
+    workflow,
+    /release_mode:[\s\S]*?options:\s*\n\s*-\s*unsigned_dry_run\n\s*-\s*patch_rc_release\n\s*-\s*patch_release\n\s*-\s*minor_release\n\s*-\s*major_release\n\s*-\s*explicit_version_release/
+  );
+  assert.match(
+    workflow,
+    /prerelease:\s+\${{\s*needs\.resolve\.outputs\.release_prerelease\s*==\s*'true'\s*}}/
+  );
+  assert.match(
+    workflow,
+    /make_latest:\s+\${{\s*needs\.resolve\.outputs\.release_make_latest\s*==\s*'true'\s*}}/
+  );
+});
+
+test("desktop release workflow schedules a daily Beijing 9:23am rc release", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(workflow, /schedule:\s*\n\s*-\s*cron:\s*"23 1 \* \* \*"/);
+  assert.doesNotMatch(workflow, /timezone:\s*"Asia\/Shanghai"/);
+  assert.match(
+    workflow,
+    /RELEASE_EVENT_NAME:\s+\${{\s*github\.event_name\s*}}/
+  );
+  assert.match(
+    workflow,
+    /if \[\[ "\$\{RELEASE_EVENT_NAME\}" == "schedule" \]\]; then\s*\n\s*strategy=patch_rc/
+  );
+});
+
+test("desktop release workflow keeps less common rc bumps behind explicit version input", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(workflow, /minor_rc_release\)/);
+  assert.match(workflow, /major_rc_release\)/);
+  assert.doesNotMatch(workflow, /tag_name:\s*\n/);
+});
+
+test("desktop release workflow reserves unique tags instead of serializing whole runs", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.doesNotMatch(workflow, /^concurrency:/m);
+  assert.match(workflow, /apps\/desktop\/scripts\/reserve-release-tag\.mjs/);
+  assert.match(
+    workflow,
+    /args\+=\(--target "\${{\s*steps\.target\.outputs\.release_target\s*}}"\)/
+  );
+});
+
+test("desktop release workflow passes tsh-aligned Feishu card context", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(
+    workflow,
+    /name:\s+Download built artifacts[\s\S]*pattern:\s+tutti-desktop-release-assets-\*/
+  );
+  assert.match(
+    workflow,
+    /FEISHU_WEBHOOK_URL:\s+\${{\s*secrets\.FEISHU_RELEASE_WEBHOOK_URL\s*}}/
+  );
+  assert.match(workflow, /RELEASE_ACTOR:\s+\${{\s*github\.actor\s*}}/);
+  assert.match(
+    workflow,
+    /RELEASE_BRANCH:\s+\${{\s*github\.ref_type == 'branch' && github\.ref_name \|\| ''\s*}}/
+  );
+  assert.match(
+    workflow,
+    /NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL:\s+\${{\s*vars\.NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL\s*}}/
+  );
+  assert.match(workflow, /RELEASE_ASSET_DIRECTORY:\s+release-assets/);
+});
+
+test("desktop release workflow defaults Feishu notifications on outside manual dispatch", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.doesNotMatch(
+    workflow,
+    /notify_feishu=\${{\s*inputs\.notify_feishu\s*!=\s*false\s*}}/
+  );
+  assert.match(
+    workflow,
+    /notify_feishu=\${{\s*github\.event_name\s*!=\s*'workflow_dispatch'\s*\|\|\s*inputs\.notify_feishu\s*!=\s*false\s*}}/
+  );
+});
+
+test("desktop release workflow downloads Feishu artifacts after checkout", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const notifyJobMatch = workflow.match(
+    /notify-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  );
+
+  assert.ok(notifyJobMatch, "notify-feishu job should exist");
+
+  const notifyJob = notifyJobMatch[0];
+  const checkoutIndex = notifyJob.indexOf("name: Checkout notification script");
+  const setupNodeIndex = notifyJob.indexOf("name: Setup Node.js");
+  const downloadIndex = notifyJob.indexOf("name: Download built artifacts");
+  const sendIndex = notifyJob.indexOf("name: Send release card");
+
+  assert.notEqual(checkoutIndex, -1, "notify job should checkout the script");
+  assert.notEqual(setupNodeIndex, -1, "notify job should setup Node.js");
+  assert.notEqual(downloadIndex, -1, "notify job should download artifacts");
+  assert.notEqual(sendIndex, -1, "notify job should send the release card");
+  assert.ok(
+    checkoutIndex < downloadIndex,
+    "checkout must run before artifact download because actions/checkout cleans the workspace"
+  );
+  assert.ok(setupNodeIndex < downloadIndex);
+  assert.ok(downloadIndex < sendIndex);
+});
+
+test("desktop release workflow can mirror release assets to S3 and upsert direct download links", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(
+    workflow,
+    /permissions:\s*\n\s*contents:\s*write\s*\n\s*id-token:\s*write/
+  );
+  assert.match(workflow, /Upload release assets to AWS S3/);
+  assert.match(workflow, /aws-actions\/configure-aws-credentials@v4/);
+  assert.match(
+    workflow,
+    /NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL=https:\/\/\${NEXTOP_DESKTOP_RELEASE_ASSETS_S3_BUCKET}\.s3-accelerate\.amazonaws\.com\/\${NEXTOP_DESKTOP_RELEASE_ASSETS_S3_PREFIX%\/}/
+  );
+  assert.match(
+    workflow,
+    /apps\/desktop\/scripts\/upsert-release-download-links\.mjs/
+  );
+});
+
+test("desktop release workflow opts JavaScript actions into Node 24", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(workflow, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24:\s*true/);
+  assert.doesNotMatch(workflow, /actions\/checkout@v4/);
+  assert.doesNotMatch(workflow, /actions\/setup-node@v4/);
+  assert.doesNotMatch(workflow, /actions\/setup-go@v5/);
+  assert.doesNotMatch(workflow, /actions\/upload-artifact@v4/);
+  assert.doesNotMatch(workflow, /pnpm\/action-setup@v4/);
+});
+
+test("desktop package declares the workspace package manager for electron-builder", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+
+  assert.equal(packageJson.packageManager, "pnpm@10.11.0");
+});
+
+test("desktop package uses a distinct product identity from tsh desktop", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+
+  assert.equal(packageJson.productName, "Tutti");
+  assert.equal(packageJson.build.productName, "Tutti");
+  assert.equal(packageJson.build.executableName, "Tutti");
+});
+
+test("desktop package ships ws as a runtime dependency for packaged main-process imports", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+
+  assert.equal(
+    packageJson.dependencies.ws,
+    "^8.21.0",
+    "packaged desktop apps need ws in production dependencies because the main process requires it at runtime"
+  );
+  assert.equal(
+    packageJson.devDependencies.ws,
+    undefined,
+    "ws should not live only in devDependencies or packaged apps will miss it"
+  );
+});
+
+test("desktop electron-vite config bundles ws into the packaged main process", async () => {
+  const electronViteConfig = await readFile(electronViteConfigPath, "utf8");
+
+  assert.match(
+    electronViteConfig,
+    /exclude:\s*\[[\s\S]*"ws"[\s\S]*\]/,
+    "ws must stay excluded from runtime externalization so packaged apps bundle it into the main-process output"
+  );
+});
+
+test("desktop electron-vite config disables bundled ws optional native dependencies", async () => {
+  const electronViteConfig = await readFile(electronViteConfigPath, "utf8");
+
+  assert.match(
+    electronViteConfig,
+    /const\s+bundledWsDefines\s*=\s*\{[\s\S]*process\.env\.WS_NO_BUFFER_UTIL[\s\S]*process\.env\.WS_NO_UTF_8_VALIDATE[\s\S]*\}/,
+    "bundled ws optional native dependency defines must stay grouped together"
+  );
+  assert.match(
+    electronViteConfig,
+    /main:\s*\{[\s\S]*define:\s*bundledWsDefines[\s\S]*plugins:\s*\[externalizeRuntimeDeps\]/,
+    "bundled ws must not emit a startup-time bufferutil resolution stub"
+  );
+  assert.match(
+    electronViteConfig,
+    /preload:\s*\{[\s\S]*define:\s*bundledWsDefines[\s\S]*plugins:\s*\[[\s\S]*externalizeRuntimeDeps[\s\S]*\]/,
+    "bundled ws must not emit a startup-time utf-8-validate resolution stub"
+  );
+});
+
+test("browser node guest preload stays self-contained for sandboxed webviews", async () => {
+  const preloadEntry = await readFile(browserNodeGuestPreloadPath, "utf8");
+
+  assert.doesNotMatch(
+    preloadEntry,
+    /shared\/contracts\/ipc/,
+    "sandboxed webview guest preload must not import shared IPC contracts because Rollup may emit a required chunk"
+  );
+  assert.match(preloadEntry, /browser:guestOpenUrl/);
+  assert.match(preloadEntry, /browser:guestDiagnostic/);
+});
+
+test("browser workbench loopback proxy uses static ws imports for bundleable desktop runtime code", async () => {
+  const loopbackPreviewProxy = await readFile(loopbackPreviewProxyPath, "utf8");
+
+  assert.doesNotMatch(
+    loopbackPreviewProxy,
+    /createRequire\(import\.meta\.url\)/,
+    "desktop runtime code should avoid createRequire for ws so ESM main-process imports stay analyzable"
+  );
+  assert.doesNotMatch(
+    loopbackPreviewProxy,
+    /require\("ws"\)/,
+    'desktop runtime code should avoid require("ws") so electron-vite can bundle the dependency into the packaged main process'
+  );
+  assert.match(
+    loopbackPreviewProxy,
+    /import WebSocket(?:,\s*\{\s*WebSocketServer\s*\})? from "ws"|import WebSocket,\s*\{\s*WebSocketServer\s*\} from "ws"/,
+    "desktop runtime code should statically import ws entry points"
+  );
+});
+
+test("workspace root declares package workspaces for electron-builder fallback discovery", async () => {
+  const packageJson = JSON.parse(
+    await readFile(workspaceRootPackagePath, "utf8")
+  );
+
+  assert.deepEqual(packageJson.workspaces, [
+    "apps/*",
+    "packages/*/*",
+    "tools/fixtures/*"
+  ]);
+});
+
+test("desktop packaging provides an application icon resource", async () => {
+  await access(desktopBuildIconPath);
+});
+
+test("desktop windows packaging anchors electron-builder workspace detection to the repo root", async () => {
+  const buildScript = await readFile(buildScriptPath, "utf8");
+
+  assert.match(buildScript, /npm_package_json="\$\{ROOT_DIR\}\/package\.json"/);
+  assert.match(buildScript, /INIT_CWD="\$\{ROOT_DIR\}"/);
+});

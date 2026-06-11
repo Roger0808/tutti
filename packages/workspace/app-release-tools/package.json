@@ -1,0 +1,32 @@
+{
+  "name": "@tutti-os/app-release-tools",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "bin": {
+    "build-nextop-app-release": "./bin/build-nextop-app-release.mjs",
+    "build-nextop-app-catalog": "./bin/build-nextop-app-catalog.mjs",
+    "verify-nextop-app-release-artifacts": "./bin/verify-nextop-app-release-artifacts.mjs"
+  },
+  "exports": {
+    "./build-nextop-app-release": "./bin/build-nextop-app-release.mjs",
+    "./build-nextop-app-catalog": "./bin/build-nextop-app-catalog.mjs",
+    "./verify-nextop-app-release-artifacts": "./bin/verify-nextop-app-release-artifacts.mjs"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/workspace/app-release-tools"
+  },
+  "scripts": {
+    "build": "node -e \"\"",
+    "test": "node --test ../../../tools/scripts/build-nextop-app-release.test.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

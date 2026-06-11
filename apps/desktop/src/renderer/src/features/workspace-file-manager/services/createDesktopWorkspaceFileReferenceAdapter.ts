@@ -1,0 +1,183 @@
+import type { NextopdClient } from "@tutti-os/client-nextopd-ts";
+import type {
+  WorkspaceFileReference,
+  WorkspaceFileReferenceAdapter,
+  WorkspaceFileReferenceTreeDirectory,
+  WorkspaceFileReferenceTreeEntry,
+  WorkspaceFileReferenceTreeSnapshot
+} from "@tutti-os/workspace-file-reference/contracts";
+import {
+  classifyWorkspaceFilePreviewKind,
+  resolveWorkspaceFilePreviewName,
+  resolveWorkspaceImageMimeType
+} from "@tutti-os/workspace-file-preview";
+import type { DesktopHostFilesApi } from "@preload/types";
+
+export function createDesktopWorkspaceFileReferenceAdapter(input: {
+  hostFilesApi: DesktopHostFilesApi;
+  nextopdClient: NextopdClient;
+  workspaceId: string;
+}): WorkspaceFileReferenceAdapter {
+  const { hostFilesApi, nextopdClient, workspaceId } = input;
+
+  return {
+    async loadReferenceTree({
+      path,
+      prefetchBudgetMs = 500,
+      prefetchDepth = 4,
+      workspaceId
+    }) {
+      const response = await nextopdClient.getWorkspaceFileTreeSnapshot(
+        workspaceId,
+        {
+          path: path ?? undefined,
+          prefetchBudgetMs,
+          prefetchDepth
+        }
+      );
+      return {
+        budgetExceeded: response.budgetExceeded,
+        directory: mapReferenceTreeDirectory(response.directory),
+        prefetchBudgetMs: response.prefetchBudgetMs,
+        prefetchDepth: response.prefetchDepth,
+        rootPath: response.root
+      } satisfies WorkspaceFileReferenceTreeSnapshot;
+    },
+    async listDirectory({ path, workspaceId }) {
+      const response = await nextopdClient.listWorkspaceFileDirectory(
+        workspaceId,
+        { path: path ?? undefined }
+      );
+      return {
+        directoryPath: response.directoryPath,
+        entries: response.entries.map((entry) => mapFileReferenceEntry(entry)),
+        rootPath: response.root
+      };
+    },
+    async openReference(reference) {
+      const trimmedPath = reference.path.trim();
+      if (trimmedPath === "~" || trimmedPath.startsWith("~/")) {
+        await hostFilesApi.openTerminalLink({
+          path: trimmedPath,
+          workspaceID: workspaceId
+        });
+        return;
+      }
+      await hostFilesApi.openFile(workspaceId, trimmedPath);
+    },
+    async readReferencePreview({ reference, workspaceId }) {
+      const previewKind = classifyWorkspaceFilePreviewKind(reference);
+      if (!previewKind || isTerminalReferencePath(reference.path)) {
+        return null;
+      }
+      const name = resolveWorkspaceFilePreviewName(reference);
+      const path = reference.path.trim();
+      return {
+        bytes: await hostFilesApi.readPreviewFile(workspaceId, path),
+        contentType:
+          previewKind === "image"
+            ? resolveWorkspaceImageMimeType(name)
+            : "text/plain;charset=utf-8",
+        kind: previewKind
+      };
+    },
+    async refreshTree() {
+      // The desktop host has no dedicated tree invalidation surface yet.
+    },
+    async searchReferences({ limit = 30, query, signal, workspaceId }) {
+      const response = await nextopdClient.searchWorkspaceFiles(
+        workspaceId,
+        {
+          limit,
+          query
+        },
+        { signal }
+      );
+      return response.entries.map((entry) => mapFileReferenceEntry(entry));
+    }
+  };
+}
+
+export function mapDesktopWorkspaceFileReferenceEntry(entry: {
+  kind: string;
+  mtimeMs?: number | null;
+  name?: string;
+  path: string;
+  sizeBytes?: number | null;
+}): WorkspaceFileReference {
+  return mapFileReferenceEntry(entry);
+}
+
+function mapReferenceTreeDirectory(
+  directory:
+    | WorkspaceFileReferenceTreeDirectory
+    | {
+        directoryPath: string;
+        entries: readonly ReferenceTreeTransportEntry[];
+        prefetchReason?: string | null;
+        prefetchState: string;
+      }
+): WorkspaceFileReferenceTreeDirectory {
+  return {
+    directoryPath: directory.directoryPath,
+    entries: directory.entries.map((entry) => mapReferenceTreeEntry(entry)),
+    prefetchReason: directory.prefetchReason,
+    prefetchState: directory.prefetchState
+  };
+}
+
+type ReferenceTreeTransportEntry = {
+  hasChildren?: boolean;
+  kind: string;
+  mtimeMs?: number | null;
+  name?: string;
+  path: string;
+  prefetchReason?: string | null;
+  prefetchState?: string | null;
+  prefetchedDirectory?: {
+    directoryPath: string;
+    entries: readonly ReferenceTreeTransportEntry[];
+    prefetchReason?: string | null;
+    prefetchState: string;
+  } | null;
+  sizeBytes?: number | null;
+};
+
+function mapReferenceTreeEntry(
+  entry: ReferenceTreeTransportEntry
+): WorkspaceFileReferenceTreeEntry {
+  return {
+    displayName: entry.name,
+    hasChildren: entry.hasChildren,
+    kind: entry.kind === "directory" ? "folder" : "file",
+    path: entry.path,
+    prefetchReason: entry.prefetchReason,
+    prefetchState: entry.prefetchState,
+    prefetchedDirectory: entry.prefetchedDirectory
+      ? mapReferenceTreeDirectory(entry.prefetchedDirectory)
+      : null,
+    ...(entry.mtimeMs === undefined ? {} : { mtimeMs: entry.mtimeMs }),
+    ...(entry.sizeBytes === undefined ? {} : { sizeBytes: entry.sizeBytes })
+  };
+}
+
+function mapFileReferenceEntry(entry: {
+  kind: string;
+  mtimeMs?: number | null;
+  name?: string;
+  path: string;
+  sizeBytes?: number | null;
+}): WorkspaceFileReference {
+  return {
+    displayName: entry.name,
+    kind: entry.kind === "directory" ? "folder" : "file",
+    path: entry.path,
+    ...(entry.mtimeMs === undefined ? {} : { mtimeMs: entry.mtimeMs }),
+    ...(entry.sizeBytes === undefined ? {} : { sizeBytes: entry.sizeBytes })
+  };
+}
+
+function isTerminalReferencePath(path: string): boolean {
+  const trimmedPath = path.trim();
+  return trimmedPath === "~" || trimmedPath.startsWith("~/");
+}

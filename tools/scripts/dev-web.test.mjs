@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const scriptPath = join(dirname(fileURLToPath(import.meta.url)), "dev-web.mjs");
+const source = readFileSync(scriptPath, "utf8");
+
+test("dev-web passes the analytics debug flag to nextopd", () => {
+  assert.match(source, /NEXTOP_ANALYTICS_DEBUG:/);
+  assert.match(source, /VITE_NEXTOP_ANALYTICS_DEBUG/);
+});

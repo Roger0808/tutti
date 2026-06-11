@@ -1,0 +1,262 @@
+import { useState, type JSX } from "react";
+import {
+  Badge,
+  Button,
+  ConfirmationDialog,
+  ScrollArea
+} from "@tutti-os/ui-system";
+import type { IssueManagerIssueSummary } from "../../../contracts/index.ts";
+import {
+  formatIssueManagerTimestamp,
+  resolveIssueManagerStatusLabel
+} from "../../../services/controllerModel.ts";
+import { issueManagerStatusBadgeVariant } from "../status/IssueManagerStatusBadge.ts";
+import {
+  IssueManagerLatestRunStatusSection,
+  IssueManagerOutputSection,
+  IssueManagerSubtaskSection
+} from "../issue/IssueManagerIssueSections.tsx";
+import type { IssueManagerLatestRunStatusRenderer } from "../../latestRunStatusRenderer.ts";
+import { IssueManagerDescriptionSection } from "../content/IssueManagerDescriptionSection.tsx";
+import { IssueManagerTitleTooltip } from "../content/IssueManagerTitleTooltip.tsx";
+import { IssueManagerPaneLoadingState } from "../panel/IssueManagerPanelSurface.tsx";
+import { resolveIssueManagerCreatorLabel } from "../panel/IssueManagerPanelText.ts";
+import { IssueManagerRichTextTextarea } from "../content/IssueManagerRichTextTextarea.tsx";
+import type { IssueManagerController } from "../../react/index.ts";
+import { IssueManagerDraftTitleInput } from "./IssueManagerDraftTitleInput.tsx";
+import {
+  issueManagerEditorFooterFadeInClassName,
+  issueManagerEditorRiseInClassName,
+  issueManagerEditorRiseInDelay0ClassName,
+  issueManagerEditorRiseInDelay1ClassName,
+  issueManagerEditorRiseInDelay2ClassName
+} from "./IssueManagerEditorMotion.ts";
+
+export { IssueManagerEmptyIllustration } from "../panel/IssueManagerPanelSurface.tsx";
+
+export function IssueManagerIssuePane({
+  controller,
+  renderLatestRunStatus,
+  selectedIssue,
+  onDismissCreate
+}: {
+  controller: IssueManagerController;
+  renderLatestRunStatus?: IssueManagerLatestRunStatusRenderer;
+  selectedIssue: IssueManagerIssueSummary | null;
+  onDismissCreate: () => void;
+}): JSX.Element {
+  const copy = controller.copy;
+  const isIssueTitleMissing = controller.issueDraft.title.trim().length === 0;
+  const isCreatingIssue = controller.issueEditorMode === "create";
+  const isEditingIssue = controller.issueEditorMode === "edit";
+  const issueContent = selectedIssue?.content ?? "";
+  const tasks = controller.issueDetail.value?.tasks ?? [];
+  const selectedTaskId = controller.nodeState.selectedTaskId;
+  const selectedTask = selectedTaskId
+    ? ((controller.taskDetail.value?.task?.taskId === selectedTaskId
+        ? controller.taskDetail.value.task
+        : tasks.find((task) => task.taskId === selectedTaskId)) ?? null)
+    : null;
+  const latestRun = selectedTask
+    ? (controller.taskDetail.value?.latestRun ??
+      controller.taskDetail.value?.recentRuns[0] ??
+      null)
+    : (controller.issueDetail.value?.latestRun ??
+      controller.issueDetail.value?.recentRuns[0] ??
+      null);
+  const latestOutputs = selectedTask
+    ? (controller.taskDetail.value?.latestOutputs ?? [])
+    : (controller.issueDetail.value?.latestOutputs ?? []);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  if (isCreatingIssue || isEditingIssue) {
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <ScrollArea className="min-h-0 flex-1 [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100 [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
+          <div className="flex min-h-full flex-col gap-[14px] px-7 py-8">
+            <div className="flex w-full min-w-0 flex-col gap-3">
+              <div
+                className={`${issueManagerEditorRiseInClassName} ${issueManagerEditorRiseInDelay0ClassName}`}
+              >
+                <h2 className="m-0 text-[17px] font-semibold leading-[1.35] text-[var(--text-primary)]">
+                  {isCreatingIssue
+                    ? copy.t("actions.createIssue")
+                    : copy.t("actions.editIssue")}
+                </h2>
+              </div>
+              <div className="flex w-full min-w-0 flex-col gap-6">
+                <label
+                  className={`flex w-full min-w-0 flex-col gap-2 text-sm font-semibold text-[var(--text-secondary)] ${issueManagerEditorRiseInClassName} ${issueManagerEditorRiseInDelay1ClassName}`}
+                >
+                  <span className="leading-5">{copy.t("labels.title")}</span>
+                  <IssueManagerDraftTitleInput
+                    placeholder={copy.t("composer.issueTitlePlaceholder")}
+                    value={controller.issueDraft.title}
+                    onChange={controller.setIssueTitle}
+                  />
+                </label>
+                <div
+                  className={`flex min-h-0 w-full min-w-0 flex-col gap-2 text-sm font-semibold text-[var(--text-secondary)] ${issueManagerEditorRiseInClassName} ${issueManagerEditorRiseInDelay2ClassName}`}
+                >
+                  <span className="leading-5">{copy.t("labels.content")}</span>
+                  <IssueManagerRichTextTextarea
+                    controller={controller}
+                    surface="issue"
+                    textareaClassName="min-h-[180px] resize-none"
+                    placeholder={copy.t("composer.issueContentPlaceholder")}
+                    value={controller.issueDraft.content}
+                    onChange={controller.setIssueContent}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </ScrollArea>
+        <div
+          className={`shrink-0 border-t border-border-1 px-7 py-4 ${issueManagerEditorFooterFadeInClassName}`}
+        >
+          <div className="flex items-center justify-end gap-3">
+            <Button
+              size="dialog"
+              type="button"
+              variant="secondary"
+              onClick={onDismissCreate}
+            >
+              {copy.t("actions.cancel")}
+            </Button>
+            <Button
+              disabled={isIssueTitleMissing}
+              size="dialog"
+              type="button"
+              onClick={() => void controller.saveIssue()}
+            >
+              {copy.t("actions.saveIssue")}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!selectedIssue) {
+    return <div className="h-full min-h-0" />;
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <ScrollArea className="min-h-0 flex-1 [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100 [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
+        <div className="px-8 py-7">
+          {controller.issueDetail.isLoading &&
+          controller.issueDetail.value === null ? (
+            <IssueManagerPaneLoadingState />
+          ) : (
+            <div className="flex w-full min-w-0 flex-col gap-9">
+              <header className="grid gap-3">
+                <div className="flex items-center justify-between gap-6">
+                  <IssueManagerTitleTooltip title={selectedIssue.title}>
+                    <h2 className="line-clamp-2 min-w-0 flex-1 whitespace-normal text-base font-semibold leading-6 text-[var(--text-primary)] [overflow-wrap:anywhere]">
+                      {selectedIssue.title}
+                    </h2>
+                  </IssueManagerTitleTooltip>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => controller.setIssueEditorMode("edit")}
+                    >
+                      {copy.t("actions.edit")}
+                    </Button>
+                    <Button
+                      className="text-[var(--state-danger)] hover:bg-[var(--on-danger)] hover:text-[var(--state-danger)]"
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setDeleteDialogOpen(true)}
+                    >
+                      {copy.t("actions.delete")}
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-[12px] font-normal leading-[1.3] text-[var(--text-secondary)]">
+                  <Badge
+                    variant={issueManagerStatusBadgeVariant(
+                      selectedIssue.status
+                    )}
+                  >
+                    {resolveIssueManagerStatusLabel(copy, selectedIssue.status)}
+                  </Badge>
+                  <span
+                    aria-hidden="true"
+                    className="h-4 w-px shrink-0 bg-[var(--line-2)]"
+                  />
+                  <span className="text-[12px] font-normal leading-[1.3]">
+                    {copy.t("labels.creator")}{" "}
+                    {resolveIssueManagerCreatorLabel(selectedIssue)}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className="h-4 w-px shrink-0 bg-[var(--line-2)]"
+                  />
+                  <span className="text-[12px] font-normal leading-[1.3]">
+                    {copy.t("labels.createdAt")}{" "}
+                    {formatIssueManagerTimestamp(selectedIssue.createdAtUnix) ||
+                      "-"}
+                  </span>
+                </div>
+              </header>
+              <ConfirmationDialog
+                cancelLabel={copy.t("actions.cancel")}
+                confirmBusy={deleteBusy}
+                confirmLabel={copy.t("actions.delete")}
+                description={selectedIssue.title}
+                open={deleteDialogOpen}
+                title={copy.t("confirmations.deleteIssue")}
+                tone="destructive"
+                onConfirm={() => {
+                  setDeleteBusy(true);
+                  void controller
+                    .deleteIssue({ skipConfirmation: true })
+                    .finally(() => {
+                      setDeleteBusy(false);
+                      setDeleteDialogOpen(false);
+                    });
+                }}
+                onOpenChange={setDeleteDialogOpen}
+              />
+              <IssueManagerDescriptionSection
+                content={issueContent}
+                emptyLabel={copy.t("messages.issueContentEmpty")}
+                label={copy.t("labels.description")}
+                onOpen={controller.openReference}
+                variant="plain"
+              />
+              <IssueManagerLatestRunStatusSection
+                copy={copy}
+                latestRun={latestRun}
+                onOpenAgentSession={
+                  controller.canOpenAgentSessions
+                    ? controller.openAgentSession
+                    : undefined
+                }
+                renderLatestRunStatus={renderLatestRunStatus}
+                title={selectedTask?.title ?? selectedIssue.title}
+              />
+              <IssueManagerOutputSection
+                copy={copy}
+                outputs={latestOutputs}
+                onOpen={controller.openReference}
+              />
+              <IssueManagerSubtaskSection
+                copy={copy}
+                onCreate={controller.createTaskDraft}
+                onSelectTask={controller.selectTask}
+                selectedTaskId={selectedTask?.taskId ?? null}
+                tasks={tasks}
+              />
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}

@@ -1,0 +1,147 @@
+# Workspace App Runtime
+
+Workspace App Center apps run against a daemon-managed runtime baseline. App packages must not bundle or declare Python/Node versions; Tutti injects the managed runtime paths at launch.
+
+## Runtime Baseline
+
+The baseline runtime is componentized. The default baseline profile contains the
+Python and Node components, but each component is published as a separate
+platform-specific zip so nextopd can download them in parallel:
+
+```text
+python component zip:
+  python/bin/python3
+
+node component zip:
+  node/bin/node
+  node/bin/npm
+  node/bin/npx
+```
+
+Windows runtime artifacts, when added, must use the Windows executable names expected by nextopd:
+
+```text
+python/bin/python.exe
+node/bin/node.exe
+node/bin/npm.cmd
+```
+
+Catalog platform keys must use Go runtime names because nextopd resolves them with `runtime.GOOS` and `runtime.GOARCH`. Use `darwin-amd64` and `linux-amd64`, not Node's `darwin-x64` or `linux-x64` download labels.
+
+## Release Ownership
+
+Runtime artifacts are released independently from desktop packages. Do not publish runtime artifacts from `.github/workflows/desktop-release.yml`.
+
+The runtime release source of truth is:
+
+```text
+config/nextop.app-runtime.lock.json
+```
+
+When Python, Node, uv, supported platforms, or artifact layout changes, update the lock and run the runtime release workflow once. Fixed versions do not require rebuilding on every product release.
+
+The workflow is:
+
+```text
+.github/workflows/publish-nextop-app-runtime.yml
+```
+
+The workflow:
+
+1. Installs the pinned uv version.
+2. Uses uv to install the pinned Python baseline.
+3. Downloads the pinned Node release for each platform and verifies it against Node's `SHASUMS256.txt`.
+4. Assembles separate Python and Node zips per platform.
+5. Writes metadata for each platform's runtime components.
+6. Uploads immutable component zips to S3.
+7. Builds and uploads `catalog.json`.
+
+Runtime artifacts should be uploaded under a dedicated S3 prefix, normally:
+
+```text
+nextop-app-runtimes/<runtimeVersion>/<platform>/python/nextop-app-runtime-python-<platform>-<runtimeVersion>.zip
+nextop-app-runtimes/<runtimeVersion>/<platform>/node/nextop-app-runtime-node-<platform>-<runtimeVersion>.zip
+nextop-app-runtimes/catalog.json
+```
+
+The public artifact base URL must point at the same prefix, usually through CloudFront:
+
+```text
+https://<cloudfront-domain>/nextop-app-runtimes
+```
+
+When `NEXTOP_APP_RUNTIME_CATALOG` is unset, nextopd uses the default published runtime catalog:
+
+```text
+https://d1x7gb6wqsqmnm.cloudfront.net/nextop-app-runtimes/catalog.json
+```
+
+Artifacts are immutable and should use long cache headers. The catalog is mutable and should use a short cache header.
+
+## Catalog Shape
+
+The runtime catalog consumed by nextopd has this shape:
+
+```json
+{
+  "schemaVersion": "nextop.app.runtimes.v2",
+  "runtimes": {
+    "darwin-arm64": {
+      "version": "2026.06.0",
+      "components": {
+        "python": {
+          "version": "3.12.13",
+          "artifactUrl": "https://cdn.example.test/nextop-app-runtimes/2026.06.0/darwin-arm64/python/nextop-app-runtime-python-darwin-arm64-2026.06.0.zip",
+          "artifactSha256": "64-char-sha256",
+          "artifactSizeBytes": 123
+        },
+        "node": {
+          "version": "22.22.3",
+          "artifactUrl": "https://cdn.example.test/nextop-app-runtimes/2026.06.0/darwin-arm64/node/nextop-app-runtime-node-darwin-arm64-2026.06.0.zip",
+          "artifactSha256": "64-char-sha256",
+          "artifactSizeBytes": 456
+        }
+      },
+      "profiles": {
+        "baseline": ["python", "node"]
+      }
+    }
+  }
+}
+```
+
+nextopd resolves the `baseline` profile today. App manifests must not declare a
+runtime kind. If runtime requirements need to become more selective later, add a
+capability list such as runtime component requirements rather than restoring a
+single-kind manifest field.
+
+## Runtime Overrides
+
+Supported daemon overrides:
+
+- `NEXTOP_APP_RUNTIME_CATALOG`: HTTP(S) URL or local file path for the runtime catalog. Set it to an empty string to disable the default runtime catalog.
+- `NEXTOP_APP_RUNTIME_CACHE_ROOT`: cache root for platform-specific runtime directories.
+- `NEXTOP_APP_RUNTIME_ROOT`: exact prepared runtime root, mainly for tests and local debugging.
+
+App packages must not set these variables. The runner injects `NEXTOP_APP_PYTHON`, `NEXTOP_APP_NODE`, `NEXTOP_APP_NPM`, and `PATH` for app processes.
+
+Runtime artifacts must make `node/bin/npm` and `node/bin/npx` standalone
+wrappers that execute the packaged Node binary with npm's packaged CLI scripts.
+Do not rely on Node release symlinks surviving zip packaging.
+
+## Validation
+
+After runtime release changes, run:
+
+```bash
+node --test ./tools/scripts/build-nextop-app-runtime-catalog.test.mjs
+pnpm lint:ts
+```
+
+After downloader or runner changes, also run:
+
+```bash
+cd services/nextopd && go test ./service/workspace ./service/eventstream
+pnpm --filter @tutti-os/workspace-app-center test
+pnpm --filter @tutti-os/desktop typecheck
+```

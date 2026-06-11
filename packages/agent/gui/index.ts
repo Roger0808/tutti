@@ -1,0 +1,68 @@
+export {
+  buildAgentActivitySnapshotProjection,
+  agentHostSnapshotFromAgentActivitySnapshot,
+  type AgentActivitySnapshotProjection
+} from "./shared/agentActivitySnapshotProjection";
+export { AgentGUI } from "./AgentGUI";
+export type { AgentGUIProps } from "./AgentGUI";
+export {
+  AgentGuiI18nProvider,
+  agentGuiI18nModule,
+  agentGuiI18nResources
+} from "./i18n/index";
+export type { AgentGuiI18nLocale } from "./i18n/index";
+export { agentGuiDockIconUrl, agentGuiDockIconUrls } from "./dockIcons";
+export {
+  resolveAgentGUIExpandedWindowFrame,
+  shouldAutoCollapseAgentGUIConversationRail
+} from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";
+export {
+  AGENT_GUI_MENTION_PROVIDER_IDS,
+  type AgentGUIMentionProviderId,
+  type AgentRichTextAtProvider
+} from "./agent-gui/agentGuiNode/agentRichTextAtProvider";
+export { AgentActivityHostProvider } from "./agentActivityHost";
+export type { AgentActivityHostProviderProps } from "./agentActivityHost";
+export {
+  AgentActivityRuntimeProvider,
+  getAgentActivityRuntime,
+  getOptionalAgentActivityRuntime,
+  resetAgentActivityRuntimeForTests,
+  setAgentActivityRuntimeForTests,
+  useAgentActivitySnapshot,
+  useAgentActivityRuntime,
+  useOptionalAgentActivityRuntime
+} from "./agentActivityRuntime";
+export type {
+  AgentActivityRuntime,
+  AgentActivityRuntimeListSessionMessagesInput,
+  AgentActivityRuntimeProviderProps,
+  AgentActivityRuntimeRetainSessionEventsInput,
+  AgentActivityRuntimeSetSessionPinnedInput,
+  AgentActivityRuntimeUpdateSessionSettingsInput,
+  AgentActivityRuntimeWarmupOpenclawGatewayInput
+} from "./agentActivityRuntime";
+export type {
+  AgentHostApi,
+  AgentHostInputApi,
+  AgentHostRuntimeApi,
+  AgentProviderProbeListInput,
+  AgentProviderProbeListResult
+} from "./host/agentHostApi";
+export type {
+  AgentProbeProvider,
+  AgentProbeSnapshot,
+  AgentUsageQuota,
+  AgentUsageSnapshot
+} from "./shared/contracts/dto";
+export {
+  selectNeedsAttentionCount,
+  selectNeedsAttentionItems
+} from "@tutti-os/agent-activity-core";
+export type {
+  AgentActivityAdapter,
+  AgentActivityController,
+  AgentActivityMessage,
+  AgentActivityNeedsAttentionItem,
+  AgentActivitySnapshot
+} from "@tutti-os/agent-activity-core";

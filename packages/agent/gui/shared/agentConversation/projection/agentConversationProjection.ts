@@ -1,0 +1,771 @@
+import type {
+  WorkspaceAgentSessionDetailTurn,
+  WorkspaceAgentSessionDetailViewModel
+} from "../../workspaceAgentSessionDetailViewModel";
+import type { AgentApprovalItemVM } from "../contracts/agentApprovalItemVM";
+import type {
+  AgentConversationPendingInteractivePromptVM,
+  AgentConversationVM
+} from "../contracts/agentConversationVM";
+import type {
+  AgentMessageContentVM,
+  AgentMessageRowVM,
+  AgentThinkingContentVM
+} from "../contracts/agentMessageRowVM";
+import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
+import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
+import {
+  buildAgentTurnSequenceItems,
+  computeAgentToolGroups,
+  projectAgentSingleToolRow,
+  projectAgentToolGroupRowFromGroup,
+  type AgentTurnSequenceItemVM
+} from "./agentToolGroupingProjection";
+import { projectAgentProcessingRow } from "./agentProcessingProjection";
+import {
+  projectAgentTurnSummaryRowForTurn,
+  projectAgentTurnSummaryRows
+} from "./agentTurnSummaryProjection";
+
+export interface AgentConversationProjectionOptions {
+  avoidGroupingEdits?: boolean;
+}
+
+const RENDER_IRRELEVANT_TRANSCRIPT_ROW_FIELDS = new Set(["occurredAtUnixMs"]);
+
+export function projectAgentConversationVM(
+  detail: WorkspaceAgentSessionDetailViewModel,
+  options: AgentConversationProjectionOptions = {}
+): AgentConversationVM {
+  const rows: AgentTranscriptRowVM[] = [];
+  const turns = detail.turns;
+  const allowTrailingToolGrouping = !isSessionWorking(detail);
+
+  turns.forEach((turn, index) => {
+    rows.push(...projectUserRows(turn, detail.session.workspaceId));
+    rows.push(
+      ...projectTurnAgentRows(turn, {
+        agentSessionId: detail.session.agentSessionId,
+        turnIndex: index,
+        allowTrailingFinalization:
+          allowTrailingToolGrouping || index < turns.length - 1,
+        avoidGroupingEdits: options.avoidGroupingEdits
+      })
+    );
+    if (shouldShowTurnSummaryForTurn(detail, index)) {
+      rows.push(
+        ...projectAgentTurnSummaryRowForTurn(turn, {
+          workspaceRoot: detail.workspaceRoot
+        })
+      );
+    }
+  });
+
+  if (
+    !rows.some((row) => row.kind === "turn-summary") &&
+    shouldShowLatestTurnSummaryFallback(detail)
+  ) {
+    rows.push(...projectAgentTurnSummaryRows(detail));
+  }
+
+  const processing = projectAgentProcessingRow(detail, rows);
+  if (processing) {
+    rows.push(processing);
+  }
+
+  const normalizedRows = mergeAdjacentAssistantMessageRows(rows);
+
+  return {
+    activity: detail.activity,
+    workspaceRoot: detail.workspaceRoot,
+    sourceDetail: detail,
+    rows: normalizedRows,
+    pendingApproval: selectPendingApproval(normalizedRows),
+    pendingInteractivePrompt: selectPendingInteractivePrompt(normalizedRows)
+  };
+}
+
+export function reconcileProjectedAgentConversationVM(
+  previous: AgentConversationVM | null | undefined,
+  next: AgentConversationVM
+): AgentConversationVM {
+  if (!previous) {
+    return next;
+  }
+
+  const previousRowsById = new Map(previous.rows.map((row) => [row.id, row]));
+  let reusedRowCount = 0;
+  const rows = next.rows.map((row) => {
+    const previousRow = previousRowsById.get(row.id);
+    if (previousRow && equivalentTranscriptRowForRender(previousRow, row)) {
+      reusedRowCount += 1;
+      return previousRow;
+    }
+    return row;
+  });
+  const rowsArrayReused =
+    reusedRowCount === next.rows.length &&
+    next.rows.length === previous.rows.length &&
+    next.rows.every((_row, index) => rows[index] === previous.rows[index]);
+
+  return {
+    ...next,
+    rows: rowsArrayReused ? previous.rows : rows,
+    pendingApproval: reuseEquivalentValue(
+      previous.pendingApproval,
+      next.pendingApproval
+    ),
+    pendingInteractivePrompt: reuseEquivalentValue(
+      previous.pendingInteractivePrompt,
+      next.pendingInteractivePrompt
+    )
+  };
+}
+
+function reuseEquivalentValue<T>(previous: T, next: T): T {
+  return equivalentValue(previous, next) ? previous : next;
+}
+
+function equivalentTranscriptRowForRender(
+  previous: AgentTranscriptRowVM,
+  next: AgentTranscriptRowVM
+): boolean {
+  return equivalentValueIgnoringKeys(
+    previous,
+    next,
+    RENDER_IRRELEVANT_TRANSCRIPT_ROW_FIELDS
+  );
+}
+
+function equivalentValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) {
+    return true;
+  }
+  if (typeof left !== typeof right || left === null || right === null) {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => equivalentValue(value, right[index]))
+    );
+  }
+  if (typeof left !== "object" || typeof right !== "object") {
+    return false;
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) =>
+        Object.prototype.hasOwnProperty.call(rightRecord, key) &&
+        equivalentValue(leftRecord[key], rightRecord[key])
+    )
+  );
+}
+
+function equivalentValueIgnoringKeys(
+  left: unknown,
+  right: unknown,
+  ignoredKeys: ReadonlySet<string>
+): boolean {
+  if (Object.is(left, right)) {
+    return true;
+  }
+  if (typeof left !== typeof right || left === null || right === null) {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) =>
+        equivalentValueIgnoringKeys(value, right[index], ignoredKeys)
+      )
+    );
+  }
+  if (typeof left !== "object" || typeof right !== "object") {
+    return false;
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).filter(
+    (key) => !ignoredKeys.has(key)
+  );
+  const rightKeys = Object.keys(rightRecord).filter(
+    (key) => !ignoredKeys.has(key)
+  );
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) =>
+        Object.prototype.hasOwnProperty.call(rightRecord, key) &&
+        equivalentValueIgnoringKeys(
+          leftRecord[key],
+          rightRecord[key],
+          ignoredKeys
+        )
+    )
+  );
+}
+
+function mergeAdjacentAssistantMessageRows(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentTranscriptRowVM[] {
+  const merged: AgentTranscriptRowVM[] = [];
+  for (const row of rows) {
+    const previous = merged.at(-1);
+    if (
+      isMergeableAssistantMessageRow(previous) &&
+      canMergeAdjacentAssistantMessageRows(previous, row)
+    ) {
+      const lastMessage = previous.messages.at(-1);
+      const nextMessage = row.messages[0];
+      if (lastMessage && nextMessage) {
+        lastMessage.body += nextMessage.body;
+        lastMessage.occurredAtUnixMs =
+          nextMessage.occurredAtUnixMs ?? lastMessage.occurredAtUnixMs;
+      }
+      if (row.messages.length > 1) {
+        previous.messages.push(...row.messages.slice(1));
+      }
+      previous.occurredAtUnixMs =
+        row.occurredAtUnixMs ?? previous.occurredAtUnixMs;
+      continue;
+    }
+    merged.push(row);
+  }
+  return merged;
+}
+
+function isMergeableAssistantMessageRow(
+  row: AgentTranscriptRowVM | undefined
+): row is AgentMessageRowVM {
+  return Boolean(
+    row &&
+    row.kind === "message" &&
+    row.speaker === "assistant" &&
+    row.thinking.length === 0 &&
+    !row.messages.some(isSpecialAssistantMessage)
+  );
+}
+
+function canMergeAdjacentAssistantMessageRows(
+  previous: AgentMessageRowVM,
+  next: AgentTranscriptRowVM
+): next is AgentMessageRowVM {
+  return (
+    next.kind === "message" &&
+    next.speaker === "assistant" &&
+    next.thinking.length === 0 &&
+    previous.turnId === next.turnId &&
+    !next.messages.some(isSpecialAssistantMessage)
+  );
+}
+
+function isSpecialAssistantMessage(message: {
+  visibleError?: unknown;
+  systemNotice?: unknown;
+}): boolean {
+  return Boolean(message.visibleError || message.systemNotice);
+}
+
+function shouldShowTurnSummaryForTurn(
+  detail: WorkspaceAgentSessionDetailViewModel,
+  turnIndex: number
+): boolean {
+  return turnIndex < detail.turns.length - 1 || isLatestTurnSettled(detail);
+}
+
+function shouldShowLatestTurnSummaryFallback(
+  detail: WorkspaceAgentSessionDetailViewModel
+): boolean {
+  return detail.turns.length === 0 || isLatestTurnSettled(detail);
+}
+
+function isLatestTurnSettled(
+  detail: WorkspaceAgentSessionDetailViewModel
+): boolean {
+  const status = normalizedSessionDisplayStatus(detail);
+  return !isUnsettledSessionStatus(status);
+}
+
+function isSessionWorking(
+  detail: WorkspaceAgentSessionDetailViewModel
+): boolean {
+  const status = normalizedSessionDisplayStatus(detail);
+  return isWorkingSessionStatus(status);
+}
+
+function isWorkingSessionStatus(status: string): boolean {
+  return status === "working";
+}
+
+function isUnsettledSessionStatus(status: string): boolean {
+  return isWorkingSessionStatus(status) || status === "waiting";
+}
+
+function normalizeStatusToken(status: string | null | undefined): string {
+  return status?.trim().toLowerCase() ?? "";
+}
+
+function normalizedSessionDisplayStatus(
+  detail: WorkspaceAgentSessionDetailViewModel
+): string {
+  const session = detail.session as {
+    effectiveStatus?: string | null;
+    turnPhase?: string | null;
+    status?: string | null;
+  };
+  return normalizeStatusToken(
+    session.effectiveStatus ?? session.turnPhase ?? session.status
+  );
+}
+
+function projectUserRows(
+  turn: WorkspaceAgentSessionDetailTurn,
+  workspaceId: string | null | undefined
+): AgentMessageRowVM[] {
+  return turn.userMessages.map((message) => {
+    const turnId = message.turnId ?? turn.id;
+    return {
+      kind: "message",
+      id: `message:user:${message.id}`,
+      turnId,
+      speaker: "user",
+      messages: projectUserMessageContentParts(message, turnId, workspaceId),
+      thinking: [],
+      occurredAtUnixMs: message.occurredAtUnixMs ?? null
+    };
+  });
+}
+
+function projectUserMessageContentParts(
+  message: WorkspaceAgentSessionDetailTurn["userMessages"][number],
+  turnId: string,
+  workspaceId: string | null | undefined
+): AgentMessageContentVM[] {
+  const blocks = userPromptContentBlocks(message, workspaceId);
+  if (blocks.length === 0) {
+    return [
+      {
+        kind: "message-content",
+        id: message.id,
+        turnId,
+        body: message.body,
+        contentKind: "text",
+        occurredAtUnixMs: message.occurredAtUnixMs ?? null,
+        sourceTimelineItems: message.sourceTimelineItems
+      }
+    ];
+  }
+
+  const parts: AgentMessageContentVM[] = [];
+  const imageBlocks = blocks.filter(
+    (block): block is UserPromptImageBlock => block.type === "image"
+  );
+  if (imageBlocks.length > 0) {
+    parts.push({
+      kind: "message-content",
+      id: `${message.id}:images:0`,
+      turnId,
+      body: "",
+      contentKind: "image-grid",
+      images: imageBlocks.map((image, index) => ({
+        id: image.attachmentId || `${message.id}:image:0:${index}`,
+        workspaceId: image.workspaceId,
+        agentSessionId: image.agentSessionId,
+        attachmentId: image.attachmentId,
+        mimeType: image.mimeType,
+        name: image.name,
+        data: image.data
+      })),
+      occurredAtUnixMs: message.occurredAtUnixMs ?? null,
+      sourceTimelineItems: message.sourceTimelineItems
+    });
+  }
+
+  blocks.forEach((block, index) => {
+    if (block.type === "image") {
+      return;
+    }
+    if (block.text.trim() === "") {
+      return;
+    }
+    parts.push({
+      kind: "message-content",
+      id: `${message.id}:text:${index}`,
+      turnId,
+      body: block.text,
+      contentKind: "text",
+      occurredAtUnixMs: message.occurredAtUnixMs ?? null,
+      sourceTimelineItems: message.sourceTimelineItems
+    });
+  });
+
+  return parts.length > 0
+    ? parts
+    : [
+        {
+          kind: "message-content",
+          id: message.id,
+          turnId,
+          body: message.body,
+          contentKind: "text",
+          occurredAtUnixMs: message.occurredAtUnixMs ?? null,
+          sourceTimelineItems: message.sourceTimelineItems
+        }
+      ];
+}
+
+type UserPromptContentBlock = UserPromptTextBlock | UserPromptImageBlock;
+
+interface UserPromptTextBlock {
+  type: "text";
+  text: string;
+}
+
+interface UserPromptImageBlock {
+  type: "image";
+  workspaceId?: string | null;
+  agentSessionId: string;
+  attachmentId?: string | null;
+  mimeType: string;
+  name?: string | null;
+  data?: string | null;
+}
+
+function userPromptContentBlocks(
+  message: WorkspaceAgentSessionDetailTurn["userMessages"][number],
+  fallbackWorkspaceId: string | null | undefined
+): UserPromptContentBlock[] {
+  const item = message.sourceTimelineItems?.find((candidate) =>
+    Array.isArray(candidate.payload?.content)
+  );
+  const content = Array.isArray(item?.payload?.content)
+    ? item.payload.content
+    : null;
+  if (!content) {
+    return [];
+  }
+  return content.flatMap((raw): UserPromptContentBlock[] => {
+    const block =
+      raw && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : null;
+    if (!block) {
+      return [];
+    }
+    if (block.type === "text" && typeof block.text === "string") {
+      return [{ type: "text", text: block.text }];
+    }
+    if (block.type !== "image") {
+      return [];
+    }
+    const mimeType =
+      typeof block.mimeType === "string" && block.mimeType.trim()
+        ? block.mimeType.trim()
+        : "";
+    if (!mimeType) {
+      return [];
+    }
+    return [
+      {
+        type: "image",
+        workspaceId: item?.workspaceId ?? fallbackWorkspaceId ?? null,
+        agentSessionId: item?.agentSessionId ?? message.id,
+        attachmentId:
+          typeof block.attachmentId === "string" && block.attachmentId.trim()
+            ? block.attachmentId.trim()
+            : null,
+        mimeType,
+        name:
+          typeof block.name === "string" && block.name.trim()
+            ? block.name.trim()
+            : null,
+        data:
+          typeof block.data === "string" && block.data.trim()
+            ? block.data.trim()
+            : null
+      }
+    ];
+  });
+}
+
+function projectTurnAgentRows(
+  turn: WorkspaceAgentSessionDetailTurn,
+  options: {
+    agentSessionId: string;
+    turnIndex: number;
+    allowTrailingFinalization: boolean;
+    avoidGroupingEdits?: boolean;
+  }
+): AgentTranscriptRowVM[] {
+  const sequence = buildAgentTurnSequenceItems(turn);
+  const { groups, groupedIndices } = computeAgentToolGroups(sequence, options);
+  const rows: AgentTranscriptRowVM[] = [];
+  let pendingThinking: AgentThinkingContentVM[] = [];
+
+  const flushThinking = () => {
+    if (pendingThinking.length === 0) {
+      return;
+    }
+    rows.push({
+      kind: "message",
+      id: `message:thinking:${turn.id}:${pendingThinking.map((thinking) => thinking.id).join("+")}`,
+      turnId: turn.id,
+      speaker: "assistant",
+      messages: [],
+      thinking: [...pendingThinking],
+      occurredAtUnixMs:
+        pendingThinking.at(-1)?.occurredAtUnixMs ??
+        pendingThinking[0]?.occurredAtUnixMs ??
+        null
+    });
+    pendingThinking = [];
+  };
+
+  for (let index = 0; index < sequence.length; index += 1) {
+    const item = sequence[index];
+    if (!item) {
+      continue;
+    }
+    const group = groups.get(index);
+    if (group) {
+      flushThinking();
+      rows.push(projectAgentToolGroupRowFromGroup(turn.id, group));
+      index = group.endIndex;
+      continue;
+    }
+    if (groupedIndices.has(index)) {
+      continue;
+    }
+    if (item.kind === "thinking") {
+      const next = nextUngroupedSequenceItem(
+        sequence,
+        groupedIndices,
+        index + 1
+      );
+      if (next?.kind === "assistant-message") {
+        pendingThinking.push(item.thinking);
+        continue;
+      }
+      pendingThinking.push(item.thinking);
+      flushThinking();
+      continue;
+    }
+    if (item.kind === "assistant-message") {
+      rows.push({
+        kind: "message",
+        id: `message:assistant:${item.message.id}`,
+        turnId: item.message.turnId,
+        speaker: "assistant",
+        messages: [item.message],
+        thinking: [...pendingThinking],
+        occurredAtUnixMs: item.message.occurredAtUnixMs
+      });
+      pendingThinking = [];
+      continue;
+    }
+    flushThinking();
+    rows.push(projectAgentSingleToolRow(item.call));
+  }
+
+  flushThinking();
+  return rows;
+}
+
+function nextUngroupedSequenceItem(
+  sequence: readonly AgentTurnSequenceItemVM[],
+  groupedIndices: ReadonlySet<number>,
+  startIndex: number
+): AgentTurnSequenceItemVM | null {
+  for (let index = startIndex; index < sequence.length; index += 1) {
+    if (groupedIndices.has(index)) {
+      continue;
+    }
+    return sequence[index] ?? null;
+  }
+  return null;
+}
+
+function selectPendingApproval(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentApprovalItemVM | null {
+  for (const row of [...rows].reverse()) {
+    if (row.kind !== "tool-group") {
+      continue;
+    }
+    for (const call of toolCallsFromRow(row).reverse()) {
+      const approval = call.approval ?? fallbackApprovalFromCall(call);
+      if (
+        approval &&
+        normalizeApprovalPendingStatus(
+          approval.status ?? call.status,
+          call.statusKind
+        ) &&
+        !approval.output
+      ) {
+        return approval;
+      }
+    }
+  }
+  return null;
+}
+
+function selectPendingInteractivePrompt(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentConversationPendingInteractivePromptVM | null {
+  for (const row of [...rows].reverse()) {
+    if (row.kind !== "tool-group") {
+      continue;
+    }
+    for (const call of toolCallsFromRow(row).reverse()) {
+      if (
+        call.askUserQuestion &&
+        normalizeInteractivePendingStatus(
+          call.askUserQuestion.status ?? call.status,
+          call.statusKind
+        ) &&
+        call.askUserQuestion.questions.some(
+          (question) => question.answer === null
+        )
+      ) {
+        return {
+          kind: "ask-user",
+          requestId: call.askUserQuestion.requestId,
+          title: call.askUserQuestion.title,
+          questions: call.askUserQuestion.questions
+        };
+      }
+      if (
+        call.planMode?.kind === "exit" &&
+        normalizeInteractivePendingStatus(
+          call.planMode.status ?? call.status,
+          call.statusKind
+        )
+      ) {
+        return {
+          kind: "exit-plan",
+          requestId: call.planMode.requestId ?? call.id.replace(/^call:/, ""),
+          title: call.planMode.title
+        };
+      }
+    }
+  }
+  return null;
+}
+
+function toolCallsFromRow(
+  row: Extract<AgentTranscriptRowVM, { kind: "tool-group" }>
+): AgentToolCallVM[] {
+  return row.calls.length > 0
+    ? [...row.calls]
+    : row.entries.flatMap((entry) =>
+        entry.kind === "tool-call" ? [entry.call] : []
+      );
+}
+
+function normalizeApprovalPendingStatus(
+  value: string | null | undefined,
+  statusKind: AgentToolCallVM["statusKind"]
+): boolean {
+  if (statusKind === "waiting") {
+    return true;
+  }
+  const normalized = (value ?? "").trim().toLowerCase();
+  switch (normalized) {
+    case "awaiting_approval":
+    case "requested":
+    case "waiting_approval":
+    case "waiting":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function normalizeInteractivePendingStatus(
+  value: string | null | undefined,
+  statusKind: AgentToolCallVM["statusKind"]
+): boolean {
+  if (statusKind === "waiting") {
+    return true;
+  }
+  const normalized = (value ?? "").trim().toLowerCase();
+  return normalized === "waiting_input" || normalized === "waiting";
+}
+
+function fallbackApprovalFromCall(
+  call: AgentToolCallVM
+): AgentApprovalItemVM | null {
+  if (call.rendererKind !== "approval") {
+    return null;
+  }
+  const rawOptions = Array.isArray(call.input?.options)
+    ? call.input.options
+    : [];
+  const options = rawOptions.flatMap((option) => {
+    const record =
+      option && typeof option === "object" && !Array.isArray(option)
+        ? (option as Record<string, unknown>)
+        : null;
+    const id =
+      typeof record?.id === "string" && record.id.trim()
+        ? record.id.trim()
+        : typeof record?.optionId === "string" && record.optionId.trim()
+          ? record.optionId.trim()
+          : "";
+    if (!id) {
+      return [];
+    }
+    return [
+      {
+        id,
+        label:
+          typeof record?.name === "string" && record.name.trim()
+            ? record.name.trim()
+            : typeof record?.label === "string" && record.label.trim()
+              ? record.label.trim()
+              : id,
+        kind:
+          typeof record?.kind === "string" && record.kind.trim()
+            ? record.kind.trim()
+            : id,
+        ...(typeof record?.description === "string" && record.description.trim()
+          ? { description: record.description.trim() }
+          : {})
+      }
+    ];
+  });
+  const requestId =
+    (typeof call.input?.requestId === "string" && call.input.requestId.trim()
+      ? call.input.requestId.trim()
+      : null) ?? call.id.replace(/^call:/, "");
+  if (!requestId || options.length === 0) {
+    return null;
+  }
+  return {
+    kind: "approval",
+    id: call.id,
+    turnId: call.turnId,
+    requestId,
+    callId: call.id.replace(/^call:/, ""),
+    title: call.summary.trim() || call.name,
+    status:
+      typeof call.payload?.status === "string" && call.payload.status.trim()
+        ? call.payload.status.trim()
+        : call.status,
+    toolName: call.toolName,
+    input: call.input,
+    options,
+    output: call.output,
+    occurredAtUnixMs: call.occurredAtUnixMs
+  };
+}

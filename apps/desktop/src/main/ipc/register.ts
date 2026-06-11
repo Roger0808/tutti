@@ -1,0 +1,62 @@
+import type { DesktopFileDialogAccess } from "../host/desktopFileDialogAccess";
+import type { DesktopHostPreferencesState } from "../desktopHostPreferences";
+import type { WorkspaceLaunch } from "../host/workspaceLaunch";
+import { registerDeveloperIpc } from "./developer";
+import { registerHostIpc } from "./host";
+import { registerRuntimeIpc } from "./runtime";
+import { registerUpdateIpc } from "./update";
+import { registerWallpaperIpc } from "./wallpaper";
+import { registerWorkspaceAppContextIpc } from "./workspaceAppContext";
+import type { AppUpdateService } from "../update/appUpdateService";
+import type { DesktopDaemonEndpoint } from "../transport/paths";
+import { registerBrowserIpc } from "./browser";
+import { registerDockPreviewCacheIpc } from "./dockPreviewCache";
+import type { DesktopLogger } from "../logging";
+import type { DesktopWorkspaceAppPayload } from "../../shared/contracts/ipc";
+import type { NextopdClient } from "@tutti-os/client-nextopd-ts";
+
+export interface IpcRegistrationDependencies {
+  daemonEndpoint: DesktopDaemonEndpoint;
+  fileDialogs: Pick<
+    DesktopFileDialogAccess,
+    | "selectAppArchive"
+    | "selectAppArchiveExportPath"
+    | "selectAppIconImage"
+    | "selectDirectory"
+    | "selectUploadFiles"
+  >;
+  logger: DesktopLogger;
+  nextopdClient: Pick<
+    NextopdClient,
+    | "listWorkspaceAgentSessionMessages"
+    | "listWorkspaceAgentSessions"
+    | "listWorkspaceAppFactoryJobs"
+    | "listWorkspaceApps"
+    | "listWorkspaces"
+  >;
+  openWorkspaceAppFolder?: (
+    payload: DesktopWorkspaceAppPayload
+  ) => Promise<void>;
+  preferences: DesktopHostPreferencesState;
+  updateService: AppUpdateService;
+  workspaceLaunch: Pick<WorkspaceLaunch, "openStartupWindow" | "showWorkspace">;
+}
+
+export function registerIpcHandlers(deps: IpcRegistrationDependencies): void {
+  registerWorkspaceAppContextIpc(
+    deps.daemonEndpoint,
+    deps.preferences,
+    deps.logger
+  );
+  registerBrowserIpc(deps.preferences);
+  registerDockPreviewCacheIpc();
+  registerDeveloperIpc(deps.preferences, deps.nextopdClient);
+  registerRuntimeIpc(deps.daemonEndpoint, deps.logger);
+  registerUpdateIpc(deps.updateService);
+  registerWallpaperIpc();
+  registerHostIpc({
+    fileDialogs: deps.fileDialogs,
+    openWorkspaceAppFolder: deps.openWorkspaceAppFolder,
+    workspaceLaunch: deps.workspaceLaunch
+  });
+}

@@ -1,0 +1,190 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  createDesktopAppLifecycleHandlers,
+  type DesktopAppLifecycleRuntime
+} from "./desktopAppLifecycle.ts";
+import type { NextopdManager } from "./daemon/nextopdManager";
+import type { WorkspaceLaunch } from "./host/workspaceLaunch";
+import type { DesktopLogger } from "./logging";
+import type { AppUpdateService } from "./update/appUpdateService";
+
+function createLogger(events: string[]): DesktopLogger {
+  return {
+    debug() {},
+    info(message) {
+      events.push(`info:${message}`);
+    },
+    warn() {},
+    error(message) {
+      events.push(`error:${message}`);
+    },
+    async close() {
+      events.push("logger:close");
+    }
+  };
+}
+
+function createWorkspaceLaunch(): WorkspaceLaunch {
+  return {
+    async openStartupWindow() {},
+    async showWorkspace() {}
+  };
+}
+
+function createUpdateService(events: string[]): AppUpdateService {
+  return {
+    async checkForUpdates() {
+      throw new Error("not used");
+    },
+    async configure() {
+      throw new Error("not used");
+    },
+    dispose() {
+      events.push("update:dispose");
+    },
+    async downloadUpdate() {
+      throw new Error("not used");
+    },
+    getState() {
+      throw new Error("not used");
+    },
+    async installUpdate() {
+      throw new Error("not used");
+    },
+    onStateChanged() {
+      return () => undefined;
+    }
+  };
+}
+
+function createRuntime(events: string[]): DesktopAppLifecycleRuntime {
+  return {
+    destroyAllWindows() {
+      events.push("windows:destroy-all");
+    },
+    getWindowCount() {
+      return 0;
+    },
+    quit() {
+      events.push("app:quit");
+    }
+  };
+}
+
+function createNextopdManager(stop: () => Promise<void>): NextopdManager {
+  return {
+    async getHealth() {
+      throw new Error("not used");
+    },
+    start() {
+      return Promise.resolve();
+    },
+    stop
+  };
+}
+
+test("before quit waits for managed nextopd stop before quitting the app", async () => {
+  const events: string[] = [];
+  const stopSignal: { resolve: null | (() => void) } = { resolve: null };
+  const stopPromise = new Promise<void>((resolve) => {
+    stopSignal.resolve = resolve;
+  });
+  const handlers = createDesktopAppLifecycleHandlers(
+    {
+      logger: createLogger(events),
+      nextopd: createNextopdManager(async () => {
+        events.push("nextopd:stop:start");
+        await stopPromise;
+        events.push("nextopd:stop:done");
+      }),
+      updateService: createUpdateService(events),
+      workspaceLaunch: createWorkspaceLaunch()
+    },
+    createRuntime(events)
+  );
+
+  let prevented = false;
+  handlers.beforeQuit({
+    preventDefault() {
+      prevented = true;
+      events.push("quit:prevented");
+    }
+  });
+
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(prevented, true);
+  assert.equal(
+    events.join("|"),
+    [
+      "quit:prevented",
+      "info:desktop app before quit",
+      "nextopd:stop:start"
+    ].join("|")
+  );
+
+  const releaseStop = stopSignal.resolve;
+  if (!releaseStop) {
+    throw new Error("expected stop resolver to be initialized");
+  }
+  releaseStop();
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(
+    events.slice(0, 3).join("|"),
+    [
+      "quit:prevented",
+      "info:desktop app before quit",
+      "nextopd:stop:start"
+    ].join("|")
+  );
+  assert.equal(events.includes("nextopd:stop:done"), true);
+  assert.equal(events.includes("windows:destroy-all"), true);
+  assert.equal(events.at(-1), "app:quit");
+});
+
+test("before quit does not trigger a second stop while shutdown is already in progress", async () => {
+  const events: string[] = [];
+  const handlers = createDesktopAppLifecycleHandlers(
+    {
+      logger: createLogger(events),
+      nextopd: createNextopdManager(async () => {
+        events.push("nextopd:stop");
+      }),
+      updateService: createUpdateService(events),
+      workspaceLaunch: createWorkspaceLaunch()
+    },
+    createRuntime(events)
+  );
+
+  handlers.beforeQuit({
+    preventDefault() {
+      events.push("quit:prevented");
+    }
+  });
+  handlers.beforeQuit({
+    preventDefault() {
+      events.push("quit:prevented:again");
+    }
+  });
+
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(
+    events.join("|"),
+    [
+      "quit:prevented",
+      "info:desktop app before quit",
+      "nextopd:stop",
+      "windows:destroy-all",
+      "app:quit"
+    ].join("|")
+  );
+});

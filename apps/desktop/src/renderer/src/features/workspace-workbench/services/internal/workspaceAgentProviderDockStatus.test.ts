@@ -1,0 +1,124 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type { AgentProviderStatus } from "@tutti-os/client-nextopd-ts";
+import { resolveAgentProviderDockStatusProps } from "./workspaceAgentProviderDockStatus.ts";
+
+const copy = {
+  checking: "checking",
+  install: "install",
+  installing: "installing",
+  installRequired: "install required",
+  login: "login",
+  loginRequired: "login required",
+  refresh: "refresh",
+  unsupported: "coming soon",
+  unknown: "unknown"
+};
+
+test("agent provider dock status shows loading only while status is loading", () => {
+  const props = resolveAgentProviderDockStatusProps({
+    copy,
+    isLoading: true,
+    status: null
+  });
+
+  assert.deepEqual(props, {
+    state: {
+      kind: "loading",
+      reason: "checking"
+    }
+  });
+});
+
+test("agent provider dock status falls back to unavailable when status is missing after load", () => {
+  const props = resolveAgentProviderDockStatusProps({
+    copy,
+    isLoading: false,
+    status: null
+  });
+
+  assert.deepEqual(props, {
+    hoverActions: [{ id: "refresh", label: "refresh" }],
+    state: {
+      kind: "unavailable",
+      reason: "unknown"
+    }
+  });
+});
+
+test("agent provider dock status only shows install for not installed providers", () => {
+  const props = resolveAgentProviderDockStatusProps({
+    copy,
+    isLoading: false,
+    status: createStatus({
+      actions: [
+        { id: "install", kind: "daemon_action" },
+        { id: "refresh", kind: "refresh" }
+      ],
+      availability: "not_installed"
+    })
+  });
+
+  assert.deepEqual(props.hoverActions, [{ id: "install", label: "install" }]);
+});
+
+test("agent provider dock status only shows login for auth required providers", () => {
+  const props = resolveAgentProviderDockStatusProps({
+    copy,
+    isLoading: false,
+    status: createStatus({
+      actions: [
+        { id: "login", kind: "terminal_command" },
+        { id: "refresh", kind: "refresh" }
+      ],
+      availability: "auth_required"
+    })
+  });
+
+  assert.deepEqual(props.hoverActions, [{ id: "login", label: "login" }]);
+});
+
+test("agent provider dock status shows unsupported providers as coming soon", () => {
+  const props = resolveAgentProviderDockStatusProps({
+    copy,
+    isLoading: false,
+    status: createStatus({
+      actions: [{ id: "install", kind: "daemon_action" }],
+      availability: "unsupported"
+    })
+  });
+
+  assert.deepEqual(props, {
+    state: {
+      kind: "unavailable",
+      reason: "coming soon"
+    }
+  });
+});
+
+function createStatus(input: {
+  actions: AgentProviderStatus["actions"];
+  availability: AgentProviderStatus["availability"]["status"];
+}): AgentProviderStatus {
+  return {
+    actions: input.actions,
+    adapter: {
+      command: [],
+      installed:
+        input.availability !== "not_installed" &&
+        input.availability !== "unsupported"
+    },
+    auth: {
+      status: input.availability === "auth_required" ? "required" : "unknown"
+    },
+    availability: {
+      status: input.availability
+    },
+    cli: {
+      installed:
+        input.availability !== "not_installed" &&
+        input.availability !== "unsupported"
+    },
+    provider: "codex"
+  };
+}

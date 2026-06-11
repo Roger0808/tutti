@@ -1,0 +1,693 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type {
+  DesktopPreferencesStateResponse,
+  NextopdEventStreamClient,
+  NextopdClient
+} from "@tutti-os/client-nextopd-ts";
+import type { DesktopLocale } from "@shared/i18n";
+import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
+import type { DesktopPreferencesClient } from "./adapters/desktopPreferencesClient.ts";
+import { createDesktopPreferencesClient as createDesktopPreferencesFeatureClient } from "./adapters/desktopPreferencesClient.ts";
+import { DesktopPreferencesService } from "./desktopPreferencesService.ts";
+
+test("DesktopPreferencesService bootstraps persisted preferences before connecting the event stream", async () => {
+  const appliedLocales: DesktopLocale[] = [];
+  const appliedThemes: DesktopThemeState[] = [];
+  const calls: string[] = [];
+  const client = createDesktopPreferencesClient({
+    connect: async () => {
+      calls.push("connect");
+    },
+    getDesktopPreferences: async () => {
+      calls.push("get");
+      return {
+        initialized: true,
+        preferences: {
+          agentComposerDefaultsByProvider: {},
+          defaultAgentProvider: "codex",
+
+          dockIconStyle: "default",
+          dockPlacement: "bottom",
+          locale: "zh-CN",
+          sleepPreventionMode: "never",
+          themeSource: "dark"
+        }
+      };
+    }
+  });
+
+  const service = new DesktopPreferencesService({
+    applyLocale(locale) {
+      appliedLocales.push(locale);
+    },
+    applyTheme(theme) {
+      appliedThemes.push(theme);
+    },
+    client,
+    initialLocale: "en",
+    initialTheme: {
+      appearance: "light",
+      source: "system"
+    },
+    resolveTheme
+  });
+
+  await settle();
+
+  assert.deepEqual(calls, ["get", "connect"]);
+  assert.equal(service.store.locale, "zh-CN");
+  assert.deepEqual(service.store.theme, {
+    appearance: "dark",
+    source: "dark"
+  });
+  assert.deepEqual(appliedLocales, ["zh-CN"]);
+  assert.deepEqual(appliedThemes, [
+    {
+      appearance: "dark",
+      source: "dark"
+    }
+  ]);
+
+  service.dispose();
+});
+
+test("DesktopPreferencesService keeps in-memory defaults when preferences are not initialized", async () => {
+  const updatedRequests: DesktopPreferencesStateResponse["preferences"][] = [];
+  const client = createDesktopPreferencesClient({
+    getDesktopPreferences: async () => ({
+      initialized: false,
+      preferences: {
+        agentComposerDefaultsByProvider: {},
+        defaultAgentProvider: "codex",
+
+        dockIconStyle: "default",
+        dockPlacement: "bottom",
+        locale: "en",
+        sleepPreventionMode: "never",
+        themeSource: "system"
+      }
+    }),
+    updateDesktopPreferences: async (request) => {
+      updatedRequests.push(request.preferences);
+      return request.preferences;
+    }
+  });
+
+  const service = new DesktopPreferencesService({
+    applyLocale() {},
+    applyTheme() {},
+    client,
+    initialLocale: "zh-CN",
+    initialTheme: {
+      appearance: "dark",
+      source: "dark"
+    },
+    resolveTheme
+  });
+
+  await settle();
+
+  assert.deepEqual(updatedRequests, []);
+  assert.equal(service.store.locale, "zh-CN");
+  assert.deepEqual(service.store.theme, {
+    appearance: "dark",
+    source: "dark"
+  });
+
+  service.dispose();
+});
+
+test("DesktopPreferencesService publishes locale writes and converges on the authoritative event", async () => {
+  const appliedLocales: DesktopLocale[] = [];
+  const client = createDesktopPreferencesClient({});
+
+  const service = new DesktopPreferencesService({
+    applyLocale(locale) {
+      appliedLocales.push(locale);
+    },
+    applyTheme() {},
+    client,
+    initialLocale: "en",
+    initialTheme: {
+      appearance: "light",
+      source: "system"
+    },
+    resolveTheme
+  });
+
+  await settle();
+  const savedLocalePromise = service.setLocale("zh-CN");
+
+  assert.deepEqual(client.updatedRequests, [
+    {
+      agentComposerDefaultsByProvider: {},
+      defaultAgentProvider: "codex",
+
+      dockIconStyle: "default",
+      dockPlacement: "bottom",
+      locale: "zh-CN",
+      sleepPreventionMode: "never",
+      themeSource: "system"
+    }
+  ]);
+  assert.equal(service.store.locale, "zh-CN");
+  assert.deepEqual(appliedLocales, ["zh-CN"]);
+
+  client.emitDesktopPreferencesUpdated({
+    agentComposerDefaultsByProvider: {},
+    defaultAgentProvider: "codex",
+
+    dockIconStyle: "default",
+    dockPlacement: "bottom",
+    locale: "zh-CN",
+    sleepPreventionMode: "never",
+    themeSource: "system"
+  });
+
+  assert.equal(await savedLocalePromise, "zh-CN");
+  assert.equal(service.store.locale, "zh-CN");
+
+  service.dispose();
+});
+
+test("DesktopPreferencesService rolls back optimistic locale changes when publishing fails", async () => {
+  const appliedLocales: DesktopLocale[] = [];
+  const client = createDesktopPreferencesClient({
+    updateDesktopPreferences: async () => {
+      throw new Error("publish failed");
+    }
+  });
+
+  const service = new DesktopPreferencesService({
+    applyLocale(locale) {
+      appliedLocales.push(locale);
+    },
+    applyTheme() {},
+    client,
+    initialLocale: "en",
+    initialTheme: {
+      appearance: "light",
+      source: "system"
+    },
+    resolveTheme
+  });
+
+  await settle();
+  await assert.rejects(() => service.setLocale("zh-CN"), /publish failed/);
+  assert.equal(service.store.locale, "en");
+  assert.deepEqual(appliedLocales, ["zh-CN", "en"]);
+
+  service.dispose();
+});
+
+test("DesktopPreferencesService applies authoritative theme updates from the event stream", async () => {
+  const appliedThemes: DesktopThemeState[] = [];
+  const client = createDesktopPreferencesClient({});
+
+  const service = new DesktopPreferencesService({
+    applyLocale() {},
+    applyTheme(theme) {
+      appliedThemes.push(theme);
+    },
+    client,
+    initialLocale: "en",
+    initialTheme: {
+      appearance: "light",
+      source: "system"
+    },
+    resolveTheme
+  });
+
+  await settle();
+  const savedThemePromise = service.setThemeSource("dark");
+
+  assert.deepEqual(client.updatedRequests, [
+    {
+      agentComposerDefaultsByProvider: {},
+      defaultAgentProvider: "codex",
+
+      dockIconStyle: "default",
+      dockPlacement: "bottom",
+      locale: "en",
+      sleepPreventionMode: "never",
+      themeSource: "dark"
+    }
+  ]);
+  assert.deepEqual(service.store.theme, {
+    appearance: "dark",
+    source: "dark"
+  });
+  assert.deepEqual(appliedThemes, [
+    {
+      appearance: "dark",
+      source: "dark"
+    }
+  ]);
+
+  client.emitDesktopPreferencesUpdated({
+    agentComposerDefaultsByProvider: {},
+    defaultAgentProvider: "codex",
+
+    dockIconStyle: "default",
+    dockPlacement: "bottom",
+    locale: "en",
+    sleepPreventionMode: "never",
+    themeSource: "dark"
+  });
+
+  assert.deepEqual(await savedThemePromise, {
+    appearance: "dark",
+    source: "dark"
+  });
+  assert.deepEqual(service.store.theme, {
+    appearance: "dark",
+    source: "dark"
+  });
+
+  service.dispose();
+});
+
+test("DesktopPreferencesService rolls back optimistic theme changes when publishing fails", async () => {
+  const appliedThemes: DesktopThemeState[] = [];
+  const client = createDesktopPreferencesClient({
+    updateDesktopPreferences: async () => {
+      throw new Error("publish failed");
+    }
+  });
+
+  const service = new DesktopPreferencesService({
+    applyLocale() {},
+    applyTheme(theme) {
+      appliedThemes.push(theme);
+    },
+    client,
+    initialLocale: "en",
+    initialTheme: {
+      appearance: "light",
+      source: "system"
+    },
+    resolveTheme
+  });
+
+  await settle();
+  await assert.rejects(() => service.setThemeSource("dark"), /publish failed/);
+
+  assert.deepEqual(service.store.theme, {
+    appearance: "light",
+    source: "system"
+  });
+  assert.deepEqual(appliedThemes, [
+    {
+      appearance: "dark",
+      source: "dark"
+    },
+    {
+      appearance: "light",
+      source: "system"
+    }
+  ]);
+
+  service.dispose();
+});
+
+test("DesktopPreferencesService publishes prevent sleep preference writes", async () => {
+  const client = createDesktopPreferencesClient({});
+
+  const service = new DesktopPreferencesService({
+    applyLocale() {},
+    applyTheme() {},
+    client,
+    initialLocale: "en",
+    initialTheme: {
+      appearance: "light",
+      source: "system"
+    },
+    resolveTheme
+  });
+
+  await settle();
+  const savedPreferencePromise =
+    service.setSleepPreventionMode("whileAgentRunning");
+
+  assert.deepEqual(client.updatedRequests, [
+    {
+      agentComposerDefaultsByProvider: {},
+      defaultAgentProvider: "codex",
+
+      dockIconStyle: "default",
+      dockPlacement: "bottom",
+      locale: "en",
+      sleepPreventionMode: "whileAgentRunning",
+      themeSource: "system"
+    }
+  ]);
+  assert.equal(service.store.sleepPreventionMode, "whileAgentRunning");
+
+  client.emitDesktopPreferencesUpdated({
+    agentComposerDefaultsByProvider: {},
+    defaultAgentProvider: "codex",
+
+    dockIconStyle: "default",
+    dockPlacement: "bottom",
+    locale: "en",
+    sleepPreventionMode: "whileAgentRunning",
+    themeSource: "system"
+  });
+
+  assert.equal(await savedPreferencePromise, "whileAgentRunning");
+  assert.equal(service.store.sleepPreventionMode, "whileAgentRunning");
+
+  service.dispose();
+});
+
+test("DesktopPreferencesService publishes dock placement preference writes", async () => {
+  const client = createDesktopPreferencesClient({});
+
+  const service = new DesktopPreferencesService({
+    applyLocale() {},
+    applyTheme() {},
+    client,
+    initialLocale: "en",
+    initialTheme: {
+      appearance: "light",
+      source: "system"
+    },
+    resolveTheme
+  });
+
+  await settle();
+  const savedPreferencePromise = service.setDockPlacement("left");
+
+  assert.deepEqual(client.updatedRequests, [
+    {
+      agentComposerDefaultsByProvider: {},
+      defaultAgentProvider: "codex",
+
+      dockIconStyle: "default",
+      dockPlacement: "left",
+      locale: "en",
+      sleepPreventionMode: "never",
+      themeSource: "system"
+    }
+  ]);
+  assert.equal(service.store.dockPlacement, "left");
+
+  client.emitDesktopPreferencesUpdated({
+    agentComposerDefaultsByProvider: {},
+    defaultAgentProvider: "codex",
+
+    dockIconStyle: "default",
+    dockPlacement: "left",
+    locale: "en",
+    sleepPreventionMode: "never",
+    themeSource: "system"
+  });
+
+  assert.equal(await savedPreferencePromise, "left");
+  assert.equal(service.store.dockPlacement, "left");
+
+  service.dispose();
+});
+
+test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences to store", async () => {
+  const nextopdClient = createSequentialNextopdClient([
+    {
+      initialized: true,
+      preferences: {
+        agentComposerDefaultsByProvider: {},
+        defaultAgentProvider: "codex",
+
+        dockIconStyle: "default",
+        dockPlacement: "bottom",
+        locale: "en",
+        sleepPreventionMode: "never",
+        themeSource: "system"
+      }
+    },
+    {
+      initialized: true,
+      preferences: {
+        agentComposerDefaultsByProvider: {},
+        defaultAgentProvider: "codex",
+
+        dockIconStyle: "default",
+        dockPlacement: "bottom",
+        locale: "zh-CN",
+        sleepPreventionMode: "never",
+        themeSource: "system"
+      }
+    }
+  ]);
+  const client = createDesktopPreferencesFeatureClient(
+    nextopdClient,
+    createFallbackConfirmingEventStreamClient(),
+    {
+      authoritativeEventTimeoutMs: 0
+    }
+  );
+  const appliedLocales: DesktopLocale[] = [];
+  const appliedThemes: DesktopThemeState[] = [];
+
+  const service = new DesktopPreferencesService({
+    applyLocale(locale) {
+      appliedLocales.push(locale);
+    },
+    applyTheme(theme) {
+      appliedThemes.push(theme);
+    },
+    client,
+    initialLocale: "en",
+    initialTheme: {
+      appearance: "light",
+      source: "system"
+    },
+    resolveTheme
+  });
+
+  await settle();
+  const savedLocale = await service.setLocale("zh-CN");
+
+  assert.equal(savedLocale, "zh-CN");
+  assert.equal(service.store.locale, "zh-CN");
+  assert.deepEqual(service.store.theme, {
+    appearance: "light",
+    source: "system"
+  });
+  assert.deepEqual(appliedLocales, ["zh-CN"]);
+  assert.deepEqual(appliedThemes, []);
+  assert.equal(nextopdClient.getDesktopPreferencesCalls, 2);
+
+  service.dispose();
+});
+
+test("DesktopPreferencesService remembers agent composer defaults per provider", async () => {
+  const client = createDesktopPreferencesClient({});
+  const service = new DesktopPreferencesService({
+    applyLocale() {},
+    applyTheme() {},
+    client,
+    initialLocale: "en",
+    initialTheme: {
+      appearance: "light",
+      source: "system"
+    },
+    resolveTheme
+  });
+  await settle();
+
+  const rememberPromise = service.rememberAgentComposerDefaults("codex", {
+    model: " gpt-5 ",
+    permissionModeId: " full-access ",
+    reasoningEffort: " high "
+  });
+
+  assert.deepEqual(client.updatedRequests.at(-1), {
+    agentComposerDefaultsByProvider: {
+      codex: {
+        model: "gpt-5",
+        permissionModeId: "full-access",
+        reasoningEffort: "high"
+      }
+    },
+    defaultAgentProvider: "codex",
+
+    dockIconStyle: "default",
+    dockPlacement: "bottom",
+    locale: "en",
+    sleepPreventionMode: "never",
+    themeSource: "system"
+  });
+  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
+
+  await rememberPromise;
+  assert.deepEqual(service.store.agentComposerDefaultsByProvider, {
+    codex: {
+      model: "gpt-5",
+      permissionModeId: "full-access",
+      reasoningEffort: "high"
+    }
+  });
+
+  service.dispose();
+});
+
+interface FakeDesktopPreferencesClient extends DesktopPreferencesClient {
+  emitDesktopPreferencesUpdated(
+    preferences: DesktopPreferencesStateResponse["preferences"]
+  ): void;
+  updatedRequests: DesktopPreferencesStateResponse["preferences"][];
+}
+
+function createDesktopPreferencesClient(
+  overrides: Partial<DesktopPreferencesClient>
+): FakeDesktopPreferencesClient {
+  const listeners = new Set<
+    (preferences: DesktopPreferencesStateResponse["preferences"]) => void
+  >();
+  const updatedRequests: DesktopPreferencesStateResponse["preferences"][] = [];
+  const pendingUpdates = new Set<{
+    reject: (error: Error) => void;
+    request: DesktopPreferencesStateResponse["preferences"];
+    resolve: (
+      preferences: DesktopPreferencesStateResponse["preferences"]
+    ) => void;
+  }>();
+
+  return {
+    connect: async () => {},
+    dispose: () => {
+      const disposeError = new Error(
+        "Desktop preferences client was disposed."
+      );
+      for (const pendingUpdate of pendingUpdates) {
+        pendingUpdate.reject(disposeError);
+      }
+      pendingUpdates.clear();
+    },
+    emitDesktopPreferencesUpdated(preferences) {
+      for (const listener of listeners) {
+        listener(preferences);
+      }
+
+      for (const pendingUpdate of [...pendingUpdates]) {
+        if (
+          JSON.stringify(
+            pendingUpdate.request.agentComposerDefaultsByProvider
+          ) !== JSON.stringify(preferences.agentComposerDefaultsByProvider) ||
+          pendingUpdate.request.locale !== preferences.locale ||
+          pendingUpdate.request.defaultAgentProvider !==
+            preferences.defaultAgentProvider ||
+          pendingUpdate.request.dockIconStyle !== preferences.dockIconStyle ||
+          pendingUpdate.request.dockPlacement !== preferences.dockPlacement ||
+          pendingUpdate.request.sleepPreventionMode !==
+            preferences.sleepPreventionMode ||
+          pendingUpdate.request.themeSource !== preferences.themeSource
+        ) {
+          continue;
+        }
+
+        pendingUpdates.delete(pendingUpdate);
+        pendingUpdate.resolve(preferences);
+      }
+    },
+    getDesktopPreferences: async () => ({
+      initialized: true,
+      preferences: {
+        agentComposerDefaultsByProvider: {},
+        defaultAgentProvider: "codex",
+
+        dockIconStyle: "default",
+        dockPlacement: "bottom",
+        locale: "en",
+        sleepPreventionMode: "never",
+        themeSource: "system"
+      }
+    }),
+    updateDesktopPreferences: async (request) => {
+      updatedRequests.push(request.preferences);
+      return await new Promise<DesktopPreferencesStateResponse["preferences"]>(
+        (resolve, reject) => {
+          pendingUpdates.add({
+            reject,
+            request: request.preferences,
+            resolve
+          });
+        }
+      );
+    },
+    updatedRequests,
+    subscribeToDesktopPreferencesUpdated(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    ...overrides
+  };
+}
+
+function resolveTheme(source: DesktopThemeSource): DesktopThemeState {
+  return {
+    appearance: source === "dark" ? "dark" : "light",
+    source
+  };
+}
+
+function createSequentialNextopdClient(
+  responses: DesktopPreferencesStateResponse[]
+): Pick<NextopdClient, "getDesktopPreferences"> & {
+  getDesktopPreferencesCalls: number;
+} {
+  assert.ok(
+    responses.length > 0,
+    "createSequentialNextopdClient requires at least one response."
+  );
+  let getDesktopPreferencesCalls = 0;
+  const fallbackResponse = responses[responses.length - 1]!;
+
+  return {
+    get getDesktopPreferencesCalls() {
+      return getDesktopPreferencesCalls;
+    },
+    getDesktopPreferences: async () => {
+      getDesktopPreferencesCalls += 1;
+      return responses[getDesktopPreferencesCalls - 1] ?? fallbackResponse;
+    }
+  };
+}
+
+function createFallbackConfirmingEventStreamClient(): NextopdEventStreamClient {
+  const listeners = new Set<
+    (event: {
+      emittedAt: string;
+      id: string;
+      payload: DesktopPreferencesStateResponse;
+      topic: "preferences.desktop.updated";
+      version: 1;
+    }) => void
+  >();
+
+  return {
+    connect: async () => {},
+    dispose: () => {
+      listeners.clear();
+    },
+    async publishIntent(_topic, _payload) {},
+    subscribe(topic, listener) {
+      assert.equal(topic, "preferences.desktop.updated");
+      listeners.add(listener as Parameters<typeof listeners.add>[0]);
+      return () => {
+        listeners.delete(listener as Parameters<typeof listeners.add>[0]);
+      };
+    },
+    subscribeConnectionState() {
+      return () => {};
+    }
+  };
+}
+
+async function settle(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}

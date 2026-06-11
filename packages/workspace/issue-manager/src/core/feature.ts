@@ -1,0 +1,121 @@
+import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import {
+  createIssueManagerI18nRuntime,
+  type IssueManagerI18nRuntime
+} from "../i18n/issueManagerI18n.ts";
+import type {
+  IssueManagerAgentBreakdownLauncher,
+  IssueManagerAgentProviderOptionsAdapter,
+  IssueManagerAnalyticsAdapter,
+  IssueManagerExecutionDirectoryPicker,
+  IssueManagerAgentSessionOpener,
+  IssueManagerAgentRunner,
+  IssueManagerBackend,
+  IssueManagerEventSource,
+  IssueManagerFileAdapter,
+  IssueManagerIdentityAdapter,
+  IssueManagerNodeState,
+  IssueManagerShareAdapter
+} from "../contracts/index.ts";
+
+export interface IssueManagerNotificationSink {
+  tips(title: string): void;
+}
+
+export interface IssueManagerFeatureUIConfig {
+  showInviteCollaborator: boolean;
+}
+
+export interface IssueManagerFeature {
+  agentBreakdownLauncher?: IssueManagerAgentBreakdownLauncher;
+  analytics?: IssueManagerAnalyticsAdapter;
+  agentProviderOptions?: IssueManagerAgentProviderOptionsAdapter;
+  agentSessionOpener?: IssueManagerAgentSessionOpener;
+  agentRunner: IssueManagerAgentRunner;
+  backend: IssueManagerBackend;
+  eventSource?: IssueManagerEventSource;
+  executionDirectoryPicker?: IssueManagerExecutionDirectoryPicker;
+  fileAdapter?: IssueManagerFileAdapter;
+  i18n: IssueManagerI18nRuntime;
+  identityAdapter: IssueManagerIdentityAdapter;
+  notifications?: IssueManagerNotificationSink;
+  shareAdapter?: IssueManagerShareAdapter;
+  ui: IssueManagerFeatureUIConfig;
+}
+
+export interface CreateIssueManagerFeatureInput {
+  agentBreakdownLauncher?: IssueManagerAgentBreakdownLauncher;
+  analytics?: IssueManagerAnalyticsAdapter;
+  agentProviderOptions?: IssueManagerAgentProviderOptionsAdapter;
+  agentSessionOpener?: IssueManagerAgentSessionOpener;
+  agentRunner: IssueManagerAgentRunner;
+  backend: IssueManagerBackend;
+  eventSource?: IssueManagerEventSource;
+  executionDirectoryPicker?: IssueManagerExecutionDirectoryPicker;
+  fileAdapter?: IssueManagerFileAdapter;
+  i18n?: I18nRuntime<string>;
+  identityAdapter: IssueManagerIdentityAdapter;
+  notifications?: IssueManagerNotificationSink;
+  shareAdapter?: IssueManagerShareAdapter;
+  ui?: Partial<IssueManagerFeatureUIConfig>;
+}
+
+export const defaultIssueManagerNodeState: IssueManagerNodeState = {
+  activeTopicId: null,
+  issueSearchQuery: "",
+  issueStatusFilter: "all",
+  selectedAgentProvider: "codex",
+  selectedExecutionDirectory: null,
+  selectedIssueId: null,
+  selectedTaskId: null,
+  taskListCollapsed: false
+};
+
+export function createIssueManagerFeature(
+  input: CreateIssueManagerFeatureInput
+): IssueManagerFeature {
+  return {
+    agentBreakdownLauncher: input.agentBreakdownLauncher,
+    analytics: input.analytics,
+    agentProviderOptions: input.agentProviderOptions,
+    agentSessionOpener: input.agentSessionOpener,
+    agentRunner: input.agentRunner,
+    backend: input.backend,
+    eventSource: input.eventSource,
+    executionDirectoryPicker: input.executionDirectoryPicker,
+    fileAdapter: input.fileAdapter,
+    i18n: createIssueManagerI18nRuntime(input.i18n),
+    identityAdapter: input.identityAdapter,
+    notifications: input.notifications,
+    shareAdapter: input.shareAdapter,
+    ui: {
+      showInviteCollaborator: input.ui?.showInviteCollaborator ?? true
+    }
+  };
+}
+
+export function normalizeIssueManagerNodeState(
+  state: Partial<IssueManagerNodeState> | null | undefined
+): IssueManagerNodeState {
+  return {
+    ...defaultIssueManagerNodeState,
+    ...state,
+    activeTopicId: normalizeNullableString(state?.activeTopicId),
+    issueSearchQuery: state?.issueSearchQuery?.trim() ?? "",
+    issueStatusFilter: state?.issueStatusFilter ?? "all",
+    selectedAgentProvider: state?.selectedAgentProvider?.trim() || "codex",
+    selectedExecutionDirectory: normalizeNullableString(
+      state?.selectedExecutionDirectory
+    ),
+    selectedIssueId: normalizeNullableString(state?.selectedIssueId),
+    selectedTaskId: normalizeNullableString(state?.selectedTaskId),
+    taskListCollapsed: state?.taskListCollapsed === true
+  };
+}
+
+function normalizeNullableString(
+  value: string | null | undefined
+): string | null {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
+}

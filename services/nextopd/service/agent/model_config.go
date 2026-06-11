@@ -1,0 +1,146 @@
+package agent
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+const (
+	codexConfigFileName    = "config.toml"
+	geminiSettingsFileName = "settings.json"
+)
+
+func readCodexConfiguredDefaultModel() string {
+	codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
+	if codexHome == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		codexHome = filepath.Join(home, ".codex")
+	}
+	return readTopLevelTomlString(filepath.Join(codexHome, codexConfigFileName), "model")
+}
+
+func readClaudeCodeConfiguredDefaultModel() string {
+	claudeConfigDir := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR"))
+	if claudeConfigDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		claudeConfigDir = filepath.Join(home, ".claude")
+	}
+	settings := readJSONRecord(filepath.Join(claudeConfigDir, "settings.json"))
+	model := normalizeModelID(settings["model"])
+	if model == "" || !claudeCodeStaticModelExists(model) {
+		return ""
+	}
+	return model
+}
+
+func readGeminiConfiguredDefaultModel() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	settings := readJSONRecord(filepath.Join(home, ".gemini", geminiSettingsFileName))
+	return normalizeModelID(settings["model"])
+}
+
+func readJSONRecord(path string) map[string]any {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return nil
+	}
+	return parsed
+}
+
+func normalizeModelID(value any) string {
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(text)
+}
+
+func readTopLevelTomlString(path string, key string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	for _, rawLine := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(stripTomlComment(rawLine))
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "[") {
+			return ""
+		}
+		before, after, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(before) != key {
+			continue
+		}
+		return parseTomlStringValue(after)
+	}
+	return ""
+}
+
+func stripTomlComment(line string) string {
+	var quote rune
+	escaped := false
+	for index, char := range line {
+		if quote == '"' {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if char == '\\' {
+				escaped = true
+				continue
+			}
+			if char == '"' {
+				quote = 0
+			}
+			continue
+		}
+		if quote == '\'' {
+			if char == '\'' {
+				quote = 0
+			}
+			continue
+		}
+		if char == '"' || char == '\'' {
+			quote = char
+			continue
+		}
+		if char == '#' {
+			return line[:index]
+		}
+	}
+	return line
+}
+
+func parseTomlStringValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if strings.HasPrefix(value, `"`) {
+		var parsed string
+		if err := json.Unmarshal([]byte(value), &parsed); err != nil {
+			return ""
+		}
+		return strings.TrimSpace(parsed)
+	}
+	if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") && len(value) >= 2 {
+		return strings.TrimSpace(value[1 : len(value)-1])
+	}
+	return strings.TrimSpace(value)
+}

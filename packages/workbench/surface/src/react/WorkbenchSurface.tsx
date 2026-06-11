@@ -1,0 +1,262 @@
+import {
+  useCallback,
+  useEffect,
+  type CSSProperties,
+  type ReactNode
+} from "react";
+import type { WorkbenchController } from "../store/types.ts";
+import type {
+  WorkbenchLayoutConstraintsInput,
+  WorkbenchNode
+} from "../core/types.ts";
+import { WorkbenchDockFrame } from "./WorkbenchDockFrame.tsx";
+import { WorkbenchNodeLayer } from "./WorkbenchNodeLayer.tsx";
+import {
+  WorkbenchProvider,
+  useWorkbenchController
+} from "./WorkbenchProvider.tsx";
+import { useWorkbenchShortcuts } from "./hooks/useWorkbenchShortcuts.ts";
+import { useWorkbenchSurfaceSize } from "./hooks/useWorkbenchSurfaceSize.ts";
+import { useWorkbenchGenieAnimation } from "./useWorkbenchGenieAnimation.tsx";
+import type {
+  WorkbenchDockContext,
+  WorkbenchDockPlacement,
+  WorkbenchKeepMinimizedNodeMounted,
+  WorkbenchRenderNode,
+  WorkbenchSurfacePresentation,
+  WorkbenchRenderWindowActions,
+  WorkbenchRenderWindowHeader,
+  WorkbenchResolveFullscreenHeaderMode,
+  WorkbenchResolveWindowChromeMode,
+  WorkbenchWindowChromeMode
+} from "./types.ts";
+import type {
+  WorkbenchDockPreviewCache,
+  WorkbenchDockPreviewCacheKeyResolver
+} from "./dockPreviewCache.ts";
+import type { WorkbenchWindowChromeI18nRuntime } from "./workbenchWindowI18n.ts";
+
+export interface WorkbenchSurfaceProps<TData = unknown> {
+  captureNodePreviewImage?: (
+    node: WorkbenchNode<TData>
+  ) => Promise<string | null> | string | null;
+  className?: string;
+  controller: WorkbenchController<TData>;
+  dockPreviewCache?: WorkbenchDockPreviewCache;
+  dockPlacement?: WorkbenchDockPlacement;
+  interactive?: boolean;
+  layoutConstraints?: WorkbenchLayoutConstraintsInput;
+  missionControlPhase?: "closed" | "entering" | "open" | "closing";
+  presentation?: WorkbenchSurfacePresentation | null;
+  renderBackdrop?: () => ReactNode;
+  renderBottomChrome?: () => ReactNode;
+  renderDock?: (context: WorkbenchDockContext<TData>) => ReactNode;
+  renderNode: WorkbenchRenderNode<TData>;
+  renderOverlay?: () => ReactNode;
+  renderTopChrome?: () => ReactNode;
+  renderWindowActions?: WorkbenchRenderWindowActions<TData>;
+  renderWindowHeader?: WorkbenchRenderWindowHeader<TData>;
+  shouldKeepMinimizedNodeMounted?: WorkbenchKeepMinimizedNodeMounted<TData>;
+  resolveFullscreenHeaderMode?: WorkbenchResolveFullscreenHeaderMode<TData>;
+  resolveDockAnchorKey?: (node: WorkbenchNode<TData>) => string;
+  resolveDockPreviewCacheKey?: WorkbenchDockPreviewCacheKeyResolver<TData>;
+  shortcutsEnabled?: boolean;
+  wallpaper?: WorkbenchSurfaceWallpaper;
+  windowChromeMode?:
+    | WorkbenchWindowChromeMode
+    | WorkbenchResolveWindowChromeMode<TData>;
+  windowChromeI18n?: WorkbenchWindowChromeI18nRuntime;
+}
+
+export type WorkbenchSurfaceWallpaperFit =
+  | "contain"
+  | "cover"
+  | "stretch"
+  | "center";
+
+export interface WorkbenchSurfaceWallpaper {
+  appearance?: "dark" | "light";
+  fit?: WorkbenchSurfaceWallpaperFit;
+  position?: string;
+  url: string;
+}
+
+export function WorkbenchSurface<TData>({
+  captureNodePreviewImage,
+  className,
+  controller,
+  dockPreviewCache,
+  dockPlacement,
+  interactive,
+  layoutConstraints,
+  missionControlPhase,
+  presentation,
+  renderBackdrop,
+  renderBottomChrome,
+  renderDock,
+  renderNode,
+  renderOverlay,
+  renderTopChrome,
+  renderWindowActions,
+  renderWindowHeader,
+  shouldKeepMinimizedNodeMounted,
+  resolveFullscreenHeaderMode,
+  resolveDockAnchorKey,
+  resolveDockPreviewCacheKey,
+  shortcutsEnabled,
+  wallpaper,
+  windowChromeMode,
+  windowChromeI18n
+}: WorkbenchSurfaceProps<TData>) {
+  return (
+    <WorkbenchProvider controller={controller}>
+      <WorkbenchSurfaceInner
+        captureNodePreviewImage={captureNodePreviewImage}
+        className={className}
+        dockPreviewCache={dockPreviewCache}
+        dockPlacement={dockPlacement}
+        interactive={interactive}
+        layoutConstraints={layoutConstraints}
+        missionControlPhase={missionControlPhase}
+        presentation={presentation}
+        renderBackdrop={renderBackdrop}
+        renderBottomChrome={renderBottomChrome}
+        renderDock={renderDock}
+        renderNode={renderNode}
+        renderOverlay={renderOverlay}
+        renderTopChrome={renderTopChrome}
+        renderWindowActions={renderWindowActions}
+        renderWindowHeader={renderWindowHeader}
+        shouldKeepMinimizedNodeMounted={shouldKeepMinimizedNodeMounted}
+        resolveFullscreenHeaderMode={resolveFullscreenHeaderMode}
+        resolveDockAnchorKey={resolveDockAnchorKey}
+        resolveDockPreviewCacheKey={resolveDockPreviewCacheKey}
+        shortcutsEnabled={shortcutsEnabled}
+        wallpaper={wallpaper}
+        windowChromeMode={windowChromeMode}
+        windowChromeI18n={windowChromeI18n}
+      />
+    </WorkbenchProvider>
+  );
+}
+
+function WorkbenchSurfaceInner<TData>({
+  captureNodePreviewImage,
+  className,
+  dockPreviewCache,
+  dockPlacement,
+  interactive = true,
+  layoutConstraints,
+  missionControlPhase,
+  presentation,
+  renderBackdrop,
+  renderBottomChrome,
+  renderDock,
+  renderNode,
+  renderOverlay,
+  renderTopChrome,
+  renderWindowActions,
+  renderWindowHeader,
+  shouldKeepMinimizedNodeMounted,
+  resolveFullscreenHeaderMode,
+  resolveDockAnchorKey,
+  resolveDockPreviewCacheKey,
+  shortcutsEnabled,
+  wallpaper,
+  windowChromeMode,
+  windowChromeI18n
+}: Omit<WorkbenchSurfaceProps<TData>, "controller">) {
+  const controller = useWorkbenchController<TData>();
+  const onSizeChange = useCallback(
+    (size: { width: number; height: number }) => {
+      controller.commands.setSurfaceSize(size);
+    },
+    [controller]
+  );
+  const ref = useWorkbenchSurfaceSize<HTMLDivElement>(onSizeChange);
+  const genie = useWorkbenchGenieAnimation({
+    captureNodePreviewImage,
+    controller,
+    dockPreviewCache,
+    resolveDockAnchorKey,
+    resolveDockPreviewCacheKey
+  });
+  useWorkbenchShortcuts<TData>((shortcutsEnabled ?? true) && interactive);
+  useEffect(() => {
+    if (!layoutConstraints) {
+      return;
+    }
+    controller.commands.setLayoutConstraints(layoutConstraints);
+  }, [controller, layoutConstraints]);
+  const wallpaperStyle: CSSProperties | undefined = wallpaper
+    ? {
+        backgroundImage: `url(${JSON.stringify(wallpaper.url)})`,
+        backgroundPosition: wallpaper.position ?? "center",
+        backgroundSize: resolveWorkbenchSurfaceWallpaperBackgroundSize(
+          wallpaper.fit ?? "cover"
+        )
+      }
+    : undefined;
+
+  return (
+    <div
+      ref={ref}
+      className={["workbench-surface", className].filter(Boolean).join(" ")}
+      data-mission-control-phase={missionControlPhase ?? "closed"}
+      data-presentation-mode={presentation?.mode ?? "default"}
+      data-workbench-interactive={interactive ? "true" : "false"}
+    >
+      {wallpaper ? (
+        <div
+          className="workbench-surface__wallpaper"
+          style={wallpaperStyle}
+          aria-hidden
+        />
+      ) : null}
+      {renderTopChrome ? (
+        <div className="workbench-surface__top-chrome">{renderTopChrome()}</div>
+      ) : null}
+      {renderBackdrop ? renderBackdrop() : null}
+      <WorkbenchNodeLayer
+        genie={genie}
+        interactive={interactive}
+        presentation={presentation}
+        renderNode={renderNode}
+        renderWindowActions={renderWindowActions}
+        renderWindowHeader={renderWindowHeader}
+        shouldKeepMinimizedNodeMounted={shouldKeepMinimizedNodeMounted}
+        resolveFullscreenHeaderMode={resolveFullscreenHeaderMode}
+        windowChromeMode={windowChromeMode}
+        windowChromeI18n={windowChromeI18n}
+      />
+      <WorkbenchDockFrame
+        dockPlacement={dockPlacement}
+        genie={genie}
+        interactive={interactive}
+        renderDock={renderDock}
+      />
+      {renderBottomChrome ? (
+        <div className="workbench-surface__bottom-chrome">
+          {renderBottomChrome()}
+        </div>
+      ) : null}
+      {renderOverlay ? renderOverlay() : null}
+      {genie.genieLayer}
+    </div>
+  );
+}
+
+function resolveWorkbenchSurfaceWallpaperBackgroundSize(
+  fit: WorkbenchSurfaceWallpaperFit
+): string {
+  switch (fit) {
+    case "contain":
+      return "contain";
+    case "cover":
+      return "cover";
+    case "stretch":
+      return "100% 100%";
+    case "center":
+      return "auto";
+  }
+}

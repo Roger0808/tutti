@@ -1,0 +1,760 @@
+import type { ReactNode } from "react";
+import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import {
+  workspaceWorkbenchDesktopI18nKeys,
+  type WorkspaceWorkbenchDesktopI18nRuntime
+} from "@shared/i18n";
+import type { DesktopDockIconStyle } from "@shared/preferences";
+import type { DesktopThemeAppearance } from "@shared/theme";
+import type {
+  WorkbenchHostCloseDialogRequest,
+  WorkbenchDebugDiagnostics,
+  WorkbenchHostHandle
+} from "@tutti-os/workbench-surface";
+import { resolveWorkbenchHostPrepareClose } from "@tutti-os/workbench-surface";
+import type {
+  IWorkspaceWorkbenchHostService,
+  WorkspaceCustomWallpaperSnapshot,
+  WorkspaceCustomWallpaperStatus,
+  WorkspaceWorkbenchBodyRendererContext,
+  WorkspaceWorkbenchHostInput
+} from "../workspaceWorkbenchHostService.interface";
+import type {
+  DesktopBrowserApi,
+  DesktopDockPreviewCacheApi,
+  DesktopHostFilesApi,
+  DesktopHostWindowApi,
+  DesktopHostWorkspaceApi,
+  DesktopPlatformApi,
+  DesktopRuntimeApi,
+  DesktopWallpaperApi
+} from "@preload/types";
+import type { DesktopCustomWallpaperImage } from "@shared/contracts/ipc";
+import { processCustomWallpaperImage } from "./customWallpaperImageProcessing";
+import type {
+  NextopdClient,
+  NextopdEventStreamClient
+} from "@tutti-os/client-nextopd-ts";
+import type { DesktopWorkspaceWorkbenchRepository } from "./adapters/desktopWorkspaceWorkbenchRepository";
+import { createDesktopWorkspaceWorkbenchRepository } from "./adapters/desktopWorkspaceWorkbenchRepository";
+import { IDesktopRichTextAtService } from "../../../rich-text-at/services/richTextAtService.interface.ts";
+import {
+  IAgentProviderStatusService,
+  type IAgentProviderStatusService as AgentProviderStatusService
+} from "../../../workspace-agent/services/agentProviderStatusService.interface.ts";
+import {
+  IWorkspaceAgentActivityService,
+  type IWorkspaceAgentActivityService as WorkspaceAgentActivityService
+} from "../../../workspace-agent/services/workspaceAgentActivityService.interface.ts";
+import {
+  createWorkspaceAppCenterDockEntries,
+  IWorkspaceAppCenterService,
+  reportWorkspaceAppOpenedFromDockEntry
+} from "@renderer/features/workspace-app-center";
+import { IWorkspaceFileManagerService } from "../../../workspace-file-manager/services/workspaceFileManagerService.interface.ts";
+import { IWorkspaceUserProjectService } from "../../../workspace-user-project/services/workspaceUserProjectService.interface.ts";
+import { defaultWorkspaceWorkbenchContributionFactories } from "./contributions/defaultWorkspaceWorkbenchContributionFactories.ts";
+import { createWorkspaceWorkbenchContributionRegistryResult } from "./workspaceWorkbenchContributionRegistry.ts";
+import { createWorkspaceWorkbenchHostInputWithDockEntries } from "./workspaceWorkbenchHostInput.ts";
+import { confirmWorkspaceWindowClose } from "./workspaceWindowCloseCoordinator.ts";
+import {
+  readWorkspaceWallpaperDisplayModeFromSnapshot,
+  readWorkspaceWallpaperIdFromSnapshot,
+  type WorkspaceWallpaperDisplayMode,
+  type WorkspaceWallpaperId,
+  writeWorkspaceWallpaperDisplayModeToSnapshot,
+  writeWorkspaceWallpaperIdToSnapshot
+} from "../workspaceWallpaper";
+import { createWorkspaceAgentProviderDockStateSource } from "./workspaceAgentProviderDockStateSource.ts";
+import { createWindowCloseRequestTracker } from "../windowCloseRequestTracker";
+import { runWorkspaceAgentProviderDockAction } from "./workspaceAgentProviderDockActions.ts";
+import { createWindowCloseDialogRequest } from "./workspaceCloseDialogRequests.ts";
+import { assignWorkspaceTaskDockSection } from "./workspaceDockSections.ts";
+import { createWorkspaceDynamicDockSignature } from "./workspaceDynamicDockSignature.ts";
+import { createWorkspaceLaunchpadDockEntry } from "./workspaceLaunchpadDockEntry.ts";
+import { createDesktopWorkspaceDockPreviewCache } from "./desktopWorkspaceDockPreviewCache.ts";
+import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
+import type { DesktopWorkspaceOpenSettingsRequest } from "@shared/contracts/ipc";
+import { SettingsCustomWallpaperClearedReporter } from "../../../analytics/reporters/settings-custom-wallpaper-cleared/settingsCustomWallpaperClearedReporter.ts";
+import { SettingsCustomWallpaperUploadedReporter } from "../../../analytics/reporters/settings-custom-wallpaper-uploaded/settingsCustomWallpaperUploadedReporter.ts";
+import {
+  createWorkspaceBrowserService,
+  type WorkspaceBrowserService
+} from "./workspaceBrowserService.ts";
+import {
+  createWorkspaceDockImageIcon,
+  resolveWorkspaceDockIconSet,
+  type WorkspaceDockIconSet
+} from "../workspaceDockIconStyle.ts";
+
+export interface WorkspaceWorkbenchHostServiceDependencies {
+  agentProviderStatusService: AgentProviderStatusService;
+  appCenterService: IWorkspaceAppCenterService;
+  browserApi?: DesktopBrowserApi;
+  browserService: WorkspaceBrowserService;
+  dockPreviewCacheApi: DesktopDockPreviewCacheApi;
+  hostFilesApi: DesktopHostFilesApi;
+  hostWindowApi: DesktopHostWindowApi;
+  hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenSettingsRequest">;
+  workspaceFileManagerService: IWorkspaceFileManagerService;
+  workspaceUserProjectService: IWorkspaceUserProjectService;
+  workspaceAgentActivityService: WorkspaceAgentActivityService;
+  eventStreamClient?: NextopdEventStreamClient;
+  nextopdClient: NextopdClient;
+  platformApi: Pick<
+    DesktopPlatformApi,
+    "homeDirectory" | "os" | "resolveDroppedPaths"
+  >;
+  repository: DesktopWorkspaceWorkbenchRepository;
+  reporterService?: Pick<IReporterService, "trackEvents">;
+  richTextAtService: IDesktopRichTextAtService;
+  runtimeApi: DesktopRuntimeApi;
+  wallpaperApi: DesktopWallpaperApi;
+}
+
+export interface WorkspaceWorkbenchHostExternalDependencies {
+  browserApi?: DesktopBrowserApi;
+  dockPreviewCacheApi: DesktopDockPreviewCacheApi;
+  eventStreamClient?: NextopdEventStreamClient;
+  hostFilesApi: DesktopHostFilesApi;
+  hostWindowApi: DesktopHostWindowApi;
+  hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenSettingsRequest">;
+  nextopdClient: NextopdClient;
+  platformApi: Pick<
+    DesktopPlatformApi,
+    "homeDirectory" | "os" | "resolveDroppedPaths"
+  >;
+  reporterService?: Pick<IReporterService, "trackEvents">;
+  runtimeApi: DesktopRuntimeApi;
+  wallpaperApi: DesktopWallpaperApi;
+}
+
+export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostService {
+  readonly _serviceBrand = undefined;
+  private readonly cachedHostInputs = new Map<
+    string,
+    CachedWorkspaceWorkbenchHostInput
+  >();
+  private readonly dependencies: WorkspaceWorkbenchHostServiceDependencies;
+  private readonly pendingWallpaperDisplayModes = new Map<
+    string,
+    WorkspaceWallpaperDisplayMode
+  >();
+  private readonly pendingWallpaperIds = new Map<
+    string,
+    WorkspaceWallpaperId
+  >();
+  private readonly wallpaperListeners = new Set<() => void>();
+  private wallpaperRevision = 0;
+  private readonly wallpaperWriteQueues = new Map<string, Promise<void>>();
+  private customWallpaperFullUrl: string | null = null;
+  private customWallpaperThumbnailUrl: string | null = null;
+  private customWallpaperStatus: WorkspaceCustomWallpaperStatus = "idle";
+  private customWallpaperSnapshot: WorkspaceCustomWallpaperSnapshot = {
+    exists: false,
+    fullUrl: null,
+    status: "idle",
+    thumbnailUrl: null
+  };
+  private readonly windowCloseRequestTracker =
+    createWindowCloseRequestTracker();
+
+  constructor(
+    externalDependencies: WorkspaceWorkbenchHostExternalDependencies,
+    richTextAtService: IDesktopRichTextAtService,
+    agentProviderStatusService: AgentProviderStatusService,
+    workspaceAgentActivityService: WorkspaceAgentActivityService,
+    appCenterService: IWorkspaceAppCenterService,
+    workspaceFileManagerService: IWorkspaceFileManagerService,
+    workspaceUserProjectService: IWorkspaceUserProjectService
+  ) {
+    const repository = createDesktopWorkspaceWorkbenchRepository(
+      externalDependencies.nextopdClient
+    );
+    this.dependencies = {
+      agentProviderStatusService,
+      appCenterService,
+      browserApi: externalDependencies.browserApi,
+      browserService: createWorkspaceBrowserService({
+        browserApi: externalDependencies.browserApi
+      }),
+      dockPreviewCacheApi: externalDependencies.dockPreviewCacheApi,
+      eventStreamClient: externalDependencies.eventStreamClient,
+      hostFilesApi: externalDependencies.hostFilesApi,
+      hostWindowApi: externalDependencies.hostWindowApi,
+      hostWorkspaceApi: externalDependencies.hostWorkspaceApi,
+      workspaceFileManagerService,
+      workspaceUserProjectService,
+      workspaceAgentActivityService,
+      nextopdClient: externalDependencies.nextopdClient,
+      platformApi: externalDependencies.platformApi,
+      repository,
+      reporterService: externalDependencies.reporterService,
+      richTextAtService,
+      runtimeApi: externalDependencies.runtimeApi,
+      wallpaperApi: externalDependencies.wallpaperApi
+    };
+    this.dependencies.repository.subscribe(() => {
+      this.notifyWallpaperListeners();
+    });
+    void this.loadCustomWallpaper();
+  }
+
+  approveWindowClose(): Promise<void> {
+    return this.dependencies.hostWindowApi.approveClose();
+  }
+
+  onWindowCloseRequest(listener: () => void): () => void {
+    return this.dependencies.hostWindowApi.onCloseRequest(listener);
+  }
+
+  onOpenSettingsRequest(
+    listener: (request: DesktopWorkspaceOpenSettingsRequest) => void
+  ): () => void {
+    return this.dependencies.hostWorkspaceApi.onOpenSettingsRequest(listener);
+  }
+
+  readWallpaperDisplayMode(workspaceId: string) {
+    return (
+      this.pendingWallpaperDisplayModes.get(workspaceId) ??
+      readWorkspaceWallpaperDisplayModeFromSnapshot(
+        this.dependencies.repository.readCached(workspaceId)
+      )
+    );
+  }
+
+  readWallpaperId(workspaceId: string) {
+    return (
+      this.pendingWallpaperIds.get(workspaceId) ??
+      readWorkspaceWallpaperIdFromSnapshot(
+        this.dependencies.repository.readCached(workspaceId)
+      )
+    );
+  }
+
+  requestWindowClose(input: {
+    confirmCloseGuard(
+      request: WorkbenchHostCloseDialogRequest
+    ): Promise<boolean>;
+    host: WorkbenchHostHandle | null;
+    hostInput: WorkspaceWorkbenchHostInput;
+  }): Promise<void> {
+    return confirmWorkspaceWindowClose({
+      ...input,
+      requestApprovedClose: () => this.approveWindowClose(),
+      tracker: this.windowCloseRequestTracker
+    });
+  }
+
+  writeWallpaperDisplayMode(
+    workspaceId: string,
+    displayMode: WorkspaceWallpaperDisplayMode
+  ) {
+    this.pendingWallpaperDisplayModes.set(workspaceId, displayMode);
+    this.enqueueWallpaperPersist(workspaceId);
+  }
+
+  writeWallpaperId(workspaceId: string, wallpaperId: WorkspaceWallpaperId) {
+    this.pendingWallpaperIds.set(workspaceId, wallpaperId);
+    this.enqueueWallpaperPersist(workspaceId);
+  }
+
+  private enqueueWallpaperPersist(workspaceId: string): void {
+    this.notifyWallpaperListeners();
+
+    const previousWrite =
+      this.wallpaperWriteQueues.get(workspaceId) ?? Promise.resolve();
+    const nextWrite = previousWrite
+      .catch(noop)
+      .then(() => this.persistPendingWallpaperSettings(workspaceId));
+    this.wallpaperWriteQueues.set(workspaceId, nextWrite);
+    void nextWrite.finally(() => {
+      if (this.wallpaperWriteQueues.get(workspaceId) === nextWrite) {
+        this.wallpaperWriteQueues.delete(workspaceId);
+      }
+    });
+  }
+
+  getWallpaperRevision(): number {
+    return this.wallpaperRevision;
+  }
+
+  getCustomWallpaperSnapshot(): WorkspaceCustomWallpaperSnapshot {
+    return this.customWallpaperSnapshot;
+  }
+
+  getCustomWallpaperUrl(): string | null {
+    return this.customWallpaperFullUrl;
+  }
+
+  async uploadCustomWallpaper(file: File): Promise<void> {
+    this.setCustomWallpaperStatus("saving");
+    try {
+      const processed = await processCustomWallpaperImage(file);
+      const saved = await this.dependencies.wallpaperApi.setCustom(processed);
+      this.applyCustomWallpaperImage(saved);
+      this.reportCustomWallpaperUploaded({
+        height: processed.height,
+        mimeType: processed.mimeType,
+        width: processed.width
+      });
+      this.setCustomWallpaperStatus("idle");
+    } catch (error) {
+      this.setCustomWallpaperStatus("idle");
+      throw error;
+    }
+  }
+
+  async removeCustomWallpaper(): Promise<void> {
+    this.setCustomWallpaperStatus("removing");
+    try {
+      await this.dependencies.wallpaperApi.clearCustom();
+      this.clearCustomWallpaperUrls();
+      this.customWallpaperStatus = "idle";
+      this.refreshCustomWallpaperSnapshot();
+      this.notifyWallpaperListeners();
+      this.reportCustomWallpaperCleared();
+    } catch (error) {
+      this.setCustomWallpaperStatus("idle");
+      throw error;
+    }
+  }
+
+  private async loadCustomWallpaper(): Promise<void> {
+    try {
+      const stored = await this.dependencies.wallpaperApi.getCustom();
+      if (stored) {
+        this.applyCustomWallpaperImage(stored);
+      }
+    } catch (error) {
+      void this.dependencies.runtimeApi.logRendererDiagnostic({
+        details: { message: String(error) },
+        event: "custom-wallpaper.load.failed",
+        level: "warn",
+        source: "workspace-workbench-host-service"
+      });
+    }
+  }
+
+  private reportCustomWallpaperUploaded(input: {
+    height: number;
+    mimeType: string;
+    width: number;
+  }): void {
+    const reporterService = this.dependencies.reporterService;
+    if (!reporterService) {
+      return;
+    }
+
+    void new SettingsCustomWallpaperUploadedReporter(
+      {
+        height: input.height,
+        mimeType: input.mimeType,
+        width: input.width
+      },
+      {
+        reporterService
+      }
+    ).report();
+  }
+
+  private reportCustomWallpaperCleared(): void {
+    const reporterService = this.dependencies.reporterService;
+    if (!reporterService) {
+      return;
+    }
+
+    void new SettingsCustomWallpaperClearedReporter(
+      {},
+      {
+        reporterService
+      }
+    ).report();
+  }
+
+  private applyCustomWallpaperImage(image: DesktopCustomWallpaperImage): void {
+    this.clearCustomWallpaperUrls();
+    this.customWallpaperFullUrl = createObjectUrlFromBytes(
+      image.bytes,
+      image.mimeType
+    );
+    this.customWallpaperThumbnailUrl = createObjectUrlFromBytes(
+      image.thumbnailBytes,
+      image.thumbnailMimeType
+    );
+    this.refreshCustomWallpaperSnapshot();
+    this.notifyWallpaperListeners();
+  }
+
+  private clearCustomWallpaperUrls(): void {
+    if (this.customWallpaperFullUrl) {
+      URL.revokeObjectURL(this.customWallpaperFullUrl);
+      this.customWallpaperFullUrl = null;
+    }
+    if (this.customWallpaperThumbnailUrl) {
+      URL.revokeObjectURL(this.customWallpaperThumbnailUrl);
+      this.customWallpaperThumbnailUrl = null;
+    }
+  }
+
+  private setCustomWallpaperStatus(
+    status: WorkspaceCustomWallpaperStatus
+  ): void {
+    this.customWallpaperStatus = status;
+    this.refreshCustomWallpaperSnapshot();
+    this.notifyWallpaperListeners();
+  }
+
+  private refreshCustomWallpaperSnapshot(): void {
+    this.customWallpaperSnapshot = {
+      exists: this.customWallpaperFullUrl !== null,
+      fullUrl: this.customWallpaperFullUrl,
+      status: this.customWallpaperStatus,
+      thumbnailUrl: this.customWallpaperThumbnailUrl
+    };
+  }
+
+  getHomeDirectory(): string {
+    return this.dependencies.platformApi.homeDirectory;
+  }
+
+  async ensureAgentProviderStatusesLoaded(): Promise<void> {
+    await this.dependencies.agentProviderStatusService.ensureLoaded();
+  }
+
+  subscribeWallpaperChanges(listener: () => void): () => void {
+    this.wallpaperListeners.add(listener);
+    return () => {
+      this.wallpaperListeners.delete(listener);
+    };
+  }
+
+  private async persistPendingWallpaperSettings(
+    workspaceId: string
+  ): Promise<void> {
+    const wallpaperId = this.pendingWallpaperIds.get(workspaceId);
+    const displayMode = this.pendingWallpaperDisplayModes.get(workspaceId);
+    if (wallpaperId === undefined && displayMode === undefined) {
+      return;
+    }
+
+    const cachedSnapshot = this.dependencies.repository.readCached(workspaceId);
+    let snapshot = cachedSnapshot
+      ? cachedSnapshot
+      : await this.dependencies.repository.load(workspaceId);
+    if (wallpaperId !== undefined) {
+      snapshot = writeWorkspaceWallpaperIdToSnapshot(snapshot, wallpaperId);
+    }
+    if (displayMode !== undefined) {
+      snapshot = writeWorkspaceWallpaperDisplayModeToSnapshot(
+        snapshot,
+        displayMode
+      );
+    }
+
+    const savedSnapshot = await this.dependencies.repository.save(
+      workspaceId,
+      snapshot
+    );
+
+    if (
+      wallpaperId !== undefined &&
+      this.pendingWallpaperIds.get(workspaceId) === wallpaperId
+    ) {
+      this.pendingWallpaperIds.delete(workspaceId);
+    }
+    if (
+      displayMode !== undefined &&
+      this.pendingWallpaperDisplayModes.get(workspaceId) === displayMode
+    ) {
+      this.pendingWallpaperDisplayModes.delete(workspaceId);
+    }
+
+    const wallpaperPersisted =
+      wallpaperId === undefined ||
+      readWorkspaceWallpaperIdFromSnapshot(savedSnapshot) === wallpaperId;
+    const displayModePersisted =
+      displayMode === undefined ||
+      readWorkspaceWallpaperDisplayModeFromSnapshot(savedSnapshot) ===
+        displayMode;
+    if (wallpaperPersisted && displayModePersisted) {
+      this.notifyWallpaperListeners();
+    }
+  }
+
+  private notifyWallpaperListeners(): void {
+    this.wallpaperRevision += 1;
+    for (const listener of this.wallpaperListeners) {
+      listener();
+    }
+  }
+
+  createHostInput(input: {
+    appI18n: I18nRuntime<string>;
+    confirmCloseGuard: (
+      request: WorkbenchHostCloseDialogRequest
+    ) => Promise<boolean> | boolean;
+    i18n: WorkspaceWorkbenchDesktopI18nRuntime;
+    appCenterRevision?: number;
+    dockIconStyle: DesktopDockIconStyle;
+    themeAppearance: DesktopThemeAppearance;
+    defaultAgentProvider?: string | null;
+    renderFilesNodeBody: (
+      context: WorkspaceWorkbenchBodyRendererContext
+    ) => ReactNode;
+    workspaceId: string;
+  }): WorkspaceWorkbenchHostInput {
+    const cached = this.cachedHostInputs.get(input.workspaceId);
+    if (
+      cached &&
+      cached.appI18n === input.appI18n &&
+      cached.defaultAgentProvider === input.defaultAgentProvider &&
+      cached.dockIconStyle === input.dockIconStyle &&
+      cached.i18n === input.i18n &&
+      cached.themeAppearance === input.themeAppearance
+    ) {
+      cached.confirmCloseGuardRef.current = input.confirmCloseGuard;
+      cached.renderFilesNodeBodyRef.current = input.renderFilesNodeBody;
+      return this.createHostInputWithDynamicDockEntries(
+        cached,
+        cached.baseHostInput,
+        {
+          appI18n: input.appI18n,
+          desktopI18n: cached.i18n
+        }
+      );
+    }
+
+    const renderFilesNodeBodyRef = {
+      current: input.renderFilesNodeBody
+    };
+    const confirmCloseGuardRef = {
+      current: input.confirmCloseGuard
+    };
+    const dockPreviewCache = createDesktopWorkspaceDockPreviewCache(
+      this.dependencies.dockPreviewCacheApi
+    );
+    const dockIcons = resolveWorkspaceDockIconSet({
+      appearance: input.themeAppearance,
+      style: input.dockIconStyle
+    });
+    const contributionRegistry =
+      createWorkspaceWorkbenchContributionRegistryResult({
+        context: {
+          appI18n: input.appI18n,
+          appCenterService: this.dependencies.appCenterService,
+          browserApi: this.dependencies.browserApi,
+          browserService: this.dependencies.browserService,
+          confirmCloseGuard: (request) => confirmCloseGuardRef.current(request),
+          dockPreviewCache,
+          defaultAgentProvider: input.defaultAgentProvider,
+          dockIcons: {
+            agents: dockIcons.agents,
+            applications: dockIcons.applications,
+            appIconUrl: dockIcons.appIconUrl,
+            browser: dockIcons.browser,
+            files: createWorkspaceDockImageIcon(dockIcons.files),
+            issue: dockIcons.issue,
+            terminal: createWorkspaceDockImageIcon(dockIcons.terminal)
+          },
+          hostFilesApi: this.dependencies.hostFilesApi,
+          i18n: input.i18n,
+          agentProviderStatusService:
+            this.dependencies.agentProviderStatusService,
+          eventStreamClient: this.dependencies.eventStreamClient,
+          workspaceFileManagerService:
+            this.dependencies.workspaceFileManagerService,
+          workspaceUserProjectService:
+            this.dependencies.workspaceUserProjectService,
+          workspaceAgentActivityService:
+            this.dependencies.workspaceAgentActivityService,
+          nextopdClient: this.dependencies.nextopdClient,
+          platformApi: this.dependencies.platformApi,
+          reporterService: this.dependencies.reporterService,
+          renderFilesNodeBody: (context) =>
+            renderFilesNodeBodyRef.current(context),
+          richTextAtService: this.dependencies.richTextAtService,
+          runtimeApi: this.dependencies.runtimeApi,
+          workspaceId: input.workspaceId
+        },
+        factories: defaultWorkspaceWorkbenchContributionFactories
+      });
+
+    const baseHostInput: WorkspaceWorkbenchHostInput = {
+      contributions: contributionRegistry.contributions,
+      debugDiagnostics: createWorkspaceWorkbenchDebugDiagnostics(
+        this.dependencies.runtimeApi,
+        input.workspaceId
+      ),
+      dockPreviewCache,
+      dockStateSource: createWorkspaceAgentProviderDockStateSource({
+        agentProviderStatusService:
+          this.dependencies.agentProviderStatusService,
+        i18n: input.i18n
+      }),
+      prepareHostClose: resolveWorkbenchHostPrepareClose(
+        contributionRegistry.contributions
+      ),
+      createWindowCloseDialogRequest: (effects) =>
+        createWindowCloseDialogRequest({
+          effects,
+          i18n: input.i18n
+        }),
+      onDockEntryAction: ({ actionId, entryId, host }) =>
+        runWorkspaceAgentProviderDockAction({
+          actionId,
+          agentProviderStatusService:
+            this.dependencies.agentProviderStatusService,
+          entryId,
+          host,
+          workspaceId: input.workspaceId
+        }),
+      onDockEntryClick: ({ entryId }) =>
+        reportWorkspaceAppOpenedFromDockEntry({
+          appCenterService: this.dependencies.appCenterService,
+          entryId,
+          reporterService: this.dependencies.reporterService
+        }),
+      snapshotRepository: this.dependencies.repository,
+      workspaceId: input.workspaceId
+    };
+    this.cachedHostInputs.set(input.workspaceId, {
+      appI18n: input.appI18n,
+      baseHostInput,
+      confirmCloseGuardRef,
+      defaultAgentProvider: input.defaultAgentProvider,
+      dockIconStyle: input.dockIconStyle,
+      dockIcons,
+      i18n: input.i18n,
+      renderFilesNodeBodyRef,
+      themeAppearance: input.themeAppearance
+    });
+    const nextCached = this.cachedHostInputs.get(input.workspaceId);
+    return this.createHostInputWithDynamicDockEntries(
+      nextCached,
+      baseHostInput,
+      {
+        appI18n: input.appI18n,
+        desktopI18n: input.i18n
+      }
+    );
+  }
+
+  private createHostInputWithDynamicDockEntries(
+    cached: CachedWorkspaceWorkbenchHostInput | undefined,
+    baseHostInput: WorkspaceWorkbenchHostInput,
+    input: {
+      appI18n: I18nRuntime<string>;
+      desktopI18n: WorkspaceWorkbenchDesktopI18nRuntime;
+    }
+  ): WorkspaceWorkbenchHostInput {
+    const dockSignature = createWorkspaceDynamicDockSignature({
+      agentProviderRevision:
+        this.dependencies.agentProviderStatusService.getRevision(),
+      apps: this.dependencies.appCenterService.store.apps
+    });
+    if (
+      cached?.dynamicHostInput &&
+      cached.dynamicAppI18n === input.appI18n &&
+      cached.dynamicDockSignature === dockSignature
+    ) {
+      return cached.dynamicHostInput;
+    }
+
+    const captureBrowserPreview = this.dependencies.browserApi?.capturePreview;
+    const dynamicHostInput = createWorkspaceWorkbenchHostInputWithDockEntries(
+      baseHostInput,
+      [
+        ...assignWorkspaceTaskDockSection(
+          createWorkspaceAppCenterDockEntries({
+            appCenterIconUrl: cached?.dockIcons.applications,
+            appCenterService: this.dependencies.appCenterService,
+            captureWebviewPreview: captureBrowserPreview
+              ? (nodeId) => captureBrowserPreview({ nodeId })
+              : undefined,
+            i18n: input.appI18n,
+            resolveAppIconUrl: cached?.dockIcons.appIconUrl
+          })
+        ),
+        createWorkspaceLaunchpadDockEntry({
+          agentStatuses:
+            this.dependencies.agentProviderStatusService.getSnapshot().statuses,
+          apps: this.dependencies.appCenterService.store.apps,
+          fallbackIconUrl: cached?.dockIcons.applications ?? "",
+          label: input.desktopI18n.t(
+            workspaceWorkbenchDesktopI18nKeys.launchpad.dockLabel
+          ),
+          tileIconUrls: cached?.dockIcons.launchpadTiles
+        })
+      ]
+    );
+    if (cached) {
+      cached.dynamicAppI18n = input.appI18n;
+      cached.dynamicDockSignature = dockSignature;
+      cached.dynamicHostInput = dynamicHostInput;
+    }
+    return dynamicHostInput;
+  }
+}
+
+// Avoid decorator syntax so the renderer Babel pass can parse this file.
+IDesktopRichTextAtService(WorkspaceWorkbenchHostService, undefined, 1);
+IAgentProviderStatusService(WorkspaceWorkbenchHostService, undefined, 2);
+IWorkspaceAgentActivityService(WorkspaceWorkbenchHostService, undefined, 3);
+IWorkspaceAppCenterService(WorkspaceWorkbenchHostService, undefined, 4);
+IWorkspaceFileManagerService(WorkspaceWorkbenchHostService, undefined, 5);
+IWorkspaceUserProjectService(WorkspaceWorkbenchHostService, undefined, 6);
+
+interface CachedWorkspaceWorkbenchHostInput {
+  appI18n: I18nRuntime<string>;
+  baseHostInput: WorkspaceWorkbenchHostInput;
+  confirmCloseGuardRef: {
+    current: (
+      request: WorkbenchHostCloseDialogRequest
+    ) => Promise<boolean> | boolean;
+  };
+  defaultAgentProvider?: string | null;
+  dockIconStyle: DesktopDockIconStyle;
+  dockIcons: WorkspaceDockIconSet;
+  dynamicAppI18n?: I18nRuntime<string>;
+  dynamicDockSignature?: string;
+  dynamicHostInput?: WorkspaceWorkbenchHostInput;
+  i18n: WorkspaceWorkbenchDesktopI18nRuntime;
+  renderFilesNodeBodyRef: {
+    current: (context: WorkspaceWorkbenchBodyRendererContext) => ReactNode;
+  };
+  themeAppearance: DesktopThemeAppearance;
+}
+
+function noop(): void {}
+
+function createObjectUrlFromBytes(bytes: Uint8Array, mimeType: string): string {
+  const copy = new Uint8Array(bytes);
+  return URL.createObjectURL(new Blob([copy], { type: mimeType }));
+}
+
+function createWorkspaceWorkbenchDebugDiagnostics(
+  runtimeApi: DesktopRuntimeApi,
+  workspaceId: string
+): WorkbenchDebugDiagnostics {
+  return {
+    isEnabled() {
+      try {
+        return (
+          globalThis.localStorage?.getItem("nextopWorkbenchDebugFrames") === "1"
+        );
+      } catch {
+        return false;
+      }
+    },
+    log(input) {
+      return runtimeApi.logRendererDiagnostic({
+        details: input.details,
+        event: input.event,
+        level: input.level,
+        source: input.source,
+        workspaceId
+      });
+    }
+  };
+}

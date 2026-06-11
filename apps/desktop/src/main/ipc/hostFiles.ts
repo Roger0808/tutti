@@ -1,0 +1,133 @@
+import {
+  desktopIpcChannels,
+  type DesktopCreateUserDocumentsProjectDirectoryInput,
+  type DesktopTerminalLinkPathPayload,
+  type DesktopWorkspaceFilePathPayload
+} from "../../shared/contracts/ipc";
+import { app, shell } from "electron";
+import { writeFilesToSystemClipboard } from "../host/clipboardFiles.ts";
+import type { DesktopFileDialogAccess } from "../host/desktopFileDialogAccess";
+import { createWorkspaceFileHostAccess } from "../host/workspaceFileHostAccess.ts";
+import { registerDesktopIpcHandler } from "./handle";
+import { resolveOwnerWindowFromEvent } from "./ownerWindow";
+
+export interface HostFilesIpcDependencies {
+  fileDialogs: Pick<
+    DesktopFileDialogAccess,
+    | "selectAppArchive"
+    | "selectAppArchiveExportPath"
+    | "selectAppIconImage"
+    | "selectDirectory"
+    | "selectUploadFiles"
+  >;
+}
+
+export function registerHostFilesIpc(deps: HostFilesIpcDependencies): void {
+  const hostAccess = createWorkspaceFileHostAccess({
+    getDocumentsPath: () => app.getPath("documents")
+  });
+
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.createUserDocumentsProjectDirectory,
+    (_event, payload: DesktopCreateUserDocumentsProjectDirectoryInput) =>
+      hostAccess.createUserDocumentsProjectDirectory(payload)
+  );
+
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.openFile,
+    (_event, payload: DesktopWorkspaceFilePathPayload) =>
+      hostAccess.openFile(payload)
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.listOpenWithApplications,
+    (_event, payload: DesktopWorkspaceFilePathPayload) =>
+      hostAccess.listOpenWithApplications(payload)
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.openFileWithApplication,
+    (
+      _event,
+      payload: DesktopWorkspaceFilePathPayload & { applicationPath: string }
+    ) => hostAccess.openFileWithApplication(payload)
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.openFileWithOtherApplication,
+    (
+      _event,
+      payload: DesktopWorkspaceFilePathPayload & {
+        applicationPickerPrompt?: string;
+      }
+    ) => hostAccess.openFileWithOtherApplication(payload)
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.openFileInBrowser,
+    (_event, payload: DesktopWorkspaceFilePathPayload) =>
+      hostAccess.openFileInBrowser(payload)
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.resolveWorkspaceFileFileUrl,
+    (_event, payload: DesktopWorkspaceFilePathPayload) =>
+      hostAccess.resolveWorkspaceFileFileUrl(payload)
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.revealInFolder,
+    (_event, payload: string) => shell.showItemInFolder(payload)
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.revealWorkspaceFile,
+    (_event, payload: DesktopWorkspaceFilePathPayload) =>
+      hostAccess.revealWorkspaceFile(payload)
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.openTerminalLink,
+    (_event, payload: DesktopTerminalLinkPathPayload) =>
+      hostAccess.openTerminalLink(payload)
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.openExternal,
+    (_event, payload: string) => hostAccess.openExternal(payload)
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.readLocalFileText,
+    (_event, payload: string) => hostAccess.readLocalFileText(payload)
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.readPreviewFile,
+    (_event, payload: DesktopWorkspaceFilePathPayload) =>
+      hostAccess.readPreviewFile(payload)
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.selectDirectory,
+    (event) =>
+      deps.fileDialogs.selectDirectory(resolveOwnerWindowFromEvent(event))
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.selectAppArchive,
+    (event) =>
+      deps.fileDialogs.selectAppArchive(resolveOwnerWindowFromEvent(event))
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.selectAppArchiveExportPath,
+    (event, payload) =>
+      deps.fileDialogs.selectAppArchiveExportPath(
+        payload.defaultPath,
+        resolveOwnerWindowFromEvent(event)
+      )
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.selectAppIconImage,
+    (event) =>
+      deps.fileDialogs.selectAppIconImage(resolveOwnerWindowFromEvent(event))
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.selectUploadFiles,
+    (event) =>
+      deps.fileDialogs.selectUploadFiles(resolveOwnerWindowFromEvent(event))
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.copyFilesToClipboard,
+    (_event, payload: string[]) => {
+      writeFilesToSystemClipboard(payload);
+    }
+  );
+}

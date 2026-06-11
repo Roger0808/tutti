@@ -1,0 +1,141 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { NextopdProtocolError } from "@tutti-os/client-nextopd-ts";
+import { createI18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import { createWorkspaceWorkbenchDesktopI18nRuntime } from "../../../../../../shared/i18n/index.ts";
+import { en } from "../../../../../../shared/i18n/locales/en.ts";
+import {
+  shouldCloseTerminalNodeAfterCloseFailure,
+  shouldCloseTerminalNodeAfterError
+} from "./terminalWindowClose.ts";
+import {
+  createTerminalCloseDialogRequest,
+  createWindowCloseDialogRequest
+} from "./workspaceCloseDialogRequests.ts";
+
+test("shouldCloseTerminalNodeAfterError closes stale terminal nodes", () => {
+  assert.equal(
+    shouldCloseTerminalNodeAfterError(
+      new NextopdProtocolError({
+        code: "workspace_terminal_not_found",
+        reason: "workspace_terminal_not_found",
+        statusCode: 404
+      })
+    ),
+    true
+  );
+
+  assert.equal(
+    shouldCloseTerminalNodeAfterError(
+      new NextopdProtocolError({
+        code: "workspace_terminal_not_running" as never,
+        reason: "workspace_terminal_not_running",
+        statusCode: 400
+      })
+    ),
+    true
+  );
+});
+
+test("shouldCloseTerminalNodeAfterError keeps terminal node open for other failures", () => {
+  assert.equal(
+    shouldCloseTerminalNodeAfterError(new Error("network failed")),
+    false
+  );
+});
+
+test("shouldCloseTerminalNodeAfterCloseFailure closes only ended stale terminals", () => {
+  assert.equal(
+    shouldCloseTerminalNodeAfterCloseFailure({
+      error: new Error("close guard transport failed"),
+      status: "detached"
+    }),
+    false
+  );
+
+  assert.equal(
+    shouldCloseTerminalNodeAfterCloseFailure({
+      error: new Error("terminate failed"),
+      status: "failed"
+    }),
+    true
+  );
+
+  assert.equal(
+    shouldCloseTerminalNodeAfterCloseFailure({
+      error: new Error("network failed"),
+      status: "running"
+    }),
+    false
+  );
+});
+
+test("createTerminalCloseDialogRequest maps terminal guard into a generic close dialog request", () => {
+  const appI18n = createI18nRuntime({
+    dictionaries: [
+      {
+        workspace: {
+          workbenchDesktop: en.workspace.workbenchDesktop
+        }
+      }
+    ]
+  });
+  const desktopI18n = createWorkspaceWorkbenchDesktopI18nRuntime(appI18n);
+
+  const request = createTerminalCloseDialogRequest({
+    guard: {
+      leaderCommand: "npm run dev",
+      reason: "running",
+      requiresConfirmation: true,
+      status: "running"
+    },
+    i18n: desktopI18n
+  });
+
+  assert.deepEqual(request, {
+    cancelLabel: "Cancel",
+    confirmLabel: "Terminate terminal",
+    description:
+      "This terminal still has running work. Terminating it will stop the session.",
+    details: "npm run dev",
+    scope: "node",
+    title: "Terminate terminal?",
+    variant: "destructive"
+  });
+});
+
+test("createWindowCloseDialogRequest summarizes close effects for window close", () => {
+  const appI18n = createI18nRuntime({
+    dictionaries: [
+      {
+        workspace: {
+          workbenchDesktop: en.workspace.workbenchDesktop
+        }
+      }
+    ]
+  });
+  const desktopI18n = createWorkspaceWorkbenchDesktopI18nRuntime(appI18n);
+
+  const request = createWindowCloseDialogRequest({
+    effects: [
+      {
+        description: "This terminal still has running work.",
+        nodeId: "terminal:1",
+        title: "Terminal A",
+        typeId: "workspace-terminal"
+      }
+    ],
+    i18n: desktopI18n
+  });
+
+  assert.deepEqual(request, {
+    cancelLabel: "Keep window open",
+    confirmLabel: "Close window",
+    description:
+      "This window still has running work. Closing it will dismiss the room while background work may continue.",
+    details: "Terminal A\nThis terminal still has running work.",
+    scope: "window",
+    title: "Close this window?",
+    variant: "destructive"
+  });
+});

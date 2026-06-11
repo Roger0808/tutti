@@ -1,0 +1,38 @@
+export {
+  classifyWorkspaceFilePreviewKind,
+  copyWorkspaceFilePreviewBytes,
+  createWorkspaceFilePreviewLoadedState,
+  decodeWorkspaceTextFile,
+  formatWorkspacePreviewByteLimit,
+  isWorkspaceFileBrowserOpenable,
+  isWorkspacePreviewFileTooLarge,
+  isWorkspaceTextFileTooLarge,
+  looksLikeBinaryText,
+  normalizeWorkspaceFilePreviewBytes,
+  resolveWorkspaceFileActivationTarget,
+  resolveWorkspaceFileExtension,
+  resolveWorkspaceFilePreviewReadiness,
+  resolveWorkspaceFileVisualKind,
+  resolveWorkspaceImageMimeType,
+  type WorkspaceFilePreviewLoadedResult,
+  type WorkspaceFilePreviewReadiness,
+  type WorkspaceFileVisualKind,
+  workspaceFilePreviewMaxBytes,
+  workspaceFileTextMaxBytes
+} from "./internal/model/fileKinds.ts";
+export {
+  formatWorkspaceFileBytes,
+  formatWorkspaceFileModifiedTime,
+  splitWorkspaceFileName
+} from "./internal/model/formatters.ts";
+export {
+  buildWorkspaceFileBreadcrumbs,
+  filterVisibleWorkspaceEntries,
+  isHiddenWorkspaceDirectoryEntry,
+  normalizeWorkspaceFilePath,
+  sortWorkspaceEntries,
+  workspaceFileDirectory,
+  workspaceFileName,
+  workspaceFilePathHasHiddenSegment
+} from "./internal/model/paths.ts";
+export { validateWorkspaceFileEntryName } from "./internal/model/validation.ts";

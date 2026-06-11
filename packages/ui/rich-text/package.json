@@ -1,0 +1,96 @@
+{
+  "name": "@tutti-os/ui-rich-text",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core/index.ts",
+    "./editor": "./src/editor/index.ts",
+    "./plugins": "./src/plugins/index.ts",
+    "./types": "./src/types/index.ts"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/ui/rich-text"
+  },
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@tutti-os/ui-i18n-runtime": "workspace:*",
+    "@tutti-os/ui-system": "workspace:*",
+    "@tiptap/core": "^3.23.6",
+    "@tiptap/extension-document": "^3.23.6",
+    "@tiptap/extension-hard-break": "^3.23.6",
+    "@tiptap/extension-paragraph": "^3.23.6",
+    "@tiptap/extension-text": "^3.23.6",
+    "@tiptap/react": "^3.23.6"
+  },
+  "devDependencies": {
+    "@tutti-os/config-tsconfig": "workspace:*",
+    "@types/node": "^24.0.1",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "typescript": "^5.8.3"
+  },
+  "peerDependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "nextop": {
+    "tailwindSourceRoot": "src"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./core": {
+        "types": "./dist/core/index.d.ts",
+        "import": "./dist/core/index.js"
+      },
+      "./editor": {
+        "types": "./dist/editor/index.d.ts",
+        "import": "./dist/editor/index.js"
+      },
+      "./plugins": {
+        "types": "./dist/plugins/index.d.ts",
+        "import": "./dist/plugins/index.js"
+      },
+      "./types": {
+        "types": "./dist/types/index.d.ts",
+        "import": "./dist/types/index.js"
+      }
+    },
+    "types": "./dist/index.d.ts",
+    "typesVersions": {
+      "*": {
+        "core": [
+          "./dist/core/index.d.ts"
+        ],
+        "editor": [
+          "./dist/editor/index.d.ts"
+        ],
+        "plugins": [
+          "./dist/plugins/index.d.ts"
+        ],
+        "types": [
+          "./dist/types/index.d.ts"
+        ]
+      }
+    }
+  }
+}

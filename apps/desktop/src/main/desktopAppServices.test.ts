@@ -1,0 +1,250 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import {
+  createDesktopAppServices,
+  type CreateDesktopAppServicesOptions
+} from "./desktopAppServices.ts";
+import type { DesktopDaemonRuntime } from "./desktopDaemonRuntime";
+import type { DesktopHostServices } from "./desktopHostServices";
+import type { DesktopLogger } from "./logging";
+import type { AppUpdateService } from "./update/appUpdateService";
+
+function createLogger(events: string[]): DesktopLogger {
+  return {
+    debug() {},
+    info() {},
+    warn(message) {
+      events.push(`warn:${message}`);
+    },
+    error(message) {
+      events.push(`error:${message}`);
+    },
+    async close() {}
+  };
+}
+
+function createOptions(events: string[]): CreateDesktopAppServicesOptions {
+  return {
+    fallbackLocale: "en",
+    logger: createLogger(events),
+    preloadPath: "/tmp/preload.mjs",
+    rendererUrl: "http://127.0.0.1:5173"
+  };
+}
+
+function createHostServices(): DesktopHostServices {
+  return {
+    fileDialogs: {
+      async selectAppArchive() {
+        throw new Error("not used");
+      },
+      async selectAppArchiveExportPath() {
+        throw new Error("not used");
+      },
+      async selectAppIconImage() {
+        throw new Error("not used");
+      },
+      async selectDirectory() {
+        throw new Error("not used");
+      },
+      async selectUploadFiles() {
+        throw new Error("not used");
+      }
+    },
+    preferences: {
+      getAgentComposerDefaultsByProvider() {
+        return {};
+      },
+      getDefaultAgentProvider() {
+        return "codex";
+      },
+      getDockIconStyle() {
+        return "default";
+      },
+      getDockPlacement() {
+        return "bottom";
+      },
+      getLocale() {
+        return "en";
+      },
+      getSleepPreventionMode() {
+        return "never";
+      },
+      getThemeSource() {
+        return "system";
+      },
+      subscribe() {
+        return () => undefined;
+      },
+      sync() {
+        return undefined;
+      }
+    },
+    workspaceLaunch: {
+      async openStartupWindow() {},
+      async showWorkspace() {}
+    }
+  };
+}
+
+function createUpdateService(): AppUpdateService {
+  return {
+    async checkForUpdates() {
+      throw new Error("not used");
+    },
+    async configure() {
+      throw new Error("not used");
+    },
+    dispose() {},
+    async downloadUpdate() {
+      throw new Error("not used");
+    },
+    getState() {
+      throw new Error("not used");
+    },
+    async installUpdate() {
+      throw new Error("not used");
+    },
+    onStateChanged() {
+      return () => undefined;
+    }
+  };
+}
+
+test("createDesktopAppServices starts nextopd before creating host services", async () => {
+  const events: string[] = [];
+  const daemonRuntime: DesktopDaemonRuntime = {
+    daemonEndpoint: {
+      accessToken: "token",
+      boundAddr: null,
+      listenerInfoPath: "/tmp/nextopd.listener.json",
+      pidPath: "/tmp/nextopd.pid",
+      requestedAddr: "127.0.0.1:0"
+    },
+    nextopd: {
+      async getHealth() {
+        throw new Error("not used");
+      },
+      async start() {
+        events.push("nextopd:start");
+      },
+      async stop() {}
+    },
+    nextopdClient: {
+      async createWorkspace() {
+        throw new Error("not used");
+      },
+      async getStartupWorkspace() {
+        throw new Error("not used");
+      },
+      async listWorkspaces() {
+        throw new Error("not used");
+      },
+      async openWorkspace() {
+        throw new Error("not used");
+      }
+    } as unknown as DesktopDaemonRuntime["nextopdClient"]
+  };
+
+  const services = await createDesktopAppServices(createOptions(events), {
+    createDaemonRuntime() {
+      events.push("daemon-runtime:create");
+      return daemonRuntime;
+    },
+    async createHostServices() {
+      events.push("host-services:create");
+      return createHostServices();
+    },
+    createUpdateService() {
+      events.push("update-service:create");
+      return createUpdateService();
+    },
+    ensureCliShim() {
+      events.push("cli-shim:ensure");
+      return {
+        installed: false,
+        shimPath: "/tmp/nextop/bin/nextop"
+      };
+    }
+  });
+
+  assert.deepEqual(events, [
+    "daemon-runtime:create",
+    "update-service:create",
+    "nextopd:start",
+    "cli-shim:ensure",
+    "host-services:create"
+  ]);
+  assert.equal(services.nextopd, daemonRuntime.nextopd);
+  assert.equal(services.nextopdClient, daemonRuntime.nextopdClient);
+});
+
+test("createDesktopAppServices rejects when managed nextopd fails to start", async () => {
+  const events: string[] = [];
+  const startError = new Error("listener info timeout");
+  const dir = await mkdtemp(join(tmpdir(), "nextop-desktop-services-"));
+  const startupFailureQueuePath = join(dir, "startup-failures.jsonl");
+  const daemonRuntime: DesktopDaemonRuntime = {
+    daemonEndpoint: {
+      accessToken: "token",
+      boundAddr: null,
+      listenerInfoPath: "/tmp/nextopd.listener.json",
+      pidPath: "/tmp/nextopd.pid",
+      requestedAddr: "127.0.0.1:0"
+    },
+    nextopd: {
+      async getHealth() {
+        throw new Error("not used");
+      },
+      async start() {
+        events.push("nextopd:start");
+        throw startError;
+      },
+      async stop() {}
+    },
+    nextopdClient: {} as DesktopDaemonRuntime["nextopdClient"]
+  };
+
+  await assert.rejects(
+    createDesktopAppServices(
+      {
+        ...createOptions(events),
+        startupFailureQueuePath
+      },
+      {
+        createDaemonRuntime() {
+          events.push("daemon-runtime:create");
+          return daemonRuntime;
+        },
+        async createHostServices() {
+          events.push("host-services:create");
+          return createHostServices();
+        },
+        createUpdateService() {
+          events.push("update-service:create");
+          return createUpdateService();
+        },
+        ensureCliShim() {
+          events.push("cli-shim:ensure");
+          return {
+            installed: false,
+            shimPath: "/tmp/nextop/bin/nextop"
+          };
+        }
+      }
+    ),
+    startError
+  );
+
+  assert.deepEqual(events, [
+    "daemon-runtime:create",
+    "update-service:create",
+    "nextopd:start",
+    "error:failed to start managed nextopd"
+  ]);
+  const queued = await readFile(startupFailureQueuePath, "utf8");
+  assert.match(queued, /"name":"daemon.startup_failed"/);
+});

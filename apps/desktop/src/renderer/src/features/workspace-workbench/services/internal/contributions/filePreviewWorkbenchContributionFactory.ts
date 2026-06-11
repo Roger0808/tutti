@@ -1,0 +1,17 @@
+import type { DesktopWorkbenchContributionFactory } from "../workspaceWorkbenchContributionFactory";
+import { createWorkspaceFilePreviewContribution } from "../workspaceFilePreviewContribution.ts";
+
+export const filePreviewWorkbenchContributionFactory: DesktopWorkbenchContributionFactory =
+  {
+    id: "workspace-file-preview",
+    order: 15,
+    create(context) {
+      return createWorkspaceFilePreviewContribution({
+        appI18n: context.appI18n,
+        i18n: context.i18n,
+        nextopdClient: context.nextopdClient,
+        reporterService: context.reporterService,
+        workspaceId: context.workspaceId
+      });
+    }
+  };

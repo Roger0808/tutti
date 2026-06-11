@@ -1,0 +1,15 @@
+go 1.24.3
+
+toolchain go1.24.5
+
+use ./services/nextopd
+
+use ./apps/cli
+
+use ./packages/workbench/service
+
+use ./packages/workspace/files
+
+use ./packages/workspace/issues
+
+use ./packages/agent/daemon

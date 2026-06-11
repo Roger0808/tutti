@@ -1,0 +1,148 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type { IssueManagerFeature } from "../../../../core/index.ts";
+import {
+  resolveIssueManagerAgentProviderOptions,
+  resolveIssueManagerControllerCapabilities
+} from "./IssueManagerControllerCapabilities.ts";
+
+test("controller capabilities detect reference, upload, and invite support from the feature seam", () => {
+  const capabilities = resolveIssueManagerControllerCapabilities(
+    createFeature({
+      fileAdapter: {
+        listDirectory: async () => ({
+          directoryPath: "/",
+          entries: []
+        }),
+        requestUpload: async () => []
+      },
+      shareAdapter: {
+        createIssueLink: async () => "https://example.com"
+      },
+      ui: {
+        showInviteCollaborator: true
+      }
+    })
+  );
+
+  assert.deepEqual(capabilities, {
+    canOpenAgentSessions: false,
+    canInviteCollaborators: true,
+    canReferenceWorkspaceFiles: true,
+    canSelectExecutionDirectory: false,
+    canUploadWorkspaceFiles: true
+  });
+});
+
+test("controller capabilities disable invite and file support when adapters are missing", () => {
+  const capabilities = resolveIssueManagerControllerCapabilities(
+    createFeature({
+      fileAdapter: undefined,
+      shareAdapter: undefined,
+      ui: {
+        showInviteCollaborator: false
+      }
+    })
+  );
+
+  assert.deepEqual(capabilities, {
+    canOpenAgentSessions: false,
+    canInviteCollaborators: false,
+    canReferenceWorkspaceFiles: false,
+    canSelectExecutionDirectory: false,
+    canUploadWorkspaceFiles: false
+  });
+});
+
+test("agent provider options default to Codex only when no host adapter is configured", () => {
+  assert.deepEqual(
+    resolveIssueManagerAgentProviderOptions(
+      createFeature({
+        fileAdapter: undefined,
+        shareAdapter: undefined,
+        ui: {
+          showInviteCollaborator: false
+        }
+      })
+    ),
+    [{ label: "Codex", provider: "codex" }]
+  );
+});
+
+test("controller capabilities detect agent session opener support", () => {
+  const capabilities = resolveIssueManagerControllerCapabilities({
+    ...createFeature({
+      fileAdapter: undefined,
+      shareAdapter: undefined,
+      ui: {
+        showInviteCollaborator: false
+      }
+    }),
+    agentSessionOpener: {
+      openSession() {}
+    }
+  });
+
+  assert.equal(capabilities.canOpenAgentSessions, true);
+});
+
+test("agent provider options preserve an explicitly empty host list", () => {
+  assert.deepEqual(
+    resolveIssueManagerAgentProviderOptions({
+      ...createFeature({
+        fileAdapter: undefined,
+        shareAdapter: undefined,
+        ui: {
+          showInviteCollaborator: false
+        }
+      }),
+      agentProviderOptions: {
+        getOptions: () => []
+      }
+    }),
+    []
+  );
+});
+
+test("agent provider options trim labels and providers from the host adapter", () => {
+  assert.deepEqual(
+    resolveIssueManagerAgentProviderOptions({
+      ...createFeature({
+        fileAdapter: undefined,
+        shareAdapter: undefined,
+        ui: {
+          showInviteCollaborator: false
+        }
+      }),
+      agentProviderOptions: {
+        getOptions: () => [
+          {
+            iconUrl: " claude.png ",
+            label: "  Claude Code ",
+            provider: " claude-code "
+          },
+          { label: "   ", provider: " gemini " },
+          { label: "missing provider", provider: "   " }
+        ]
+      }
+    }),
+    [
+      { iconUrl: "claude.png", label: "Claude Code", provider: "claude-code" },
+      { label: "gemini", provider: "gemini" }
+    ]
+  );
+});
+
+function createFeature(
+  overrides: Pick<IssueManagerFeature, "fileAdapter" | "shareAdapter" | "ui">
+): IssueManagerFeature {
+  return {
+    agentRunner: {} as IssueManagerFeature["agentRunner"],
+    backend: {} as IssueManagerFeature["backend"],
+    fileAdapter: overrides.fileAdapter,
+    i18n: {} as IssueManagerFeature["i18n"],
+    identityAdapter: {} as IssueManagerFeature["identityAdapter"],
+    shareAdapter: overrides.shareAdapter,
+    ui: overrides.ui
+  };
+}

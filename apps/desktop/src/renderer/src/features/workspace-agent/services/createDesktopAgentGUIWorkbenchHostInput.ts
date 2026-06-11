@@ -1,0 +1,128 @@
+import type {
+  AgentActivityRuntime,
+  AgentGUIProps,
+  AgentHostInputApi
+} from "@tutti-os/agent-gui";
+import type { NextopdClient } from "@tutti-os/client-nextopd-ts";
+import type {
+  DesktopHostFilesApi,
+  DesktopPlatformApi,
+  DesktopRuntimeApi
+} from "@preload/types";
+import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
+import type { IReporterService } from "@renderer/features/analytics";
+import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
+import { createDesktopWorkspaceFileReferenceAdapter } from "../../workspace-file-manager/services/createDesktopWorkspaceFileReferenceAdapter.ts";
+import { createDesktopAgentActivityRuntime } from "./createDesktopAgentActivityRuntime.ts";
+import { createDesktopAgentHostApi } from "./createDesktopAgentHostApi.ts";
+import { createAgentWorkspaceFileReferenceTracker } from "./internal/agentWorkspaceFileReferenceAnalytics.ts";
+import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
+import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
+
+export interface DesktopAgentGUIWorkbenchHostInput {
+  agentActivityRuntime: AgentActivityRuntime;
+  agentHostApi: AgentHostInputApi;
+  richTextAtProviders: NonNullable<AgentGUIProps["richTextAtProviders"]>;
+  trackWorkspaceFileReferences: (input: {
+    provider?: string | null;
+    references: readonly WorkspaceFileReference[];
+  }) => Promise<void>;
+  workspaceFileReferenceAdapter: NonNullable<
+    AgentGUIProps["workspaceFileReferenceAdapter"]
+  >;
+}
+
+export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
+  agentHostApi?: AgentHostInputApi | null;
+  hostFilesApi: DesktopHostFilesApi;
+  nextopdClient: NextopdClient;
+  platformApi: Pick<
+    DesktopPlatformApi,
+    "homeDirectory" | "os" | "resolveDroppedPaths"
+  >;
+  reporterNow?: () => number;
+  reporterService?: Pick<IReporterService, "trackEvents">;
+  richTextAtService: IDesktopRichTextAtService;
+  runtimeApi: DesktopRuntimeApi;
+  workspaceAgentActivityService: IWorkspaceAgentActivityService;
+  workspaceUserProjectService?: IWorkspaceUserProjectService;
+  workspaceId: string;
+}
+
+export function createDesktopAgentGUIWorkbenchHostInput({
+  agentHostApi,
+  hostFilesApi,
+  nextopdClient,
+  platformApi,
+  reporterNow,
+  reporterService,
+  richTextAtService,
+  runtimeApi,
+  workspaceAgentActivityService,
+  workspaceUserProjectService,
+  workspaceId
+}: CreateDesktopAgentGUIWorkbenchHostInputInput): DesktopAgentGUIWorkbenchHostInput {
+  const resolvedAgentHostApi =
+    agentHostApi ??
+    createDesktopAgentHostApi({
+      hostFilesApi,
+      nextopdClient,
+      platformApi,
+      reporterNow,
+      reporterService,
+      runtimeApi,
+      workspaceAgentActivityService,
+      workspaceUserProjectService,
+      workspaceId
+    });
+  const warmupOpenclawGateway = resolvedAgentHostApi.runtime
+    ?.warmupOpenclawGateway
+    ? (
+        input?: Parameters<
+          NonNullable<AgentActivityRuntime["warmupOpenclawGateway"]>
+        >[0]
+      ) =>
+        resolvedAgentHostApi.runtime?.warmupOpenclawGateway?.(
+          input
+        ) as ReturnType<
+          NonNullable<AgentActivityRuntime["warmupOpenclawGateway"]>
+        >
+    : undefined;
+  const agentActivityRuntime = createDesktopAgentActivityRuntime(
+    workspaceAgentActivityService,
+    {
+      reporterNow,
+      reporterService,
+      runtimeApi,
+      warmupOpenclawGateway,
+      workspaceUserProjectService
+    }
+  );
+  const workspaceFileReferenceTracker =
+    createAgentWorkspaceFileReferenceTracker({
+      reporterNow,
+      reporterService
+    });
+  return {
+    agentActivityRuntime,
+    agentHostApi: resolvedAgentHostApi,
+    richTextAtProviders: richTextAtService.getProviders({
+      capabilities: [
+        "workspace-file",
+        "workspace-issue",
+        "agent-session",
+        "workspace-app"
+      ],
+      surface: "composer",
+      target: "agent-gui",
+      workspaceId
+    }),
+    trackWorkspaceFileReferences: (input) =>
+      workspaceFileReferenceTracker.track(input),
+    workspaceFileReferenceAdapter: createDesktopWorkspaceFileReferenceAdapter({
+      hostFilesApi,
+      nextopdClient,
+      workspaceId
+    })
+  };
+}

@@ -1,0 +1,248 @@
+import type { NextopdClient } from "@tutti-os/client-nextopd-ts";
+import type {
+  AgentHostInputApi,
+  AgentProviderProbeListInput
+} from "@tutti-os/agent-gui";
+import type {
+  DesktopHostFilesApi,
+  DesktopPlatformApi,
+  DesktopRuntimeApi
+} from "@preload/types";
+import {
+  pathFromFileReadPayload,
+  unavailableHostMethod
+} from "./internal/desktopAgentHostProjection.ts";
+import {
+  createDesktopAgentHostAgentSessionsApi,
+  type AgentSessionEventListener
+} from "./internal/createDesktopAgentHostAgentSessionsApi.ts";
+import { createDesktopAgentHostWorkspaceAgentsApi } from "./internal/createDesktopAgentHostWorkspaceAgentsApi.ts";
+import { desktopAgentHostWorkspaceState } from "./internal/desktopAgentHostWorkspaceState.ts";
+import {
+  DesktopWorkspaceUserProjectService,
+  type IWorkspaceUserProjectService
+} from "../../workspace-user-project/index.ts";
+import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project";
+import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
+import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface.ts";
+
+interface CreateDesktopAgentHostApiInput {
+  hostFilesApi: DesktopHostFilesApi;
+  nextopdClient: NextopdClient;
+  platformApi: Pick<
+    DesktopPlatformApi,
+    "homeDirectory" | "os" | "resolveDroppedPaths"
+  >;
+  runtimeApi: DesktopRuntimeApi;
+  reporterNow?: () => number;
+  reporterService?: Pick<IReporterService, "trackEvents">;
+  workspaceAgentActivityService: IWorkspaceAgentActivityService;
+  workspaceUserProjectService?: IWorkspaceUserProjectService;
+  workspaceId: string;
+}
+
+interface AgentHostUserProjectCompat {
+  createdAtUnixMs?: number;
+  id: string;
+  label: string;
+  lastUsedAtUnixMs?: number;
+  path: string;
+  updatedAtUnixMs?: number;
+}
+
+export function createDesktopAgentHostApi({
+  hostFilesApi,
+  nextopdClient,
+  platformApi,
+  reporterNow,
+  reporterService,
+  runtimeApi,
+  workspaceAgentActivityService,
+  workspaceUserProjectService,
+  workspaceId
+}: CreateDesktopAgentHostApiInput): AgentHostInputApi {
+  const sessionEventListeners = new Set<AgentSessionEventListener>();
+  const workspaceState = desktopAgentHostWorkspaceState(workspaceId);
+
+  const emitAgentSessionEvent = (event: unknown): void => {
+    for (const listener of sessionEventListeners) {
+      listener(event);
+    }
+  };
+
+  const agentActivityService = workspaceAgentActivityService;
+  agentActivityService.onSessionEvent(workspaceId, emitAgentSessionEvent);
+  const userProjectService =
+    workspaceUserProjectService ??
+    new DesktopWorkspaceUserProjectService({
+      hostFilesApi,
+      nextopdClient,
+      platformApi,
+      workspaceId
+    });
+  const agentSessions = createDesktopAgentHostAgentSessionsApi({
+    agentActivityService,
+    reporterNow,
+    reporterService,
+    runtimeApi,
+    sessionEventListeners,
+    workspaceUserProjectService: userProjectService,
+    workspaceId,
+    workspaceState
+  });
+  const workspaceAgents = createDesktopAgentHostWorkspaceAgentsApi({
+    agentActivityService,
+    workspaceId,
+    workspaceState
+  });
+  const api = {
+    meta: {
+      allowWhatsNewInTests: false,
+      appVersion: null,
+      hostCaptionControls: false,
+      isPackaged: false,
+      isTest: false,
+      mainPid: null,
+      pendingWorkspaceIssueNavigation: null,
+      pendingWorkspaceRequestId: null,
+      platform: platformApi.os,
+      workspaceId,
+      runtime: "electron",
+      windowsPty: null
+    },
+    clipboard: {
+      writeText: (text: string) => navigator.clipboard.writeText(text)
+    },
+    debug: {
+      logRuntimeDiagnostics: (payload: unknown) => {
+        void runtimeApi.logTerminalDiagnostic({
+          details: { payload: JSON.stringify(payload).slice(0, 1000) },
+          event: "agent.gui.runtime.diagnostic",
+          level: "debug",
+          workspaceId
+        });
+      },
+      logTerminalDiagnostics: (payload: unknown) => {
+        void runtimeApi.logTerminalDiagnostic({
+          details: { payload: JSON.stringify(payload).slice(0, 1000) },
+          event: "agent.gui.terminal.diagnostic",
+          level: "debug",
+          workspaceId
+        });
+      }
+    },
+    filesystem: {
+      readFileText: async (payload: { path?: string; uri?: string }) => {
+        const path = pathFromFileReadPayload(payload);
+        return hostFilesApi.readLocalFileText(path);
+      }
+    },
+    account: {
+      batchGetUserInfo: () => Promise.resolve({ users: [] })
+    },
+    agentGuiBatch: {
+      exportRun: unavailableHostMethod("agentGuiBatch.exportRun")
+    },
+    workspaceAgentProbes: {
+      list: (payload: AgentProviderProbeListInput) =>
+        runtimeApi.listWorkspaceAgentProbes({
+          ...payload,
+          workspaceId: payload.workspaceId || workspaceId
+        })
+    },
+    userProjects: {
+      checkPath: (payload: { path: string }) =>
+        userProjectService.checkProjectPath(payload.path),
+      create: async (payload: { name: string }) =>
+        toAgentHostUserProject(
+          await userProjectService.createProject(payload.name)
+        ),
+      getDefaultSelection: () => userProjectService.getDefaultSelection(),
+      rememberDefaultSelection: (payload: { path: string | null }) => {
+        return userProjectService.rememberDefaultSelection(payload);
+      },
+      isNoProjectPath: (payload: { path: string }) =>
+        userProjectService.isNoProjectPath(payload.path),
+      list: async () => {
+        await userProjectService.ensureLoaded();
+        return {
+          projects: userProjectService.store.projects.map(
+            toAgentHostUserProject
+          )
+        };
+      },
+      prepareSelection: async (payload: {
+        projectLocked: boolean;
+        selectedPath: string | null;
+      }) => {
+        const prepared = await userProjectService.prepareSelection(payload);
+        return {
+          ...prepared,
+          projects: prepared.projects.map(toAgentHostUserProject)
+        };
+      },
+      remove: (payload: { path: string }) =>
+        userProjectService.removeProjectPath(payload.path),
+      subscribe: (listener: () => void) =>
+        userProjectService.subscribe(listener),
+      use: async (payload: { path: string }) =>
+        toAgentHostUserProject(
+          await userProjectService.registerProjectPath(payload.path)
+        )
+    },
+    agentSessions,
+    onHostEvent: () => () => {},
+    workspaceAgents,
+    runtime: {
+      getBaseUrl: async () => (await runtimeApi.getBackendConfig()).baseUrl
+    },
+    windowChrome: {
+      closeCurrentWindow: async () => {},
+      setTheme: async () => {}
+    },
+    workspace: {
+      copyPath: async (payload: { path: string }) => {
+        await navigator.clipboard.writeText(payload.path);
+      },
+      ensureDirectory: async () => {},
+      getPathForFile: (file: File) =>
+        platformApi.resolveDroppedPaths([file])[0] ?? file.name,
+      readFile: async (payload: { path: string }) => {
+        const bytes = await hostFilesApi.readPreviewFile(
+          workspaceId,
+          payload.path
+        );
+        return {
+          bytes,
+          content: new TextDecoder().decode(bytes),
+          path: payload.path
+        };
+      },
+      selectContextEntries: () => Promise.resolve({ entries: [] }),
+      selectDirectory: async () => {
+        const path = await hostFilesApi.selectDirectory();
+        return path ? { path } : null;
+      },
+      selectFiles: async () =>
+        (await hostFilesApi.selectUploadFiles()).map((path) => ({ path })),
+      writeFile: async (payload: { content?: string; path: string }) => {
+        await nextopdClient.writeWorkspaceFileText(workspaceId, {
+          content: payload.content ?? "",
+          path: payload.path
+        });
+      },
+      writeFileText: async (payload: { content: string; path: string }) => {
+        await nextopdClient.writeWorkspaceFileText(workspaceId, payload);
+      }
+    }
+  };
+
+  return api;
+}
+
+function toAgentHostUserProject(
+  project: WorkspaceUserProject
+): AgentHostUserProjectCompat {
+  const { lastUsedAtUnixMs, ...rest } = project;
+  return lastUsedAtUnixMs == null ? rest : { ...rest, lastUsedAtUnixMs };
+}

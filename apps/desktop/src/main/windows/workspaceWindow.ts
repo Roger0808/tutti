@@ -1,0 +1,222 @@
+import { BrowserWindow, app, shell } from "electron";
+import {
+  installBrowserWebviewSecurity,
+  isBrowserNodeWebviewAttach
+} from "@tutti-os/browser-node/electron-main";
+import { registerBrowserGuestWebContents } from "../browser/browserGuestRegistry";
+import { registerWorkspaceAppGuestWebContents } from "../ipc/workspaceAppContext";
+import { resolveDesktopWindowBackgroundColor } from "../desktopTheme";
+import { getDesktopLogger } from "../logging";
+import type { DesktopLocale } from "../../shared/i18n";
+import type { DesktopDockPlacement } from "../../shared/preferences/index.ts";
+import type { DesktopThemeState } from "../../shared/theme/index.ts";
+import {
+  applyDesktopWindowIntent,
+  createWorkspaceWindowIntent,
+  encodeDesktopWindowIntent
+} from "../../shared/contracts/windowIntent";
+import { desktopIpcChannels } from "../../shared/contracts/ipc";
+import { installWorkspaceWindowDevelopmentReloadShortcut } from "./workspaceWindowReload.ts";
+import { resolvePackagedWorkspaceRendererIndexPath } from "./workspaceWindowPaths.ts";
+
+export const workspaceAppBrowserPartitionPrefix = "persist:nextop-app:";
+
+export interface CreateWorkspaceWindowOptions {
+  browserNodeGuestPreloadPath?: string;
+  enableDevelopmentReloadShortcut?: boolean;
+  locale: DesktopLocale;
+  preloadPath: string;
+  rendererUrl?: string;
+  theme: DesktopThemeState;
+  workspaceAppPreloadPath?: string;
+  workspaceID: string;
+}
+
+const workspaceWindows = new Set<BrowserWindow>();
+
+export function createWorkspaceWindow(
+  options: CreateWorkspaceWindowOptions
+): BrowserWindow {
+  const logger = getDesktopLogger();
+  const workspaceWindow = new BrowserWindow({
+    backgroundColor: resolveDesktopWindowBackgroundColor(),
+    width: 1280,
+    height: 840,
+    minWidth: 960,
+    minHeight: 640,
+    show: false,
+    ...(process.platform === "darwin"
+      ? {
+          titleBarStyle: "hidden" as const,
+          trafficLightPosition: {
+            x: 12,
+            y: 18
+          }
+        }
+      : {}),
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: options.preloadPath,
+      sandbox: false,
+      webviewTag: true
+    }
+  });
+
+  const pendingWorkspaceAppGuestPartitions: (string | null | undefined)[] = [];
+  installBrowserWebviewSecurity({
+    allowedSessionPartitions: {
+      additionalAllowedPrefixes: [workspaceAppBrowserPartitionPrefix]
+    },
+    contents: workspaceWindow.webContents,
+    logger,
+    onGuestAttached: (guestContents) => {
+      registerBrowserGuestWebContents(workspaceWindow, guestContents, logger);
+      const workspaceAppPartition = pendingWorkspaceAppGuestPartitions.shift();
+      if (workspaceAppPartition !== undefined) {
+        registerWorkspaceAppGuestWebContents(
+          workspaceWindow,
+          guestContents,
+          logger,
+          workspaceAppPartition
+        );
+      }
+    },
+    openExternal: (url) => shell.openExternal(url),
+    resolvePreload({ params }) {
+      if (
+        options.workspaceAppPreloadPath &&
+        isWorkspaceAppSessionPartition(params.partition)
+      ) {
+        pendingWorkspaceAppGuestPartitions.push(params.partition);
+        logger.info("applying workspace app guest preload", {
+          partition: params.partition ?? null,
+          preloadPath: options.workspaceAppPreloadPath,
+          src: params.src ?? null
+        });
+        return options.workspaceAppPreloadPath;
+      }
+      if (
+        options.browserNodeGuestPreloadPath &&
+        isBrowserNodeWebviewAttach(params, {
+          additionalAllowedPrefixes: [workspaceAppBrowserPartitionPrefix]
+        }) &&
+        !isWorkspaceAppSessionPartition(params.partition)
+      ) {
+        logger.info("applying browser node guest preload", {
+          partition: params.partition ?? null,
+          preloadPath: options.browserNodeGuestPreloadPath,
+          src: params.src ?? null
+        });
+        return options.browserNodeGuestPreloadPath;
+      }
+      return null;
+    }
+  });
+
+  installWorkspaceWindowCloseRequest(workspaceWindow);
+  installWorkspaceWindowDevelopmentReloadShortcut(workspaceWindow, {
+    enabled: options.enableDevelopmentReloadShortcut === true
+  });
+  workspaceWindows.add(workspaceWindow);
+  workspaceWindow.once("closed", () => {
+    workspaceWindows.delete(workspaceWindow);
+  });
+
+  if (process.platform === "darwin") {
+    let resizeLayoutTimer: ReturnType<typeof setTimeout> | null = null;
+    const sendHostWindowLayout = () => {
+      if (
+        workspaceWindow.isDestroyed() ||
+        workspaceWindow.webContents.isDestroyed()
+      ) {
+        return;
+      }
+
+      workspaceWindow.webContents.send(desktopIpcChannels.host.window.layout, {
+        compactTitlebar: workspaceWindow.isFullScreen()
+      });
+    };
+    const scheduleHostWindowLayout = () => {
+      if (resizeLayoutTimer !== null) {
+        clearTimeout(resizeLayoutTimer);
+      }
+
+      resizeLayoutTimer = setTimeout(() => {
+        resizeLayoutTimer = null;
+        sendHostWindowLayout();
+      }, 50);
+    };
+
+    workspaceWindow.on("maximize", sendHostWindowLayout);
+    workspaceWindow.on("unmaximize", sendHostWindowLayout);
+    workspaceWindow.on("enter-full-screen", sendHostWindowLayout);
+    workspaceWindow.on("leave-full-screen", sendHostWindowLayout);
+    workspaceWindow.on("resize", scheduleHostWindowLayout);
+    workspaceWindow.webContents.on("did-finish-load", sendHostWindowLayout);
+  }
+
+  return workspaceWindow;
+}
+
+export function loadWorkspaceWindowContent(
+  workspaceWindow: BrowserWindow,
+  options: Pick<
+    CreateWorkspaceWindowOptions,
+    "locale" | "rendererUrl" | "workspaceID"
+  > & {
+    dockPlacement: DesktopDockPlacement;
+    theme: DesktopThemeState;
+  }
+): void {
+  const windowIntentSearchOptions = {
+    dockPlacement: options.dockPlacement,
+    locale: options.locale,
+    themeAppearance: options.theme.appearance,
+    themeSource: options.theme.source
+  };
+  if (options.rendererUrl) {
+    void workspaceWindow.loadURL(
+      applyDesktopWindowIntent(
+        options.rendererUrl,
+        createWorkspaceWindowIntent(options.workspaceID),
+        windowIntentSearchOptions
+      )
+    );
+    return;
+  }
+
+  void workspaceWindow.loadFile(
+    resolvePackagedWorkspaceRendererIndexPath(app.getAppPath()),
+    {
+      search: encodeDesktopWindowIntent(
+        createWorkspaceWindowIntent(options.workspaceID),
+        windowIntentSearchOptions
+      )
+    }
+  );
+}
+
+function installWorkspaceWindowCloseRequest(
+  workspaceWindow: BrowserWindow
+): void {
+  workspaceWindow.on("close", (event) => {
+    if (
+      workspaceWindow.isDestroyed() ||
+      workspaceWindow.webContents.isDestroyed()
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    workspaceWindow.webContents.send(
+      desktopIpcChannels.host.window.closeRequest
+    );
+  });
+}
+
+function isWorkspaceAppSessionPartition(
+  partition: string | undefined
+): boolean {
+  return (partition ?? "").startsWith(workspaceAppBrowserPartitionPrefix);
+}

@@ -1,0 +1,70 @@
+import type { DesktopLocale } from "../shared/i18n";
+import {
+  createDesktopHostPreferencesState,
+  type DesktopHostPreferencesState
+} from "./desktopHostPreferences";
+import {
+  createDesktopFileDialogAccess,
+  type DesktopFileDialogAccess
+} from "./host/desktopFileDialogAccess";
+import {
+  createWorkspaceLaunch,
+  type WorkspaceLaunch
+} from "./host/workspaceLaunch";
+import { createWorkspaceLaunchDesktopAdapters } from "./host/workspaceLaunchDesktopAdapters";
+import type { DesktopLogger } from "./logging";
+import { getDesktopThemeState } from "./desktopTheme";
+import type { NextopdClient } from "@tutti-os/client-nextopd-ts";
+
+export interface DesktopHostServices {
+  fileDialogs: DesktopFileDialogAccess;
+  preferences: DesktopHostPreferencesState;
+  workspaceLaunch: WorkspaceLaunch;
+}
+
+export interface CreateDesktopHostServicesOptions {
+  browserNodeGuestPreloadPath?: string;
+  enableDevelopmentReloadShortcut?: boolean;
+  fallbackLocale: DesktopLocale;
+  logger: DesktopLogger;
+  nextopdClient: Pick<
+    NextopdClient,
+    "getDesktopPreferences" | "getStartupWorkspace" | "putDesktopPreferences"
+  >;
+  preloadPath: string;
+  rendererUrl?: string;
+  workspaceAppPreloadPath?: string;
+}
+
+export async function createDesktopHostServices(
+  options: CreateDesktopHostServicesOptions
+): Promise<DesktopHostServices> {
+  const preferences = await createDesktopHostPreferencesState({
+    fallbackLocale: options.fallbackLocale,
+    logger: options.logger,
+    nextopdClient: options.nextopdClient
+  });
+  const fileDialogs = createDesktopFileDialogAccess({
+    getLocale: () => preferences.getLocale()
+  });
+  const workspaceLaunch = createWorkspaceLaunch({
+    adapters: createWorkspaceLaunchDesktopAdapters({
+      enableDevelopmentReloadShortcut:
+        options.enableDevelopmentReloadShortcut === true,
+      browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
+      getDockPlacement: () => preferences.getDockPlacement(),
+      getLocale: () => preferences.getLocale(),
+      getTheme: () => getDesktopThemeState(preferences.getThemeSource()),
+      preloadPath: options.preloadPath,
+      rendererUrl: options.rendererUrl,
+      workspaceAppPreloadPath: options.workspaceAppPreloadPath
+    }),
+    nextopdClient: options.nextopdClient
+  });
+
+  return {
+    fileDialogs,
+    preferences,
+    workspaceLaunch
+  };
+}

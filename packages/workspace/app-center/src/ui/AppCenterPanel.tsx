@@ -1,0 +1,1525 @@
+import type { FormEvent, ReactElement } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
+import {
+  Badge,
+  BareIconButton,
+  Button,
+  CloseIcon,
+  ConfirmationDialog,
+  DeleteIcon,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  FileCreateIcon,
+  Input,
+  OpenSessionsIcon as OpenSessionsFilledIcon,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectSplitColumn,
+  SelectSplitColumnItems,
+  SelectSplitColumnLabel,
+  SelectSplitDivider,
+  SelectSplitLayout,
+  SelectTrigger,
+  SelectValue,
+  SectionTabs,
+  Spinner,
+  Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  ToastProvider,
+  ToastRoot,
+  ToastTitle,
+  UploadIcon as ImportIcon,
+  cn
+} from "@tutti-os/ui-system";
+import type {
+  AppCenterViewModel,
+  WorkspaceAppFactoryJobViewModel
+} from "../contracts/viewModel.ts";
+import {
+  sortMyAppsByCreatedDesc,
+  sortRecommendedApps,
+  sortRecommendedAppsForAllTab
+} from "../core/appCenterAppOrdering.ts";
+import {
+  resolveDefaultAppFactoryProvider,
+  resolveSelectedAppFactoryProvider
+} from "../core/appFactoryProviderDefaults.ts";
+import type { AppCenterI18nRuntime } from "../i18n/appCenterI18n.ts";
+import {
+  AppCard,
+  type AppCenterFactoryProviderConfiguration,
+  type AppCenterFactoryProviderOption,
+  type AppCenterFactoryPermissionOption,
+  type AppCenterHostActions
+} from "./AppCard.tsx";
+
+type FactoryTemplateID = "weather" | "lookup" | "system" | "news" | "gomoku";
+export type AppCenterAppTab = "recommended" | "my";
+type RecommendedCategoryTabID =
+  | "all"
+  | "product-design"
+  | "office"
+  | "tools"
+  | "content-creation";
+type FactorySettingsMenu = "modelReasoning" | "permission" | "provider";
+
+interface FactoryTemplate {
+  readonly id: FactoryTemplateID;
+  readonly defaultNameKey: string;
+  readonly promptKey: string;
+  readonly titleKey: string;
+}
+
+const factoryTemplates: readonly FactoryTemplate[] = [
+  {
+    defaultNameKey: "factory.templates.weather.defaultName",
+    id: "weather",
+    promptKey: "factory.templates.weather.prompt",
+    titleKey: "factory.templates.weather.title"
+  },
+  {
+    defaultNameKey: "factory.templates.lookup.defaultName",
+    id: "lookup",
+    promptKey: "factory.templates.lookup.prompt",
+    titleKey: "factory.templates.lookup.title"
+  },
+  {
+    defaultNameKey: "factory.templates.system.defaultName",
+    id: "system",
+    promptKey: "factory.templates.system.prompt",
+    titleKey: "factory.templates.system.title"
+  },
+  {
+    defaultNameKey: "factory.templates.news.defaultName",
+    id: "news",
+    promptKey: "factory.templates.news.prompt",
+    titleKey: "factory.templates.news.title"
+  },
+  {
+    defaultNameKey: "factory.templates.gomoku.defaultName",
+    id: "gomoku",
+    promptKey: "factory.templates.gomoku.prompt",
+    titleKey: "factory.templates.gomoku.title"
+  }
+];
+
+const recommendedCategoryTabDefinitions: readonly (
+  | {
+      readonly id: "all";
+      readonly labelKey: null;
+    }
+  | {
+      readonly id: Exclude<RecommendedCategoryTabID, "all">;
+      readonly labelKey: string;
+    }
+)[] = [
+  { id: "all", labelKey: null },
+  { id: "tools", labelKey: "categories.tools" },
+  { id: "content-creation", labelKey: "categories.contentCreation" },
+  { id: "product-design", labelKey: "categories.productDesign" },
+  { id: "office", labelKey: "categories.office" }
+];
+
+export interface AppCenterPanelProps {
+  readonly actions: AppCenterHostActions;
+  readonly activeAppTab?: AppCenterAppTab;
+  readonly catalogStatus?: "failed" | "loading";
+  readonly className?: string;
+  readonly copy: AppCenterI18nRuntime;
+  readonly defaultAgentProvider?: string | null;
+  readonly errorMessage?: string;
+  readonly loadProviderConfiguration?: (
+    provider: string
+  ) => Promise<AppCenterFactoryProviderConfiguration>;
+  readonly onActiveAppTabChange?: (tab: AppCenterAppTab) => void;
+  readonly providerErrorMessage?: string | null;
+  readonly providerLoading?: boolean;
+  readonly providerOptions?: readonly AppCenterFactoryProviderOption[];
+  readonly viewModel: AppCenterViewModel;
+}
+
+export function AppCenterPanel({
+  actions,
+  activeAppTab: controlledActiveAppTab,
+  catalogStatus,
+  className,
+  copy,
+  defaultAgentProvider = null,
+  errorMessage,
+  loadProviderConfiguration,
+  onActiveAppTabChange,
+  providerErrorMessage = null,
+  providerLoading = false,
+  providerOptions = [],
+  viewModel
+}: AppCenterPanelProps): ReactElement {
+  const promptTextareaId = useId();
+  const [factoryDialogOpen, setFactoryDialogOpen] = useState(false);
+  const [deleteAppBusy, setDeleteAppBusy] = useState(false);
+  const [pendingDeleteApp, setPendingDeleteApp] = useState<{
+    id: string;
+    installed: boolean;
+    name: string;
+  } | null>(null);
+  const [uninstallAppBusy, setUninstallAppBusy] = useState(false);
+  const [pendingUninstallApp, setPendingUninstallApp] = useState<{
+    id: string;
+    name: string;
+    sourceKind: AppCenterViewModel["apps"][number]["sourceKind"];
+  } | null>(null);
+  const [displayName, setDisplayName] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [providerConfiguration, setProviderConfiguration] =
+    useState<AppCenterFactoryProviderConfiguration | null>(null);
+  const [providerConfigurationStatus, setProviderConfigurationStatus] =
+    useState<"idle" | "loading" | "ready">("idle");
+  const [openFactorySettingsMenu, setOpenFactorySettingsMenu] =
+    useState<FactorySettingsMenu | null>(null);
+  const [selectedModel, setSelectedModel] = useState("");
+  const [selectedPermissionModeId, setSelectedPermissionModeId] = useState("");
+  const [selectedReasoningEffort, setSelectedReasoningEffort] = useState("");
+  const normalizedProviderOptions = useMemo(
+    () =>
+      providerOptions
+        .map((option) => {
+          const provider = option.provider.trim();
+          const label = option.label.trim() || provider;
+          if (!provider || !label) {
+            return null;
+          }
+          return {
+            ...option,
+            ...(option.disabledReason?.trim()
+              ? { disabledReason: option.disabledReason.trim() }
+              : {}),
+            ...(option.iconUrl?.trim()
+              ? { iconUrl: option.iconUrl.trim() }
+              : {}),
+            label,
+            provider
+          };
+        })
+        .filter((option) => option != null),
+    [providerOptions]
+  );
+  const [selectedProvider, setSelectedProvider] = useState(() =>
+    resolveDefaultAppFactoryProvider(
+      normalizedProviderOptions,
+      defaultAgentProvider
+    )
+  );
+  const [uncontrolledActiveAppTab, setUncontrolledActiveAppTab] =
+    useState<AppCenterAppTab>("recommended");
+  const [activeRecommendedCategoryTab, setActiveRecommendedCategoryTab] =
+    useState<RecommendedCategoryTabID>("all");
+  const activeAppTab = controlledActiveAppTab ?? uncontrolledActiveAppTab;
+  useEffect(() => {
+    setSelectedProvider((current) =>
+      resolveSelectedAppFactoryProvider(
+        current,
+        normalizedProviderOptions,
+        defaultAgentProvider
+      )
+    );
+  }, [defaultAgentProvider, normalizedProviderOptions]);
+  const selectedProviderOption =
+    normalizedProviderOptions.find(
+      (option) => option.provider === selectedProvider
+    ) ?? null;
+  useEffect(() => {
+    if (!factoryDialogOpen) {
+      setProviderConfiguration(null);
+      setProviderConfigurationStatus("idle");
+      return;
+    }
+    const provider = selectedProviderOption?.provider?.trim() ?? "";
+    if (!provider || !loadProviderConfiguration) {
+      setProviderConfiguration(null);
+      setProviderConfigurationStatus("ready");
+      return;
+    }
+    let canceled = false;
+    setProviderConfiguration(null);
+    setProviderConfigurationStatus("loading");
+    void loadProviderConfiguration(provider)
+      .then((configuration) => {
+        if (canceled) {
+          return;
+        }
+        setProviderConfiguration(configuration);
+        setProviderConfigurationStatus("ready");
+      })
+      .catch(() => {
+        if (canceled) {
+          return;
+        }
+        setProviderConfiguration(null);
+        setProviderConfigurationStatus("ready");
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [
+    factoryDialogOpen,
+    loadProviderConfiguration,
+    selectedProvider,
+    selectedProviderOption?.provider
+  ]);
+  const modelOptions = providerConfiguration?.modelOptions ?? [];
+  const permissionModeOptions =
+    providerConfiguration?.permissionModeOptions ?? [];
+  const reasoningEffortOptions =
+    providerConfiguration?.reasoningEffortOptions ?? [];
+  useEffect(() => {
+    setSelectedModel((current) =>
+      resolveSelectedFactoryOptionValue(
+        current,
+        modelOptions,
+        providerConfiguration?.defaultModel
+      )
+    );
+  }, [modelOptions, providerConfiguration?.defaultModel]);
+  useEffect(() => {
+    setSelectedPermissionModeId((current) =>
+      resolveSelectedFactoryOptionValue(
+        current,
+        permissionModeOptions,
+        providerConfiguration?.defaultPermissionModeId
+      )
+    );
+  }, [permissionModeOptions, providerConfiguration?.defaultPermissionModeId]);
+  useEffect(() => {
+    setSelectedReasoningEffort((current) =>
+      resolveSelectedFactoryOptionValue(
+        current,
+        reasoningEffortOptions,
+        providerConfiguration?.defaultReasoningEffort
+      )
+    );
+  }, [providerConfiguration?.defaultReasoningEffort, reasoningEffortOptions]);
+  const setActiveAppTab = (tab: AppCenterAppTab): void => {
+    if (controlledActiveAppTab === undefined) {
+      setUncontrolledActiveAppTab(tab);
+    }
+    onActiveAppTabChange?.(tab);
+  };
+  const factoryJobs = viewModel.factoryJobs ?? [];
+  const hasFactoryJobs = factoryJobs.length > 0;
+  const closeFactoryDialog = (): void => {
+    setFactoryDialogOpen(false);
+    setDisplayName("");
+    setPrompt("");
+    setProviderConfiguration(null);
+    setProviderConfigurationStatus("idle");
+    setOpenFactorySettingsMenu(null);
+    setSelectedModel("");
+    setSelectedPermissionModeId("");
+    setSelectedReasoningEffort("");
+  };
+  const openFactoryDialog = (): void => {
+    setSelectedProvider(
+      resolveDefaultAppFactoryProvider(
+        normalizedProviderOptions,
+        defaultAgentProvider
+      )
+    );
+    setSelectedModel("");
+    setSelectedPermissionModeId("");
+    setSelectedReasoningEffort("");
+    setProviderConfiguration(null);
+    setProviderConfigurationStatus("idle");
+    setOpenFactorySettingsMenu(null);
+    setFactoryDialogOpen(true);
+  };
+  const canCreateFactoryJob =
+    !!displayName.trim() &&
+    !!prompt.trim() &&
+    providerConfigurationStatus !== "loading" &&
+    !!selectedProviderOption &&
+    selectedProviderOption.disabled !== true;
+  const submitCreate = (event: FormEvent): void => {
+    event.preventDefault();
+    const normalizedDisplayName = displayName.trim();
+    const normalizedPrompt = prompt.trim();
+    if (
+      !normalizedDisplayName ||
+      !normalizedPrompt ||
+      !selectedProviderOption ||
+      selectedProviderOption.disabled === true
+    ) {
+      return;
+    }
+    setDisplayName("");
+    setPrompt("");
+    setFactoryDialogOpen(false);
+    void actions.createFactoryJob?.({
+      displayName: normalizedDisplayName,
+      ...(selectedModel.trim() ? { model: selectedModel.trim() } : {}),
+      ...(selectedPermissionModeId.trim()
+        ? { permissionModeId: selectedPermissionModeId.trim() }
+        : {}),
+      provider: selectedProviderOption.provider,
+      prompt: normalizedPrompt,
+      ...(selectedReasoningEffort.trim()
+        ? { reasoningEffort: selectedReasoningEffort.trim() }
+        : {})
+    });
+  };
+  const selectTemplate = (template: FactoryTemplate): void => {
+    setDisplayName(copy.t(template.defaultNameKey));
+    setPrompt(copy.t(template.promptKey));
+  };
+  const openFactoryJobAgentSession = (job: {
+    agentSessionId?: string | null;
+    provider?: string | null;
+  }): void => {
+    const agentSessionId = job.agentSessionId?.trim();
+    if (!agentSessionId) {
+      return;
+    }
+    void actions.openFactoryJobAgentSession?.(agentSessionId, job.provider);
+  };
+  const cardActions: AppCenterHostActions = {
+    ...actions,
+    deleteApp: (appId, appName) => {
+      setPendingDeleteApp({
+        id: appId,
+        installed:
+          viewModel.apps.find((app) => app.id === appId)?.installed ?? false,
+        name: appName
+      });
+    },
+    uninstallApp: (appId) => {
+      const app = viewModel.apps.find((item) => item.id === appId);
+      if (!app) {
+        return;
+      }
+      setPendingUninstallApp({
+        id: app.id,
+        name: app.name,
+        sourceKind: app.sourceKind
+      });
+    }
+  };
+  const loadingMessage =
+    catalogStatus === "loading" ? copy.t("messages.catalogLoading") : null;
+  const failedMessage =
+    catalogStatus === "failed" ? copy.t("messages.catalogFailed") : null;
+  const statusToast =
+    errorMessage != null
+      ? {
+          busy: false,
+          message: errorMessage,
+          tone: "destructive" as const
+        }
+      : failedMessage != null
+        ? {
+            busy: false,
+            message: failedMessage,
+            tone: "destructive" as const
+          }
+        : loadingMessage != null
+          ? {
+              busy: true,
+              message: loadingMessage,
+              tone: "default" as const
+            }
+          : null;
+  const myApps = sortMyAppsByCreatedDesc(
+    viewModel.apps.filter((app) => app.sourceKind === "local")
+  );
+  const recommendedSourceApps = viewModel.apps.filter(
+    (app) => app.sourceKind !== "local"
+  );
+  const recommendedApps = sortRecommendedApps(recommendedSourceApps);
+  const recommendedAppsForAllTab = sortRecommendedAppsForAllTab(
+    recommendedSourceApps
+  );
+  const recommendedCategoryTabs = createRecommendedCategoryTabs(
+    recommendedApps,
+    copy
+  );
+  const activeRecommendedCategoryLabel =
+    recommendedCategoryTabs.find(
+      (tab) => tab.id === activeRecommendedCategoryTab
+    )?.category ?? null;
+  const activeRecommendedApps =
+    activeRecommendedCategoryLabel == null
+      ? recommendedAppsForAllTab
+      : recommendedApps.filter(
+          (app) => app.category === activeRecommendedCategoryLabel
+        );
+  const activeApps =
+    activeAppTab === "recommended" ? activeRecommendedApps : myApps;
+  const activeAppTabTitle =
+    activeAppTab === "recommended"
+      ? copy.t("labels.recommendedApps")
+      : copy.t("labels.myApps");
+  const activeAppEmptyMessage =
+    activeAppTab === "recommended"
+      ? copy.t("messages.recommendedAppsEmpty")
+      : copy.t("messages.myAppsEmpty");
+  const pendingDeleteAppInstalled = pendingDeleteApp?.installed ?? false;
+  const deleteAppConfirmLabel = copy.t(
+    pendingDeleteAppInstalled
+      ? "actions.uninstallAndDeleteApp"
+      : "actions.deleteApp"
+  );
+  const deleteAppConfirmDescription = copy.t(
+    pendingDeleteAppInstalled
+      ? "confirmations.uninstallAndDeleteAppDescription"
+      : "confirmations.deleteAppDescription"
+  );
+  const deleteAppConfirmTitle = copy.t(
+    pendingDeleteAppInstalled
+      ? "confirmations.uninstallAndDeleteAppTitle"
+      : "confirmations.deleteAppTitle",
+    {
+      name: pendingDeleteApp?.name ?? ""
+    }
+  );
+  const pendingUninstallAppLocal = pendingUninstallApp?.sourceKind === "local";
+  const uninstallAppConfirmDescription = copy.t(
+    pendingUninstallAppLocal
+      ? "confirmations.uninstallAppDescriptionLocal"
+      : "confirmations.uninstallAppDescriptionRecommended"
+  );
+  const uninstallAppConfirmTitle = copy.t("confirmations.uninstallAppTitle", {
+    name: pendingUninstallApp?.name ?? ""
+  });
+
+  return (
+    <section
+      aria-label={copy.t("title")}
+      className={cn(
+        "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[var(--background-panel)] text-[var(--text-primary)]",
+        className
+      )}
+    >
+      {statusToast ? <AppCenterStatusToast toast={statusToast} /> : null}
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto px-6 pb-6 pt-5 [container-type:inline-size]">
+        {hasFactoryJobs ? (
+          <section className="min-w-0">
+            <h2 className="mb-3 text-[15px] font-semibold leading-5 tracking-[0] text-[var(--text-primary)]">
+              {copy.t("factory.labels.jobs")}
+            </h2>
+            <div className="flex min-w-0 flex-col gap-2">
+              {factoryJobs.map((job) => (
+                <article
+                  aria-disabled={job.canOpenAgentSession ? undefined : true}
+                  className={cn(
+                    "group flex min-w-0 items-center justify-between gap-3 rounded-[8px] border border-[color:var(--line-2)] bg-[var(--background-fronted)] p-[12px] text-left transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)]",
+                    job.canOpenAgentSession
+                      ? "cursor-pointer hover:bg-[var(--transparency-block)]"
+                      : "cursor-default"
+                  )}
+                  key={job.id}
+                  role="button"
+                  tabIndex={job.canOpenAgentSession ? 0 : -1}
+                  onClick={() => openFactoryJobAgentSession(job)}
+                  onKeyDown={(event) => {
+                    if (
+                      !job.canOpenAgentSession ||
+                      event.currentTarget !== event.target ||
+                      (event.key !== "Enter" && event.key !== " ")
+                    ) {
+                      return;
+                    }
+                    event.preventDefault();
+                    openFactoryJobAgentSession(job);
+                  }}
+                >
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <h3 className="truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
+                        {job.title}
+                      </h3>
+                      <FactoryJobStatusIndicator copy={copy} job={job} />
+                    </div>
+                    {job.failureReason ? (
+                      <p
+                        className="mt-2 truncate text-[12px] leading-4 text-[var(--state-danger)]"
+                        title={job.failureReason}
+                      >
+                        {copy.t("factory.messages.factoryJobFailed")}
+                      </p>
+                    ) : (
+                      <p className="mt-2 truncate text-[12px] leading-4 text-[var(--text-secondary)]">
+                        {job.prompt}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {job.canRetryValidation ? (
+                      <Button
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void actions.retryFactoryValidation?.(job.id);
+                        }}
+                      >
+                        {copy.t("factory.actions.validate")}
+                      </Button>
+                    ) : null}
+                    {job.canPublish ? (
+                      <Button
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void actions.publishFactoryJob?.(job.id);
+                        }}
+                      >
+                        {copy.t("factory.actions.publish")}
+                      </Button>
+                    ) : null}
+                    {job.canFix ? (
+                      <Button
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void actions.fixFactoryJob?.(
+                            job.id,
+                            copy.t("factory.prompts.fixDefault")
+                          );
+                        }}
+                      >
+                        {copy.t("factory.actions.fix")}
+                      </Button>
+                    ) : null}
+                    {job.canCancel ? (
+                      <Button
+                        aria-label={copy.t("factory.actions.cancel")}
+                        className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                        size="icon-sm"
+                        title={copy.t("factory.actions.cancel")}
+                        type="button"
+                        variant="ghost"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void actions.cancelFactoryJob?.(job.id);
+                        }}
+                      >
+                        <CloseIcon />
+                      </Button>
+                    ) : null}
+                    {job.canDelete ? (
+                      <BareIconButton
+                        aria-label={copy.t("factory.actions.delete")}
+                        className="text-[var(--text-secondary)]"
+                        size="md"
+                        title={copy.t("factory.actions.delete")}
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void actions.deleteFactoryJob?.(job.id);
+                        }}
+                      >
+                        <DeleteIcon />
+                      </BareIconButton>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        <section className="flex min-w-0 flex-col gap-3">
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <SectionTabs
+              ariaLabel={copy.t("labels.appList")}
+              tabs={[
+                {
+                  label: copy.t("labels.recommendedApps"),
+                  value: "recommended"
+                },
+                {
+                  label: copy.t("labels.myApps"),
+                  value: "my"
+                }
+              ]}
+              value={activeAppTab}
+              onValueChange={setActiveAppTab}
+            />
+            <div className="flex shrink-0 items-center gap-1">
+              {activeAppTab === "my" ? (
+                <AppCenterHeaderActions
+                  copy={copy}
+                  onCreateApp={() => {
+                    openFactoryDialog();
+                  }}
+                  onImportApp={() => {
+                    void actions.importApp?.();
+                  }}
+                />
+              ) : (
+                <div aria-hidden="true" className="h-8 w-[172px]" />
+              )}
+            </div>
+          </div>
+          {viewModel.empty ? (
+            <p className="text-[13px] leading-5 text-[var(--text-secondary)]">
+              {copy.t("messages.empty")}
+            </p>
+          ) : null}
+          {activeAppTab === "recommended" ? (
+            <RecommendedCategoryTabs
+              copy={copy}
+              tabs={recommendedCategoryTabs}
+              value={activeRecommendedCategoryTab}
+              onValueChange={setActiveRecommendedCategoryTab}
+            />
+          ) : null}
+          <AppCardGrid
+            actions={cardActions}
+            apps={activeApps}
+            copy={copy}
+            emptyMessage={activeAppEmptyMessage}
+            title={activeAppTabTitle}
+          />
+        </section>
+      </div>
+      <ConfirmationDialog
+        cancelLabel={copy.t("actions.cancel")}
+        confirmBusy={deleteAppBusy}
+        confirmLabel={deleteAppConfirmLabel}
+        description={deleteAppConfirmDescription}
+        open={pendingDeleteApp != null}
+        title={deleteAppConfirmTitle}
+        tone="destructive"
+        onConfirm={() => {
+          const app = pendingDeleteApp;
+          if (!app) {
+            return;
+          }
+          setDeleteAppBusy(true);
+          void Promise.resolve(actions.deleteApp?.(app.id, app.name)).finally(
+            () => {
+              setDeleteAppBusy(false);
+              setPendingDeleteApp(null);
+            }
+          );
+        }}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !deleteAppBusy) {
+            setPendingDeleteApp(null);
+          }
+        }}
+      />
+      <ConfirmationDialog
+        cancelLabel={copy.t("actions.cancel")}
+        confirmBusy={uninstallAppBusy}
+        confirmLabel={copy.t("actions.uninstallApp")}
+        description={uninstallAppConfirmDescription}
+        open={pendingUninstallApp != null}
+        title={uninstallAppConfirmTitle}
+        tone="destructive"
+        onConfirm={() => {
+          const app = pendingUninstallApp;
+          if (!app) {
+            return;
+          }
+          setUninstallAppBusy(true);
+          void Promise.resolve(actions.uninstallApp?.(app.id)).finally(() => {
+            setUninstallAppBusy(false);
+            setPendingUninstallApp(null);
+          });
+        }}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !uninstallAppBusy) {
+            setPendingUninstallApp(null);
+          }
+        }}
+      />
+      <Dialog
+        open={factoryDialogOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            closeFactoryDialog();
+            return;
+          }
+          openFactoryDialog();
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-[min(640px,calc(100%-2rem))]"
+          showCloseButton={false}
+        >
+          <form
+            className="grid max-h-[min(760px,calc(100vh-64px))] min-w-0 gap-4 overflow-auto"
+            onSubmit={submitCreate}
+          >
+            <DialogHeader>
+              <DialogTitle>{copy.t("factory.labels.create")}</DialogTitle>
+            </DialogHeader>
+            <label className="grid min-w-0 gap-2">
+              <span className="text-[12px] font-semibold leading-4 text-[var(--text-secondary)]">
+                {copy.t("factory.labels.appName")}
+              </span>
+              <Input
+                autoFocus
+                className="h-9 rounded-[8px]"
+                placeholder={copy.t("factory.placeholders.appName")}
+                value={displayName}
+                onChange={(event) => setDisplayName(event.currentTarget.value)}
+              />
+            </label>
+            <div className="grid min-w-0 gap-4">
+              <div className="grid min-w-0 gap-2">
+                <label
+                  className="text-[12px] font-semibold leading-4 text-[var(--text-secondary)]"
+                  htmlFor={promptTextareaId}
+                >
+                  {copy.t("factory.labels.prompt")}
+                </label>
+                <div className="relative min-w-0">
+                  <Textarea
+                    className="min-h-[148px] resize-none rounded-[10px] border border-[color:var(--line-2)] bg-[var(--background-fronted)] pb-14 leading-[1.45] sm:pb-8"
+                    id={promptTextareaId}
+                    placeholder={copy.t("factory.placeholders.prompt")}
+                    value={prompt}
+                    onChange={(event) => setPrompt(event.currentTarget.value)}
+                  />
+                  <div className="pointer-events-none absolute inset-x-3 bottom-1.5 flex min-w-0 flex-wrap items-end justify-between gap-2">
+                    {providerErrorMessage &&
+                    normalizedProviderOptions.length === 0 ? (
+                      <p className="pointer-events-auto max-w-[240px] text-[12px] leading-4 text-[var(--state-danger)]">
+                        {providerErrorMessage}
+                      </p>
+                    ) : (
+                      <span aria-hidden="true" className="min-h-4 flex-1" />
+                    )}
+                    <div className="pointer-events-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-0.5 px-0.5 py-0">
+                      <FactoryProviderSelect
+                        copy={copy}
+                        errorMessage={providerErrorMessage}
+                        loading={providerLoading}
+                        open={openFactorySettingsMenu === "provider"}
+                        options={normalizedProviderOptions}
+                        selectedProvider={selectedProvider}
+                        triggerClassName="h-6 w-auto max-w-full border-0 bg-transparent px-1.5 text-[11px] font-medium text-[var(--text-secondary)] shadow-none hover:bg-transparent focus-visible:bg-transparent data-[placeholder]:text-[var(--text-tertiary)]"
+                        onOpenChange={(nextOpen) =>
+                          setOpenFactorySettingsMenu(
+                            nextOpen ? "provider" : null
+                          )
+                        }
+                        onSelectProvider={setSelectedProvider}
+                      />
+                      <div
+                        aria-hidden="true"
+                        className="h-4 w-px bg-[var(--line-2)]"
+                      />
+                      <FactoryPermissionDropdown
+                        copy={copy}
+                        loading={providerConfigurationStatus === "loading"}
+                        open={openFactorySettingsMenu === "permission"}
+                        options={permissionModeOptions}
+                        selectedPermissionModeId={selectedPermissionModeId}
+                        triggerClassName="h-6 w-auto max-w-full border-0 bg-transparent px-1.5 text-[11px] font-medium text-[var(--text-secondary)] shadow-none hover:bg-transparent focus-visible:bg-transparent"
+                        onOpenChange={(nextOpen) =>
+                          setOpenFactorySettingsMenu(
+                            nextOpen ? "permission" : null
+                          )
+                        }
+                        onSelectPermissionMode={setSelectedPermissionModeId}
+                      />
+                      <div
+                        aria-hidden="true"
+                        className="h-4 w-px bg-[var(--line-2)]"
+                      />
+                      <FactoryModelReasoningDropdown
+                        copy={copy}
+                        loading={providerConfigurationStatus === "loading"}
+                        modelOptions={modelOptions}
+                        open={openFactorySettingsMenu === "modelReasoning"}
+                        reasoningEffortOptions={reasoningEffortOptions}
+                        selectedModel={selectedModel}
+                        selectedReasoningEffort={selectedReasoningEffort}
+                        triggerClassName="h-6 w-auto max-w-full border-0 bg-transparent px-1.5 text-[11px] font-medium text-[var(--text-secondary)] shadow-none hover:bg-transparent focus-visible:bg-transparent"
+                        onOpenChange={(nextOpen) =>
+                          setOpenFactorySettingsMenu(
+                            nextOpen ? "modelReasoning" : null
+                          )
+                        }
+                        onSelectModel={setSelectedModel}
+                        onSelectReasoningEffort={setSelectedReasoningEffort}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <fieldset className="min-w-0 border-0 p-0">
+                <legend className="sr-only">
+                  {copy.t("factory.labels.templates")}
+                </legend>
+                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+                  <span className="shrink-0 text-[14px] font-medium leading-5 text-[var(--text-secondary)]">
+                    {copy.t("factory.labels.templateInspirationPrefix")}
+                  </span>
+                  {factoryTemplates.map((template) => (
+                    <button
+                      className="inline-flex max-w-full items-center gap-1 border-0 bg-transparent p-0 text-[14px] font-medium leading-5 text-[var(--text-secondary)] transition-colors duration-150 hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)]"
+                      key={template.id}
+                      type="button"
+                      onClick={() => selectTemplate(template)}
+                    >
+                      <span className="truncate">
+                        {copy.t(template.titleKey)}
+                      </span>
+                      <OpenSessionsFilledIcon
+                        aria-hidden="true"
+                        className="shrink-0"
+                        size={14}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+            <DialogFooter>
+              <Button
+                size="dialog"
+                type="button"
+                variant="ghost"
+                onClick={closeFactoryDialog}
+              >
+                {copy.t("factory.actions.cancel")}
+              </Button>
+              <Button
+                disabled={!canCreateFactoryJob}
+                size="dialog"
+                type="submit"
+              >
+                {copy.t("factory.actions.create")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </section>
+  );
+}
+
+function FactoryProviderSelect({
+  copy,
+  errorMessage,
+  loading,
+  onOpenChange,
+  onSelectProvider,
+  open,
+  options,
+  selectedProvider,
+  triggerClassName
+}: {
+  copy: AppCenterI18nRuntime;
+  errorMessage?: string | null;
+  loading?: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSelectProvider: (provider: string) => void;
+  open: boolean;
+  options: readonly AppCenterFactoryProviderOption[];
+  selectedProvider: string;
+  triggerClassName?: string;
+}): ReactElement {
+  const selectedOption =
+    options.find((option) => option.provider === selectedProvider) ?? null;
+  const placeholder =
+    options.length > 0
+      ? copy.t("factory.messages.noAgentProviders")
+      : loading
+        ? copy.t("factory.messages.loadingProviders")
+        : errorMessage?.trim() || copy.t("factory.messages.noAgentProviders");
+
+  return (
+    <Select
+      disabled={options.length === 0}
+      open={open}
+      value={selectedOption?.provider}
+      onOpenChange={onOpenChange}
+      onValueChange={onSelectProvider}
+    >
+      <SelectTrigger
+        aria-label={copy.t("factory.labels.agent")}
+        className={cn(
+          "h-9 w-full rounded-[8px] px-3 font-normal [&_[data-slot=select-value]]:flex [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:items-center [&_[data-slot=select-value]]:gap-2",
+          loading && options.length === 0 ? "animate-pulse" : null,
+          triggerClassName
+        )}
+      >
+        <SelectValue placeholder={placeholder}>
+          {selectedOption ? (
+            <span className="flex min-w-0 items-center gap-2">
+              <AppCenterAgentProviderIcon iconUrl={selectedOption.iconUrl} />
+              <span className="truncate">{selectedOption.label}</span>
+            </span>
+          ) : null}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent
+        align="start"
+        className="w-[300px] min-w-[240px] max-w-[min(100vw-64px,480px)]"
+        style={{ zIndex: "var(--z-dialog-popover)" }}
+      >
+        {options.length === 0 ? (
+          <SelectItem disabled value="__no-provider__">
+            {copy.t("factory.messages.noAgentProviders")}
+          </SelectItem>
+        ) : (
+          options.map((option) => (
+            <SelectItem
+              disabled={option.disabled === true}
+              key={option.provider}
+              title={option.disabledReason}
+              value={option.provider}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <AppCenterAgentProviderIcon iconUrl={option.iconUrl} />
+                <span className="truncate">{option.label}</span>
+              </span>
+            </SelectItem>
+          ))
+        )}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function FactoryPermissionDropdown({
+  copy,
+  loading,
+  onOpenChange,
+  onSelectPermissionMode,
+  open,
+  options,
+  selectedPermissionModeId,
+  triggerClassName
+}: {
+  copy: AppCenterI18nRuntime;
+  loading: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSelectPermissionMode: (value: string) => void;
+  open: boolean;
+  options: readonly AppCenterFactoryPermissionOption[];
+  selectedPermissionModeId: string;
+  triggerClassName?: string;
+}): ReactElement {
+  const selectedOption =
+    options.find((option) => option.value === selectedPermissionModeId) ?? null;
+  const disabled = loading || options.length === 0;
+  const selectedLabel = selectedOption
+    ? permissionOptionLabel(copy, selectedOption)
+    : selectedPermissionModeId;
+
+  return (
+    <Select
+      disabled={disabled}
+      open={open}
+      value={selectedOption?.value}
+      onOpenChange={onOpenChange}
+      onValueChange={onSelectPermissionMode}
+    >
+      <SelectTrigger
+        aria-label={copy.t("factory.labels.review")}
+        className={cn(
+          "h-9 max-w-full rounded-[999px] border border-[color:var(--line-2)] bg-[var(--background-panel)] px-3 text-[13px] font-medium text-[var(--text-primary)] shadow-none hover:bg-[var(--transparency-block)] [&>svg:last-child]:opacity-70",
+          loading ? "animate-pulse" : null,
+          disabled
+            ? "cursor-not-allowed text-[var(--text-tertiary)] opacity-60 hover:bg-[var(--background-panel)]"
+            : null,
+          triggerClassName
+        )}
+      >
+        <span className="flex min-w-0 items-center overflow-hidden">
+          {selectedLabel ? (
+            <span className="min-w-0 truncate">{selectedLabel}</span>
+          ) : (
+            <span className="min-w-0 truncate text-[var(--text-tertiary)]">
+              {loading
+                ? copy.t("factory.messages.loadingConfiguration")
+                : copy.t("factory.messages.noPermissionOptions")}
+            </span>
+          )}
+        </span>
+      </SelectTrigger>
+      <SelectContent
+        align="end"
+        className="w-max min-w-[220px] max-w-[min(100vw-32px,360px)] data-[side=top]:!translate-y-0"
+        sideOffset={4}
+        style={{ zIndex: "var(--z-dialog-popover)" }}
+      >
+        {options.length > 0 ? (
+          options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              <span className="min-w-0 truncate">
+                {permissionOptionLabel(copy, option)}
+              </span>
+            </SelectItem>
+          ))
+        ) : (
+          <SelectItem disabled value="__empty__">
+            {copy.t("factory.messages.noPermissionOptions")}
+          </SelectItem>
+        )}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function FactoryModelReasoningDropdown({
+  copy,
+  loading,
+  modelOptions,
+  onOpenChange,
+  onSelectModel,
+  onSelectReasoningEffort,
+  open,
+  reasoningEffortOptions,
+  selectedModel,
+  selectedReasoningEffort,
+  triggerClassName
+}: {
+  copy: AppCenterI18nRuntime;
+  loading: boolean;
+  modelOptions: readonly { label: string; value: string }[];
+  onOpenChange: (open: boolean) => void;
+  onSelectModel: (value: string) => void;
+  onSelectReasoningEffort: (value: string) => void;
+  open: boolean;
+  reasoningEffortOptions: readonly { label: string; value: string }[];
+  selectedModel: string;
+  selectedReasoningEffort: string;
+  triggerClassName?: string;
+}): ReactElement {
+  const showModelSection = modelOptions.length > 0;
+  const showReasoningSection = reasoningEffortOptions.length > 0;
+  const disabled = loading || (!showModelSection && !showReasoningSection);
+  const selectedModelLabel =
+    modelOptions.find((option) => option.value === selectedModel)?.label ??
+    selectedModel;
+  const selectedReasoningLabel =
+    reasoningEffortOptions.find(
+      (option) => option.value === selectedReasoningEffort
+    )?.label ?? selectedReasoningEffort;
+  const triggerLabel = [selectedModelLabel, selectedReasoningLabel]
+    .filter((value) => value.trim().length > 0)
+    .join(" ");
+  const selectedValue = showModelSection
+    ? selectedModel
+      ? `model:${selectedModel}`
+      : undefined
+    : selectedReasoningEffort
+      ? `reasoning:${selectedReasoningEffort}`
+      : undefined;
+  const applySettingsValue = (nextValue: string): void => {
+    if (nextValue.startsWith("reasoning:")) {
+      onSelectReasoningEffort(nextValue.slice("reasoning:".length));
+      return;
+    }
+    if (nextValue.startsWith("model:")) {
+      onSelectModel(nextValue.slice("model:".length));
+    }
+  };
+
+  return (
+    <Select
+      disabled={disabled}
+      open={open}
+      value={selectedValue}
+      onOpenChange={onOpenChange}
+      onValueChange={applySettingsValue}
+    >
+      <SelectTrigger
+        aria-label={copy.t("factory.labels.modelReasoning")}
+        className={cn(
+          "h-9 max-w-full rounded-[999px] border border-[color:var(--line-2)] bg-[var(--background-panel)] px-3 text-[13px] font-medium text-[var(--text-primary)] shadow-none hover:bg-[var(--transparency-block)] [&>svg:last-child]:opacity-70",
+          loading ? "animate-pulse" : null,
+          disabled
+            ? "cursor-not-allowed text-[var(--text-tertiary)] opacity-60 hover:bg-[var(--background-panel)]"
+            : null,
+          triggerClassName
+        )}
+      >
+        <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+          {triggerLabel ? (
+            selectedModelLabel && selectedReasoningLabel ? (
+              <>
+                <span className="min-w-0 truncate">{selectedModelLabel}</span>
+                <span className="shrink-0 text-[var(--text-secondary)]">
+                  {selectedReasoningLabel}
+                </span>
+              </>
+            ) : (
+              <span className="min-w-0 truncate">{triggerLabel}</span>
+            )
+          ) : (
+            <span className="min-w-0 truncate text-[var(--text-tertiary)]">
+              {loading
+                ? copy.t("factory.messages.loadingConfiguration")
+                : copy.t("factory.messages.noConfigurationOptions")}
+            </span>
+          )}
+        </span>
+      </SelectTrigger>
+      <SelectContent
+        align="end"
+        className={cn(
+          "max-w-[min(100vw-32px,460px)] data-[side=top]:!translate-y-0",
+          showModelSection && showReasoningSection
+            ? "w-[430px]"
+            : "w-max min-w-[240px]"
+        )}
+        sideOffset={4}
+        style={{ zIndex: "var(--z-dialog-popover)" }}
+      >
+        {showModelSection && showReasoningSection ? (
+          <SelectSplitLayout>
+            <SelectSplitColumn>
+              <SelectSplitColumnLabel>
+                {copy.t("factory.labels.model")}
+              </SelectSplitColumnLabel>
+              <SelectSplitColumnItems>
+                {modelOptions.map((option) => (
+                  <SelectItem
+                    key={option.value}
+                    value={`model:${option.value}`}
+                  >
+                    <span className="min-w-0 truncate">{option.label}</span>
+                  </SelectItem>
+                ))}
+              </SelectSplitColumnItems>
+            </SelectSplitColumn>
+            <SelectSplitDivider />
+            <SelectSplitColumn>
+              <SelectSplitColumnLabel>
+                {copy.t("factory.labels.reasoningEffort")}
+              </SelectSplitColumnLabel>
+              <SelectSplitColumnItems>
+                {reasoningEffortOptions.map((option) => (
+                  <SelectItem
+                    forceSelectedIndicator={
+                      selectedReasoningEffort === option.value
+                    }
+                    key={option.value}
+                    value={`reasoning:${option.value}`}
+                  >
+                    <span className="min-w-0 truncate">{option.label}</span>
+                  </SelectItem>
+                ))}
+              </SelectSplitColumnItems>
+            </SelectSplitColumn>
+          </SelectSplitLayout>
+        ) : showModelSection ? (
+          modelOptions.map((option) => (
+            <SelectItem key={option.value} value={`model:${option.value}`}>
+              <span className="min-w-0 truncate">{option.label}</span>
+            </SelectItem>
+          ))
+        ) : showReasoningSection ? (
+          reasoningEffortOptions.map((option) => (
+            <SelectItem key={option.value} value={`reasoning:${option.value}`}>
+              <span className="min-w-0 truncate">{option.label}</span>
+            </SelectItem>
+          ))
+        ) : (
+          <SelectItem disabled value="__empty__">
+            {copy.t("factory.messages.noConfigurationOptions")}
+          </SelectItem>
+        )}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function permissionOptionLabel(
+  copy: AppCenterI18nRuntime,
+  option: AppCenterFactoryPermissionOption
+): string {
+  const semantic = option.semantic?.trim();
+  if (semantic) {
+    const key = `factory.permissionSemantics.${semantic}.label`;
+    const translated = copy.t(key);
+    if (translated !== key) {
+      return translated;
+    }
+  }
+  return option.label.trim() || option.value;
+}
+
+function AppCenterAgentProviderIcon({
+  iconUrl
+}: {
+  iconUrl?: string | null;
+}): ReactElement {
+  const normalizedIconUrl = iconUrl?.trim();
+  if (!normalizedIconUrl) {
+    return (
+      <span aria-hidden="true" className="size-4 shrink-0 rounded-[4px]" />
+    );
+  }
+
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className="size-4 shrink-0 rounded-[4px] object-contain"
+      decoding="async"
+      draggable={false}
+      src={normalizedIconUrl}
+    />
+  );
+}
+
+function resolveSelectedFactoryOptionValue(
+  currentValue: string,
+  options: readonly { value: string }[],
+  defaultValue?: string | null
+): string {
+  if (options.some((option) => option.value === currentValue)) {
+    return currentValue;
+  }
+  const normalizedDefault = defaultValue?.trim() ?? "";
+  if (
+    normalizedDefault &&
+    options.some((option) => option.value === normalizedDefault)
+  ) {
+    return normalizedDefault;
+  }
+  return options[0]?.value ?? "";
+}
+
+function AppCardGrid({
+  actions,
+  apps,
+  copy,
+  emptyMessage,
+  title
+}: {
+  readonly actions: AppCenterHostActions;
+  readonly apps: AppCenterViewModel["apps"];
+  readonly copy: AppCenterI18nRuntime;
+  readonly emptyMessage: string;
+  readonly title: string;
+}): ReactElement {
+  if (apps.length === 0) {
+    return (
+      <div
+        aria-label={title}
+        className="flex min-h-[min(360px,45vh)] min-w-0 flex-1 items-center justify-center rounded-[8px] px-6 text-center text-[13px] leading-5 text-[var(--text-secondary)]"
+        role="status"
+      >
+        {emptyMessage}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      aria-label={title}
+      className="grid min-h-0 min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] gap-3"
+      role="list"
+    >
+      {apps.map((app) => (
+        <AppCard actions={actions} app={app} copy={copy} key={app.id} />
+      ))}
+    </div>
+  );
+}
+
+interface RecommendedCategoryTab {
+  readonly category: string | null;
+  readonly count: number;
+  readonly id: RecommendedCategoryTabID;
+  readonly label: string;
+}
+
+function createRecommendedCategoryTabs(
+  apps: AppCenterViewModel["apps"],
+  copy: AppCenterI18nRuntime
+): RecommendedCategoryTab[] {
+  const categoryCounts = new Map<string, number>();
+
+  for (const app of apps) {
+    const category = app.category?.trim();
+    if (!category) {
+      continue;
+    }
+    categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
+  }
+
+  return recommendedCategoryTabDefinitions.map((definition) => {
+    if (definition.id === "all") {
+      return {
+        category: null,
+        count: apps.length,
+        id: definition.id,
+        label: copy.t("labels.allApps")
+      };
+    }
+
+    const category = copy.t(definition.labelKey);
+    return {
+      category,
+      count: categoryCounts.get(category) ?? 0,
+      id: definition.id,
+      label: category
+    };
+  });
+}
+
+function RecommendedCategoryTabs({
+  copy,
+  tabs,
+  value,
+  onValueChange
+}: {
+  readonly copy: AppCenterI18nRuntime;
+  readonly tabs: readonly RecommendedCategoryTab[];
+  readonly value: RecommendedCategoryTabID;
+  readonly onValueChange: (value: RecommendedCategoryTabID) => void;
+}): ReactElement {
+  return (
+    <div
+      aria-label={copy.t("labels.appCategories")}
+      className="-mx-1 flex min-w-0 items-center gap-2 overflow-x-auto px-1 py-1"
+      role="tablist"
+    >
+      {tabs.map((tab) => {
+        const selected = tab.id === value;
+        return (
+          <button
+            aria-selected={selected}
+            className={cn(
+              "flex h-8 shrink-0 items-center rounded-[8px] px-3 text-[13px] font-semibold leading-5 tracking-[0] transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)]",
+              selected
+                ? "border border-[color:var(--line-1)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
+                : "border border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+            )}
+            key={tab.id}
+            role="tab"
+            type="button"
+            onClick={() => onValueChange(tab.id)}
+          >
+            {tab.label} {tab.count}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function AppCenterStatusToast({
+  toast
+}: {
+  readonly toast: {
+    readonly busy: boolean;
+    readonly message: string;
+    readonly tone: "default" | "destructive";
+  };
+}): ReactElement {
+  return (
+    <ToastProvider>
+      <ToastRoot
+        key={`${toast.tone}:${toast.message}`}
+        open
+        anchor="node"
+        busy={toast.busy}
+        className={cn(
+          "z-30 w-[calc(100%_-_48px)] max-w-[640px] justify-start px-4 py-3 text-left text-[12px] leading-5 shadow-[0_14px_36px_var(--shadow-elevated)]",
+          toast.tone === "default"
+            ? "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-secondary)]"
+            : ""
+        )}
+        nodeInsetTopPx={20}
+        variant={toast.tone}
+      >
+        <ToastTitle className="w-full justify-start gap-2 text-left text-[12px] leading-5">
+          <span className="min-w-0 truncate">{toast.message}</span>
+        </ToastTitle>
+      </ToastRoot>
+    </ToastProvider>
+  );
+}
+
+function AppCenterHeaderActions({
+  copy,
+  onCreateApp,
+  onImportApp
+}: {
+  readonly copy: AppCenterI18nRuntime;
+  readonly onCreateApp: () => void;
+  readonly onImportApp: () => void;
+}): ReactElement {
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="default"
+            type="button"
+            variant="ghost"
+            onClick={onImportApp}
+          >
+            <ImportIcon />
+            <span>{copy.t("actions.importApp")}</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {copy.t("actions.importAppTooltip")}
+        </TooltipContent>
+      </Tooltip>
+      <Button
+        size="default"
+        type="button"
+        variant="ghost"
+        onClick={onCreateApp}
+      >
+        <FileCreateIcon />
+        {copy.t("factory.actions.create")}
+      </Button>
+    </>
+  );
+}
+
+function FactoryJobStatusIndicator({
+  copy,
+  job
+}: {
+  readonly copy: AppCenterI18nRuntime;
+  readonly job: WorkspaceAppFactoryJobViewModel;
+}): ReactElement {
+  const statusLabel = copy.t(job.statusLabelKey);
+  if (job.status === "generating") {
+    return (
+      <span
+        aria-label={statusLabel}
+        className="inline-flex size-3 shrink-0 items-center justify-center"
+        role="status"
+        title={statusLabel}
+      >
+        <Spinner
+          className="text-[var(--text-tertiary)]"
+          size={12}
+          strokeWidth={2}
+          trackColor="var(--line-2)"
+        />
+      </span>
+    );
+  }
+  return (
+    <Badge variant={job.status === "failed" ? "destructive" : "secondary"}>
+      {statusLabel}
+    </Badge>
+  );
+}

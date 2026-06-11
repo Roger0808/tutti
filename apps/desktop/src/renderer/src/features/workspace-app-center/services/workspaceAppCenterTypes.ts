@@ -1,0 +1,265 @@
+export type WorkspaceAppCenterRuntimeStatus =
+  | "failed"
+  | "idle"
+  | "installing"
+  | "preparing"
+  | "running"
+  | "starting"
+  | "stopping";
+
+export type WorkspaceAppCenterSource = "builtin" | "generated" | "imported";
+
+export interface WorkspaceAppCenterLocalization {
+  locale: string;
+  name?: string | null;
+  description?: string | null;
+  tags: readonly string[];
+}
+
+export type WorkspaceAppCenterCliStatus =
+  | "none"
+  | "pending"
+  | "active"
+  | "warning"
+  | "error";
+
+export interface WorkspaceAppCenterCliIssue {
+  code: string;
+  message: string;
+  path?: string | null;
+}
+
+export interface WorkspaceAppCenterCliState {
+  active: boolean;
+  issues: readonly WorkspaceAppCenterCliIssue[];
+  scope?: string | null;
+  status: WorkspaceAppCenterCliStatus;
+}
+
+export interface WorkspaceAppCenterApp {
+  availableIconUrl?: string | null;
+  availableVersion?: string | null;
+  description?: string | null;
+  appId: string;
+  createdAtUnixMs: number;
+  enabled: boolean;
+  exportable: boolean;
+  failureReason?: string | null;
+  iconUrl?: string | null;
+  installed: boolean;
+  lastError?: string | null;
+  cli?: WorkspaceAppCenterCliState;
+  localizations?: readonly WorkspaceAppCenterLocalization[];
+  minimizeBehavior: WorkspaceAppMinimizeBehavior;
+  name: string;
+  runtimeStatus: WorkspaceAppCenterRuntimeStatus;
+  source: WorkspaceAppCenterSource;
+  stateRevision: number;
+  tags?: readonly string[];
+  updateAvailable?: boolean;
+  url?: string | null;
+  version?: string | null;
+  windowMinHeight?: number | null;
+  windowMinWidth?: number | null;
+}
+
+export type WorkspaceAppMinimizeBehavior = "hibernate" | "keep-mounted";
+
+export type WorkspaceAppCenterCatalogStatus =
+  | "disabled"
+  | "failed"
+  | "loading"
+  | "ready";
+
+export interface WorkspaceAppCenterSnapshot {
+  apps: readonly WorkspaceAppCenterApp[];
+  catalogLastError?: string | null;
+  catalogStatus: WorkspaceAppCenterCatalogStatus;
+  catalogUpdatedAtUnixMs?: number | null;
+}
+
+export interface WorkspaceAppExportResult {
+  appId: string;
+  archivePath: string;
+  artifactSha256: string;
+  artifactSizeBytes: number;
+  version: string;
+  workspaceId: string;
+}
+
+export type WorkspaceAppFactoryJobStatus =
+  | "canceled"
+  | "failed"
+  | "generating"
+  | "preparing"
+  | "published"
+  | "queued"
+  | "ready"
+  | "validating";
+
+export interface WorkspaceAppFactoryJob {
+  agentSessionId?: string | null;
+  appId?: string | null;
+  createdAtUnixMs: number;
+  description?: string | null;
+  displayName: string;
+  failureReason?: string | null;
+  jobId: string;
+  model?: string | null;
+  prompt: string;
+  provider?: string | null;
+  reasoningEffort?: string | null;
+  publishedVersion?: string | null;
+  status: WorkspaceAppFactoryJobStatus;
+  updatedAtUnixMs: number;
+  validationResult?: Record<string, unknown> | null;
+  workspaceId: string;
+}
+
+export interface WorkspaceAppFactorySnapshot {
+  jobs: readonly WorkspaceAppFactoryJob[];
+}
+
+export interface WorkspaceAppFactoryModelOption {
+  label: string;
+  value: string;
+}
+
+export interface WorkspaceAppFactoryReasoningOption {
+  label: string;
+  value: string;
+}
+
+export interface WorkspaceAppFactoryPermissionOption {
+  label: string;
+  semantic?: string | null;
+  value: string;
+}
+
+export interface WorkspaceAppFactoryProviderConfiguration {
+  defaultModel?: string | null;
+  defaultPermissionModeId?: string | null;
+  defaultReasoningEffort?: string | null;
+  modelOptions: readonly WorkspaceAppFactoryModelOption[];
+  permissionModeOptions: readonly WorkspaceAppFactoryPermissionOption[];
+  reasoningEffortOptions: readonly WorkspaceAppFactoryReasoningOption[];
+}
+
+export type WorkspaceAppCenterLoadStatus =
+  | "idle"
+  | "loading"
+  | "ready"
+  | "unavailable";
+
+export interface WorkspaceAppCenterStoreState {
+  apps: WorkspaceAppCenterApp[];
+  catalogLastError: string | null;
+  catalogStatus: WorkspaceAppCenterCatalogStatus;
+  catalogUpdatedAtUnixMs: number | null;
+  error: string | null;
+  factoryJobs: WorkspaceAppFactoryJob[];
+  loadStatus: WorkspaceAppCenterLoadStatus;
+  openingFolderAppId: string | null;
+  revision: number;
+  viewStateByWorkspaceId: Record<
+    string,
+    WorkspaceAppCenterViewState | undefined
+  >;
+  workspaceId: string | null;
+}
+
+export type WorkspaceAppCenterAppTab = "my" | "recommended";
+
+export interface WorkspaceAppCenterViewState {
+  activeAppTab: WorkspaceAppCenterAppTab;
+}
+
+export type WorkspaceAppCenterReadableStoreState =
+  Readonly<WorkspaceAppCenterStoreState>;
+
+export interface WorkspaceAppCenterGateway {
+  installWorkspaceApp(
+    workspaceId: string,
+    appId: string
+  ): Promise<WorkspaceAppCenterSnapshot>;
+  deleteWorkspaceApp(
+    workspaceId: string,
+    appId: string
+  ): Promise<WorkspaceAppCenterSnapshot>;
+  exportWorkspaceApp(
+    workspaceId: string,
+    appId: string,
+    input: { destinationPath: string; version?: string }
+  ): Promise<WorkspaceAppExportResult>;
+  importWorkspaceApp(
+    workspaceId: string,
+    input: { archivePath: string }
+  ): Promise<WorkspaceAppCenterSnapshot>;
+  replaceWorkspaceAppIcon(
+    workspaceId: string,
+    appId: string,
+    input: { sourcePath: string }
+  ): Promise<WorkspaceAppCenterApp>;
+  listWorkspaceApps(workspaceId: string): Promise<WorkspaceAppCenterSnapshot>;
+  refreshWorkspaceAppCatalog(
+    workspaceId: string
+  ): Promise<WorkspaceAppCenterSnapshot>;
+  uninstallWorkspaceApp(
+    workspaceId: string,
+    appId: string
+  ): Promise<WorkspaceAppCenterSnapshot>;
+  retryWorkspaceApp(
+    workspaceId: string,
+    appId: string
+  ): Promise<WorkspaceAppCenterSnapshot>;
+  rollbackWorkspaceApp(
+    workspaceId: string,
+    appId: string,
+    version: string
+  ): Promise<WorkspaceAppCenterSnapshot>;
+  listWorkspaceAppFactoryJobs(
+    workspaceId: string
+  ): Promise<WorkspaceAppFactorySnapshot>;
+  createWorkspaceAppFactoryJob(
+    workspaceId: string,
+    input: {
+      displayName: string;
+      model?: string;
+      permissionModeId?: string;
+      prompt: string;
+      provider?: string;
+      reasoningEffort?: string;
+    }
+  ): Promise<WorkspaceAppFactorySnapshot>;
+  cancelWorkspaceAppFactoryJob(
+    workspaceId: string,
+    jobId: string
+  ): Promise<WorkspaceAppFactorySnapshot>;
+  deleteWorkspaceAppFactoryJob(
+    workspaceId: string,
+    jobId: string
+  ): Promise<WorkspaceAppFactorySnapshot>;
+  retryWorkspaceAppFactoryJobValidation(
+    workspaceId: string,
+    jobId: string
+  ): Promise<WorkspaceAppFactorySnapshot>;
+  fixWorkspaceAppFactoryJob(
+    workspaceId: string,
+    jobId: string,
+    input: { prompt: string }
+  ): Promise<WorkspaceAppFactorySnapshot>;
+  prepareWorkspaceAppFactoryJobModification(
+    workspaceId: string,
+    jobId: string
+  ): Promise<WorkspaceAppFactorySnapshot>;
+  publishWorkspaceAppFactoryJob(
+    workspaceId: string,
+    jobId: string
+  ): Promise<{
+    appSnapshot: WorkspaceAppCenterSnapshot;
+    factorySnapshot: WorkspaceAppFactorySnapshot;
+  }>;
+  startEnabledWorkspaceApps(
+    workspaceId: string
+  ): Promise<WorkspaceAppCenterSnapshot>;
+}

@@ -1,0 +1,361 @@
+#!/usr/bin/env node
+
+import { execFileSync } from "node:child_process";
+import { readdir } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
+import { RELEASE_REPO_NAME, RELEASE_REPO_OWNER } from "./lib/releaseConfig.mjs";
+
+function parseArgs(argv) {
+  const args = new Map();
+  for (let index = 2; index < argv.length; index += 1) {
+    const key = argv[index];
+    if (!key.startsWith("--")) {
+      continue;
+    }
+    const next = argv[index + 1];
+    if (!next || next.startsWith("--")) {
+      args.set(key.slice(2), "true");
+      continue;
+    }
+    args.set(key.slice(2), next);
+    index += 1;
+  }
+  return args;
+}
+
+function readOption(args, name, envName, fallback = "") {
+  return (args.get(name) ?? process.env[envName] ?? fallback).trim();
+}
+
+function requireOption(value, name) {
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+  return value;
+}
+
+function formatBuiltAt() {
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "medium",
+    timeStyle: "medium",
+    timeZone: "Asia/Shanghai"
+  }).format(new Date());
+}
+
+function resolveDisplayValue(value, fallback = "unknown") {
+  return value || fallback;
+}
+
+function resolveReleaseKind(tag) {
+  return /-rc\.(0|[1-9]\d*)$/i.test(tag)
+    ? "Release candidate prerelease"
+    : "Stable latest release";
+}
+
+function resolveIntroText(tag) {
+  return /-rc\.(0|[1-9]\d*)$/i.test(tag)
+    ? `**${tag}** 已构建并发布为 GitHub RC Pre-release，可从下方入口下载安装包。`
+    : `**${tag}** 已构建并发布为 GitHub Release，可从下方入口下载安装包。`;
+}
+
+function normalizeBaseUrl(value) {
+  return value.replace(/\/+$/, "");
+}
+
+function resolveReleaseAssetBaseUrl({
+  bucket = "",
+  explicitBaseUrl = "",
+  prefix = ""
+}) {
+  if (explicitBaseUrl) {
+    return normalizeBaseUrl(explicitBaseUrl);
+  }
+
+  if (!bucket || !prefix) {
+    return "";
+  }
+
+  return `https://${bucket}.s3-accelerate.amazonaws.com/${prefix.replace(/^\/+|\/+$/g, "")}`;
+}
+
+function resolveGithubToken() {
+  const envToken = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? "";
+  if (envToken) {
+    return envToken;
+  }
+
+  try {
+    return execFileSync("gh", ["auth", "token"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
+async function loadRelease(repository, tag, githubToken) {
+  const headers = {
+    accept: "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28"
+  };
+  if (githubToken) {
+    headers.authorization = `Bearer ${githubToken}`;
+  }
+
+  const response = await fetch(
+    `https://api.github.com/repos/${repository}/releases/tags/${encodeURIComponent(tag)}`,
+    {
+      headers
+    }
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Unable to load release ${tag}: GitHub API returned ${response.status}`
+    );
+  }
+
+  return response.json();
+}
+
+function findAssetUrl(release, pattern, releaseAssetBaseUrl = "") {
+  const assets = Array.isArray(release.assets) ? release.assets : [];
+  const asset = assets.find((candidate) => pattern.test(candidate.name ?? ""));
+  if (!asset?.browser_download_url) {
+    return "";
+  }
+
+  if (releaseAssetBaseUrl) {
+    const releaseTag = release.tag_name ?? "";
+    if (!releaseTag) {
+      throw new Error(
+        "Release tag name is missing from the GitHub release payload"
+      );
+    }
+
+    return `${normalizeBaseUrl(releaseAssetBaseUrl)}/${encodeURIComponent(releaseTag)}/${encodeURIComponent(asset.name)}`;
+  }
+
+  return asset.browser_download_url;
+}
+
+async function listAssetNames(assetDirectory) {
+  if (!assetDirectory) {
+    return [];
+  }
+
+  return readdir(assetDirectory);
+}
+
+function resolveMirroredAssetUrl(
+  assetNames,
+  pattern,
+  releaseAssetBaseUrl,
+  tag
+) {
+  if (!releaseAssetBaseUrl || assetNames.length === 0) {
+    return "";
+  }
+
+  const assetName = assetNames.find((candidate) => pattern.test(candidate));
+  if (!assetName) {
+    return "";
+  }
+
+  return `${normalizeBaseUrl(releaseAssetBaseUrl)}/${encodeURIComponent(tag)}/${encodeURIComponent(assetName)}`;
+}
+
+function buildCardPayload({
+  actor,
+  branch,
+  macUrl,
+  releaseUrl,
+  runUrl,
+  tag,
+  target
+}) {
+  const shortTarget = target ? target.slice(0, 7) : "unknown";
+  const deployBranch = resolveDisplayValue(branch);
+  const deployActor = resolveDisplayValue(actor);
+  const actions = [
+    { label: "下载 macOS", url: macUrl },
+    { label: "打开 Release 页面", url: releaseUrl },
+    { label: "查看流水线", url: runUrl }
+  ]
+    .filter((action) => action.url)
+    .map((action, index) => ({
+      tag: "button",
+      text: { content: action.label, tag: "plain_text" },
+      type: index === 0 ? "primary" : "default",
+      url: action.url
+    }));
+
+  return {
+    card: {
+      config: { wide_screen_mode: true },
+      elements: [
+        {
+          tag: "div",
+          text: {
+            content: resolveIntroText(tag),
+            tag: "lark_md"
+          }
+        },
+        { tag: "hr" },
+        {
+          fields: [
+            {
+              is_short: true,
+              text: { content: `**版本号**\n${tag}`, tag: "lark_md" }
+            },
+            {
+              is_short: true,
+              text: {
+                content: `**构建类型**\n${resolveReleaseKind(tag)}`,
+                tag: "lark_md"
+              }
+            },
+            {
+              is_short: true,
+              text: { content: `**Commit**\n${shortTarget}`, tag: "lark_md" }
+            },
+            {
+              is_short: true,
+              text: {
+                content: `**部署分支**\n${deployBranch}`,
+                tag: "lark_md"
+              }
+            },
+            {
+              is_short: true,
+              text: {
+                content: `**部署人**\n${deployActor}`,
+                tag: "lark_md"
+              }
+            },
+            {
+              is_short: true,
+              text: {
+                content: `**完成时间**\n${formatBuiltAt()} 北京时间`,
+                tag: "lark_md"
+              }
+            }
+          ],
+          tag: "div"
+        },
+        { actions, tag: "action" }
+      ],
+      header: {
+        template: "blue",
+        title: { content: "Tutti 发布完成", tag: "plain_text" }
+      }
+    },
+    msg_type: "interactive"
+  };
+}
+
+async function sendPayload(webhookUrl, payload) {
+  const response = await fetch(webhookUrl, {
+    body: JSON.stringify(payload),
+    headers: { "content-type": "application/json" },
+    method: "POST"
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Feishu webhook returned ${response.status}: ${text}`);
+  }
+  return text;
+}
+
+async function main() {
+  const args = parseArgs(process.argv);
+  const dryRun =
+    args.has("dry-run") || process.env.NEXTOP_DESKTOP_FEISHU_DRY_RUN === "true";
+  const repository = readOption(
+    args,
+    "repository",
+    "GITHUB_REPOSITORY",
+    `${RELEASE_REPO_OWNER}/${RELEASE_REPO_NAME}`
+  );
+  const tag = requireOption(
+    readOption(args, "tag", "RELEASE_TAG"),
+    "RELEASE_TAG"
+  );
+  const target = readOption(args, "target", "RELEASE_TARGET");
+  const branch = readOption(args, "branch", "RELEASE_BRANCH");
+  const actor = readOption(args, "actor", "RELEASE_ACTOR");
+  const releaseUrl = readOption(
+    args,
+    "release-url",
+    "RELEASE_URL",
+    `https://github.com/${repository}/releases/tag/${encodeURIComponent(tag)}`
+  );
+  const runUrl = readOption(args, "run-url", "RUN_URL");
+  const webhookUrl = readOption(args, "webhook-url", "FEISHU_WEBHOOK_URL");
+  const releaseAssetDirectory = readOption(
+    args,
+    "release-asset-directory",
+    "RELEASE_ASSET_DIRECTORY"
+  );
+  const releaseAssetBaseUrl = resolveReleaseAssetBaseUrl({
+    bucket: readOption(
+      args,
+      "release-asset-bucket",
+      "NEXTOP_DESKTOP_RELEASE_ASSETS_S3_BUCKET"
+    ),
+    explicitBaseUrl: readOption(
+      args,
+      "release-asset-base-url",
+      "NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL"
+    ),
+    prefix: readOption(
+      args,
+      "release-asset-prefix",
+      "NEXTOP_DESKTOP_RELEASE_ASSETS_S3_PREFIX"
+    )
+  });
+  const release = await loadRelease(repository, tag, resolveGithubToken());
+  const mirroredAssetNames = await listAssetNames(releaseAssetDirectory);
+  const payload = buildCardPayload({
+    actor,
+    branch,
+    macUrl:
+      resolveMirroredAssetUrl(
+        mirroredAssetNames,
+        /\.dmg$/i,
+        releaseAssetBaseUrl,
+        tag
+      ) || findAssetUrl(release, /\.dmg$/i, releaseAssetBaseUrl),
+    releaseUrl,
+    runUrl,
+    tag,
+    target
+  });
+
+  if (dryRun) {
+    console.log(JSON.stringify(payload, null, 2));
+    return;
+  }
+
+  requireOption(webhookUrl, "FEISHU_WEBHOOK_URL");
+  console.log(await sendPayload(webhookUrl, payload));
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  void main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}
+
+export {
+  buildCardPayload,
+  listAssetNames,
+  resolveMirroredAssetUrl,
+  resolveIntroText,
+  resolveReleaseAssetBaseUrl,
+  resolveReleaseKind
+};
