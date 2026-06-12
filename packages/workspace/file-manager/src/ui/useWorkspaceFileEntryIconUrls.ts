@@ -1,9 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { WorkspaceFileEntry } from "../services/workspaceFileManagerTypes.ts";
 import {
   resolveWorkspaceFileEntryIconCacheKey,
   shouldResolveWorkspaceFileEntryIcon
 } from "./workspaceFileEntryIconPolicy.ts";
+
+function buildIconTargetSignature(
+  entries: readonly WorkspaceFileEntry[]
+): string {
+  return entries
+    .filter(shouldResolveWorkspaceFileEntryIcon)
+    .map((entry) => resolveWorkspaceFileEntryIconCacheKey(entry))
+    .join("\0");
+}
 
 export function useWorkspaceFileEntryIconUrls(input: {
   entries: readonly WorkspaceFileEntry[];
@@ -15,15 +24,28 @@ export function useWorkspaceFileEntryIconUrls(input: {
   const [iconUrlByCacheKey, setIconUrlByCacheKey] = useState<
     ReadonlyMap<string, string | null>
   >(() => new Map());
+  const iconTargetSignature = useMemo(
+    () => buildIconTargetSignature(entries),
+    [entries]
+  );
 
   useEffect(() => {
     if (!resolveEntryIconUrl) {
-      setIconUrlByCacheKey(new Map());
+      setIconUrlByCacheKey((current) =>
+        current.size === 0 ? current : new Map()
+      );
+      return;
+    }
+
+    const targets = entries.filter(shouldResolveWorkspaceFileEntryIcon);
+    if (targets.length === 0) {
+      setIconUrlByCacheKey((current) =>
+        current.size === 0 ? current : new Map()
+      );
       return;
     }
 
     let cancelled = false;
-    const targets = entries.filter(shouldResolveWorkspaceFileEntryIcon);
 
     void Promise.all(
       targets.map(async (entry) => {
@@ -39,19 +61,38 @@ export function useWorkspaceFileEntryIconUrls(input: {
       if (cancelled) {
         return;
       }
+
       setIconUrlByCacheKey((current) => {
-        const next = new Map(current);
+        const nextCacheKeys = new Set(results.map(([cacheKey]) => cacheKey));
+        let changed = false;
+        const next = new Map<string, string | null>();
+
         for (const [cacheKey, iconUrl] of results) {
           next.set(cacheKey, iconUrl);
+          if (current.get(cacheKey) !== iconUrl) {
+            changed = true;
+          }
         }
-        return next;
+
+        if (current.size !== next.size) {
+          changed = true;
+        } else if (!changed) {
+          for (const cacheKey of current.keys()) {
+            if (!nextCacheKeys.has(cacheKey)) {
+              changed = true;
+              break;
+            }
+          }
+        }
+
+        return changed ? next : current;
       });
     });
 
     return () => {
       cancelled = true;
     };
-  }, [entries, resolveEntryIconUrl]);
+  }, [entries, iconTargetSignature, resolveEntryIconUrl]);
 
   return iconUrlByCacheKey;
 }
