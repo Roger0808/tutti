@@ -2067,12 +2067,14 @@ export function AgentComposer({
               </Select>
             </div>
             <div className={composerStyles.footerGroupRight}>
-              {composerSettings.supportsPlanMode && planModeEnabled ? (
+              {composerSettings.supportsPlanMode ? (
                 <button
                   type="button"
                   className={cn(
                     styles.composerMenuTrigger,
                     "group/plan-mode nodrag h-8 w-auto max-w-[160px] shrink-0 gap-1.5 rounded-full px-2.5 transition-[background-color,color,opacity] duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-secondary)] [-webkit-app-region:no-drag]",
+                    !planModeEnabled &&
+                      "text-[var(--agent-gui-text-tertiary)] hover:text-[var(--text-secondary)]",
                     planModeToggleDisabled &&
                       "cursor-not-allowed text-[var(--agent-gui-text-tertiary)] opacity-60 hover:text-[var(--agent-gui-text-tertiary)]"
                   )}
@@ -2094,12 +2096,18 @@ export function AgentComposer({
                     aria-hidden="true"
                   >
                     <ListChecks
-                      className="size-4 text-current opacity-100 transition-opacity duration-150 group-hover/plan-mode:opacity-0 group-focus-visible/plan-mode:opacity-0"
+                      className={cn(
+                        "size-4 text-current opacity-100 transition-opacity duration-150",
+                        planModeEnabled &&
+                          "group-hover/plan-mode:opacity-0 group-focus-visible/plan-mode:opacity-0"
+                      )}
                       strokeWidth={1.8}
                     />
-                    <span className="absolute inset-0 inline-flex items-center justify-center rounded-full bg-[var(--agent-gui-text-secondary)] text-[var(--background-fronted)] opacity-0 transition-opacity duration-150 group-hover/plan-mode:opacity-100 group-focus-visible/plan-mode:opacity-100">
-                      <CloseIcon className="size-3" />
-                    </span>
+                    {planModeEnabled ? (
+                      <span className="absolute inset-0 inline-flex items-center justify-center rounded-full bg-[var(--agent-gui-text-secondary)] text-[var(--background-fronted)] opacity-0 transition-opacity duration-150 group-hover/plan-mode:opacity-100 group-focus-visible/plan-mode:opacity-100">
+                        <CloseIcon className="size-3" />
+                      </span>
+                    ) : null}
                   </span>
                   <span className="min-w-0 truncate" data-agent-plan-mode-label>
                     {labels.planModeLabel}

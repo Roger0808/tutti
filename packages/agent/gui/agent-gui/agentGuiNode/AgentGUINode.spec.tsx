@@ -2258,6 +2258,91 @@ describe("AgentGUINode", () => {
     });
   }, 15000);
 
+  it("shows the plan mode toggle when supported even while plan mode is off", () => {
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      composerSettings: {
+        sessionSettings: {
+          model: "claude-4",
+          reasoningEffort: "high",
+          planMode: false,
+          permissionModeId: "default"
+        },
+        draftSettings: {
+          model: "claude-4",
+          reasoningEffort: "high",
+          planMode: false,
+          permissionModeId: "default"
+        },
+        effectivePlanMode: false,
+        supportsModel: true,
+        supportsReasoningEffort: true,
+        supportsPermissionMode: true,
+        supportsPlanMode: true,
+        isSettingsLoading: false,
+        modelUnavailable: false,
+        reasoningUnavailable: false,
+        permissionModeUnavailable: false,
+        planUnavailable: false,
+        selectedPermissionModeValue: "default",
+        availableModels: [{ value: "claude-4", label: "Claude 4" }],
+        availableReasoningEfforts: [{ value: "high", label: "High" }],
+        availablePermissionModes: [
+          { value: "default", label: "agentHost.agentGui.permissionModeAsk" }
+        ]
+      }
+    });
+    renderAgentGUINode();
+
+    const toggle = document.querySelector(
+      '[data-agent-plan-mode-toggle="true"]'
+    );
+    expect(toggle).not.toBeNull();
+    expect(toggle).toHaveAttribute("data-state", "off");
+
+    fireEvent.click(toggle!);
+
+    expect(mockUpdateComposerSettings).toHaveBeenCalledWith({
+      planMode: true
+    });
+  });
+
+  it("hides the plan mode toggle when the provider lacks the capability", () => {
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      composerSettings: {
+        sessionSettings: null,
+        draftSettings: {
+          model: "gpt-5",
+          reasoningEffort: "high",
+          planMode: false,
+          permissionModeId: "auto"
+        },
+        effectivePlanMode: false,
+        supportsModel: true,
+        supportsReasoningEffort: true,
+        supportsPermissionMode: true,
+        supportsPlanMode: false,
+        isSettingsLoading: false,
+        modelUnavailable: false,
+        reasoningUnavailable: false,
+        permissionModeUnavailable: false,
+        planUnavailable: false,
+        selectedPermissionModeValue: "auto",
+        availableModels: [{ value: "gpt-5", label: "GPT-5" }],
+        availableReasoningEfforts: [{ value: "high", label: "High" }],
+        availablePermissionModes: [
+          { value: "auto", label: "agentHost.agentGui.permissionModeAuto" }
+        ]
+      }
+    });
+    renderAgentGUINode();
+
+    expect(
+      document.querySelector('[data-agent-plan-mode-toggle="true"]')
+    ).toBeNull();
+  });
+
   it("shows fallback composer defaults for legacy sessions without stored settings", () => {
     mockViewModel = createViewModel({
       data: {
