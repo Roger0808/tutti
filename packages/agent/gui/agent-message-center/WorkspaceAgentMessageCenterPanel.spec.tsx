@@ -1205,4 +1205,168 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
       screen.queryByText("No messages match the current filters")
     ).toBeNull();
   });
+
+  it("renders interactive items in the attention deck instead of the groups", () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createWaitingItem({
+            agentSessionId: "waiting-session",
+            title: "Needs approval"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session",
+            title: "Running task",
+            status: "working"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    const deck = screen.getByTestId(
+      "workspace-agent-message-center-attention-deck"
+    );
+    expect(deck).toHaveAttribute(
+      "data-deck-top-item-id",
+      "message-center-waiting-session"
+    );
+    // The interactive item is no longer rendered inside a "Needs attention" group section.
+    expect(
+      screen.queryByRole("heading", { name: /Needs attention · / })
+    ).toBeNull();
+    // Non-interactive items still render in the normal list.
+    expect(screen.getByText("Running task")).toBeTruthy();
+  });
+
+  it("keeps the deck visible even when filters would hide the interactive item", () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createWaitingItem({
+            agentSessionId: "waiting-session",
+            title: "Needs approval"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session",
+            title: "Running task",
+            status: "working"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    // Filter to only "Completed" — removes working item from the list, deck must remain.
+    openViewOptions();
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Waiting 1" })
+    );
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Running 1" })
+    );
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+
+    expect(
+      screen.getByTestId("workspace-agent-message-center-attention-deck")
+    ).toHaveAttribute(
+      "data-deck-top-item-id",
+      "message-center-waiting-session"
+    );
+  });
+
+  it("advances to the next interactive card after the top one is answered", () => {
+    const onSubmitPrompt = vi.fn();
+    const model = createMessageCenterModel([
+      createWaitingItem({
+        agentSessionId: "first",
+        title: "Approve first",
+        sortTimeUnixMs: 20,
+        pendingPrompt: {
+          kind: "approval",
+          id: "approval:first",
+          turnId: "turn-1",
+          requestId: "request-first",
+          callId: "request-first",
+          title: "Approval",
+          status: "waiting_approval",
+          toolName: "Bash",
+          input: null,
+          options: [
+            {
+              id: "allow_once",
+              label: "Yes",
+              kind: "allow_once",
+              description: ""
+            }
+          ],
+          output: null,
+          occurredAtUnixMs: 20
+        }
+      }),
+      createWaitingItem({
+        agentSessionId: "second",
+        title: "Approve second",
+        sortTimeUnixMs: 10,
+        pendingPrompt: {
+          kind: "approval",
+          id: "approval:second",
+          turnId: "turn-1",
+          requestId: "request-second",
+          callId: "request-second",
+          title: "Approval",
+          status: "waiting_approval",
+          toolName: "Bash",
+          input: null,
+          options: [
+            {
+              id: "allow_once",
+              label: "Yes",
+              kind: "allow_once",
+              description: ""
+            }
+          ],
+          output: null,
+          occurredAtUnixMs: 10
+        }
+      })
+    ]);
+
+    const { rerender } = render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={model}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={onSubmitPrompt}
+      />
+    );
+
+    // Top is "first"; answer it.
+    fireEvent.click(screen.getByRole("button", { name: "Yes, proceed" }));
+    expect(onSubmitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ agentSessionId: "first" })
+    );
+
+    // Model refreshes without "first" -> deck advances to "second".
+    rerender(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([model.items[1]!])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={onSubmitPrompt}
+      />
+    );
+
+    expect(
+      screen.getByTestId("workspace-agent-message-center-attention-deck")
+    ).toHaveAttribute("data-deck-top-item-id", "message-center-second");
+  });
 });

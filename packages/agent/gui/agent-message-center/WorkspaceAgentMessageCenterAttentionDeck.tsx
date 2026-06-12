@@ -123,10 +123,10 @@ export function WorkspaceAgentMessageCenterAttentionDeck({
       aria-label={t("agentHost.workspaceAgentMessageCenterGroupNeedsAttention")}
     >
       <div className="flex min-w-0 items-center justify-between gap-3 px-0.5">
-        <h3 className="truncate text-xs font-bold leading-4 text-[var(--text-tertiary)]">
+        <div className="truncate text-xs font-bold leading-4 text-[var(--text-tertiary)]">
           {t("agentHost.workspaceAgentMessageCenterGroupNeedsAttention")} ·{" "}
           {ordered.length}
-        </h3>
+        </div>
       </div>
       <div
         className="relative min-w-0"
