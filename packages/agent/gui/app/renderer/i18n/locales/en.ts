@@ -1012,6 +1012,8 @@ export const en = {
       "Expand {{count}} collapsed messages",
     workspaceAgentMessageCenterCollapseStackAria: "Collapse expanded messages",
     workspaceAgentMessageCenterStackSummaryCount: "{{count}} messages",
+    workspaceAgentMessageCenterAttentionDeckRemaining:
+      "{{count}} more waiting below",
     workspaceAgentMessageCenterFilteredEmpty:
       "No messages match the current filters",
     workspaceAgentMessageCenterEmpty: "No agent messages yet",
