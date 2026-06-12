@@ -671,6 +671,59 @@ describe("WorkspaceAgentMessageCenterCard", () => {
       source: "agent-markdown"
     });
   });
+
+  it("hides the interactive prompt surface when interactive is false", () => {
+    const promptItem: WorkspaceAgentMessageCenterItem = {
+      ...baseItem,
+      status: "waiting",
+      pendingPrompt: {
+        kind: "approval",
+        id: "approval:request-1",
+        turnId: "turn-1",
+        requestId: "request-1",
+        callId: "request-1",
+        title: "Approval",
+        status: "waiting_approval",
+        toolName: "Bash",
+        input: null,
+        options: [
+          {
+            id: "allow_once",
+            label: "Yes",
+            kind: "allow_once",
+            description: ""
+          }
+        ],
+        output: null,
+        occurredAtUnixMs: 1
+      }
+    };
+
+    const { rerender } = render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={promptItem}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+    expect(screen.getByRole("button", { name: "Yes, proceed" })).toBeTruthy();
+
+    rerender(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={promptItem}
+          interactive={false}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+    expect(screen.queryByRole("button", { name: "Yes, proceed" })).toBeNull();
+  });
 });
 
 describe("WorkspaceAgentMessageCenterPanel", () => {
