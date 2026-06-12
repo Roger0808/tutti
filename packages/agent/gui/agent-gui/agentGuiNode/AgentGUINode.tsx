@@ -706,6 +706,8 @@ export const AgentGUINode = memo(function AgentGUINode({
       usagePopoverTitle: t("agentHost.agentGui.usagePopoverTitle"),
       usageTokensLabel: t("agentHost.agentGui.usageTokensLabel"),
       usageLimitsLabel: t("agentHost.agentGui.usageLimitsLabel"),
+      usageCompactAction: t("agentHost.agentGui.usageCompactAction"),
+      usageCompactTooltip: t("agentHost.agentGui.usageCompactTooltip"),
       noRunningResponse: t("agentHost.agentGui.noRunningResponse"),
       empty: t("agentHost.agentGui.empty", { provider: displayProviderLabel }),
       emptyProvider: displayProviderLabel,

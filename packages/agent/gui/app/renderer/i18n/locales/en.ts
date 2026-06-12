@@ -510,6 +510,8 @@ export const en = {
       usagePopoverTitle: "Usage",
       usageTokensLabel: "Tokens",
       usageLimitsLabel: "Limits",
+      usageCompactAction: "Compact",
+      usageCompactTooltip: "Compact the conversation context (/compact)",
       noRunningResponse: "No running response to stop.",
       promptTipsPrefix: "Tips: ",
       promptTips: {

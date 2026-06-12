@@ -468,6 +468,8 @@ export const zhCN = {
       usagePopoverTitle: "用量",
       usageTokensLabel: "Token 用量",
       usageLimitsLabel: "限额",
+      usageCompactAction: "压缩",
+      usageCompactTooltip: "压缩会话上下文（/compact）",
       noRunningResponse: "当前没有正在运行的回复。",
       promptTipsPrefix: "Tips：",
       promptTips: {

@@ -15,21 +15,24 @@
 ### Task A: Compact 按鈕
 
 **Files:**
+
 - Modify: `packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx`（`AgentGUIDetailHeader`：usage chip 旁渲染按鈕）
 - Modify: `packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts`（viewModel/actions 暴露 `submitCompact()`——內部走現有 prompt 提交動作,等價於用戶輸入 `/compact` 提交;先 grep composer onSubmit 的最終去向找到該動作）
 - Modify: i18n（按鈕文案/тooltip 三語）
 - Test: vitest——按鈕在 `compactSupported === false` 或 usage 為 null 時不渲染;點擊調用 submitCompact。
 
 **要求:**
+
 - 顯示條件：`compactSupported !== false` 且會話存在（unknown 視為可用,與 slash 策略一致）。
 - 點擊後按鈕短暫 disabled（直至下一次 usage 更新或 turn 結束——簡化:提交後 disabled,session status 回 ready 時恢復;沿用 viewModel 既有 status 字段）。
 - 視覺沿用 detailHeader 既有按鈕/圖標慣例（先讀同 header 其他操作的寫法）。
 
-- [ ] **Step 1: 失敗測試** → **Step 2: 確認失敗** → **Step 3: 實現** → **Step 4: `pnpm vitest run && pnpm typecheck`** → **Step 5: Commit** `feat(agent-gui): compact action in session header`
+- [x] **Step 1: 失敗測試** → **Step 2: 確認失敗** → **Step 3: 實現** → **Step 4: `pnpm vitest run && pnpm typecheck`** → **Step 5: Commit** `feat(agent-gui): compact action in session header`
 
 ### Task B: 閾值提醒
 
 **Files:**
+
 - Create: `packages/agent/gui/agent-gui/agentGuiNode/model/agentUsageAlerts.ts`（純函數:輸入 prev/next percentUsed 與已提醒檔位集合,輸出應觸發的檔位與新集合——便於單測）
 - Modify: `useAgentGUINodeController.ts`（useEffect 監聽 usage 變化,跨越檔位時觸發提醒;per agentSessionId 記錄）
 - Modify: 提醒呈現（弱:非阻斷 toast/inline 橫幅;強:帶「Compact」行動按鈕的 toast,點擊調用 Task A 的 submitCompact——具體載體按勘察結論選現有機制）
@@ -40,7 +43,10 @@
 
 ```ts
 export type UsageAlertTier = "warn" | "critical";
-export interface UsageAlertState { warned: boolean; criticaled: boolean }
+export interface UsageAlertState {
+  warned: boolean;
+  criticaled: boolean;
+}
 export function nextUsageAlert(
   percentUsed: number | null,
   state: UsageAlertState

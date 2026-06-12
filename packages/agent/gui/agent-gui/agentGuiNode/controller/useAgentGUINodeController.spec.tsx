@@ -958,6 +958,48 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("submits the literal /compact prompt through submitCompact", async () => {
+    const exec = vi.fn(async ({ agentSessionId }: { agentSessionId: string }) =>
+      agentSession(agentSessionId, {
+        status: "working",
+        updatedAtUnixMs: Date.now()
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      exec,
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      result.current.actions.submitCompact();
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        content: [{ type: "text", text: "/compact" }]
+      });
+    });
+  });
+
   it("selects an externally requested active conversation on an already-open panel", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({

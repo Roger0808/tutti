@@ -4770,6 +4770,10 @@ export function useAgentGUINodeController({
     ]
   );
 
+  const submitCompact = useCallback(() => {
+    submitPrompt(textPromptContent("/compact"));
+  }, [submitPrompt]);
+
   const showPromptImagesUnsupported = useCallback(() => {
     setDetailError(translate("agentHost.agentGui.promptImagesUnsupported"));
   }, []);
@@ -6568,6 +6572,7 @@ export function useAgentGUINodeController({
         createConversation,
         selectConversation,
         submitPrompt,
+        submitCompact,
         showPromptImagesUnsupported,
         submitApprovalOption,
         submitInteractivePrompt,
@@ -6650,6 +6655,7 @@ export function useAgentGUINodeController({
       selectConversation,
       showPromptImagesUnsupported,
       submitPrompt,
+      submitCompact,
       userProjects,
       visibleConversations,
       updateComposerSettings,

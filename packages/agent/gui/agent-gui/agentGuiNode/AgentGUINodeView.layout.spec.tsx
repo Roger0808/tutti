@@ -762,22 +762,137 @@ describe("AgentGUINodeView usage chip", () => {
   });
 });
 
-function renderAgentGUINodeView({
-  conversationRailCollapsed = false,
-  conversationRailWidthPx = 240,
-  onConversationRailWidthChanged = vi.fn(),
-  viewModel = createViewModel(),
-  actions = createActions(),
-  labels = createLabels()
-}: {
+describe("AgentGUINodeView compact action", () => {
+  afterEach(() => {
+    conversationFlowMock.calls = [];
+    composerMock.calls = [];
+    statusDotMock.calls = [];
+  });
+
+  const usageWithWindow: AgentGUINodeViewModel["usage"] = {
+    usedTokens: 170_000,
+    totalTokens: 200_000,
+    percentUsed: 85,
+    quotas: []
+  };
+
+  function compactViewModel({
+    usage = usageWithWindow,
+    compactSupported = null,
+    status = "ready"
+  }: {
+    usage?: AgentGUINodeViewModel["usage"];
+    compactSupported?: boolean | null;
+    status?: AgentGUINodeViewModel["conversations"][number]["status"];
+  } = {}): AgentGUINodeViewModel {
+    const activeConversation = {
+      ...createConversationSummary("session-1"),
+      status
+    };
+    const conversationDetail = createConversationDetail();
+    return {
+      ...createViewModel(),
+      conversations: [activeConversation],
+      activeConversation,
+      activeConversationId: activeConversation.id,
+      conversationDetail: {
+        ...conversationDetail,
+        session: {
+          ...conversationDetail.session,
+          effectiveStatus: status,
+          turnPhase: status === "working" ? "working" : "idle"
+        }
+      },
+      usage,
+      compactSupported
+    };
+  }
+
+  it("renders the compact button beside the usage chip when capability is unknown", () => {
+    renderAgentGUINodeView({ viewModel: compactViewModel() });
+
+    expect(screen.getByTestId("agent-gui-usage-chip")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-gui-compact-button")).toBeEnabled();
+  });
+
+  it("renders the compact button when the capability resolves true", () => {
+    renderAgentGUINodeView({
+      viewModel: compactViewModel({ compactSupported: true })
+    });
+
+    expect(screen.getByTestId("agent-gui-compact-button")).toBeInTheDocument();
+  });
+
+  it("does not render the compact button when the capability resolves false", () => {
+    renderAgentGUINodeView({
+      viewModel: compactViewModel({ compactSupported: false })
+    });
+
+    expect(screen.queryByTestId("agent-gui-compact-button")).toBeNull();
+  });
+
+  it("does not render the compact button when usage is null", () => {
+    renderAgentGUINodeView({ viewModel: compactViewModel({ usage: null }) });
+
+    expect(screen.queryByTestId("agent-gui-compact-button")).toBeNull();
+  });
+
+  it("submits compact on click and stays disabled until the session returns to ready", () => {
+    const actions = createActions();
+    const view = renderAgentGUINodeView({
+      viewModel: compactViewModel(),
+      actions
+    });
+
+    fireEvent.click(screen.getByTestId("agent-gui-compact-button"));
+
+    expect(actions.submitCompact).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("agent-gui-compact-button")).toBeDisabled();
+
+    view.rerender(
+      buildAgentGUINodeViewElement({
+        viewModel: compactViewModel({ status: "working" }),
+        actions
+      })
+    );
+    expect(screen.getByTestId("agent-gui-compact-button")).toBeDisabled();
+
+    view.rerender(
+      buildAgentGUINodeViewElement({
+        viewModel: compactViewModel({ status: "ready" }),
+        actions
+      })
+    );
+    expect(screen.getByTestId("agent-gui-compact-button")).toBeEnabled();
+  });
+
+  it("disables the compact button while the session is working", () => {
+    renderAgentGUINodeView({
+      viewModel: compactViewModel({ status: "working" })
+    });
+
+    expect(screen.getByTestId("agent-gui-compact-button")).toBeDisabled();
+  });
+});
+
+interface RenderAgentGUINodeViewOptions {
   conversationRailCollapsed?: boolean;
   conversationRailWidthPx?: number;
   onConversationRailWidthChanged?: (widthPx: number) => void;
   viewModel?: AgentGUINodeViewModel;
   actions?: AgentGUINodeViewProps["actions"];
   labels?: AgentGUIViewLabels;
-} = {}) {
-  return render(
+}
+
+function buildAgentGUINodeViewElement({
+  conversationRailCollapsed = false,
+  conversationRailWidthPx = 240,
+  onConversationRailWidthChanged = vi.fn(),
+  viewModel = createViewModel(),
+  actions = createActions(),
+  labels = createLabels()
+}: RenderAgentGUINodeViewOptions = {}) {
+  return (
     <AgentGUINodeView
       viewModel={viewModel}
       isAgentProviderReady={true}
@@ -794,6 +909,10 @@ function renderAgentGUINodeView({
   );
 }
 
+function renderAgentGUINodeView(options: RenderAgentGUINodeViewOptions = {}) {
+  return render(buildAgentGUINodeViewElement(options));
+}
+
 type AgentGUINodeViewProps = Parameters<typeof AgentGUINodeView>[0];
 
 function createActions(): AgentGUINodeViewProps["actions"] {
@@ -801,6 +920,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     createConversation: vi.fn(),
     selectConversation: vi.fn(),
     submitPrompt: vi.fn(),
+    submitCompact: vi.fn(),
     showPromptImagesUnsupported: vi.fn(),
     submitApprovalOption: vi.fn(),
     submitInteractivePrompt: vi.fn(),
@@ -1101,6 +1221,8 @@ function createLabels(): AgentGUIViewLabels {
     usagePopoverTitle: "usagePopoverTitle",
     usageTokensLabel: "usageTokensLabel",
     usageLimitsLabel: "usageLimitsLabel",
+    usageCompactAction: "usageCompactAction",
+    usageCompactTooltip: "usageCompactTooltip",
     fileMentionPalette: "fileMentionPalette",
     fileMentionLoading: "fileMentionLoading",
     fileMentionEmpty: "fileMentionEmpty",

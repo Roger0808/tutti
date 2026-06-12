@@ -279,6 +279,8 @@ export interface AgentGUIViewLabels {
   usagePopoverTitle: string;
   usageTokensLabel: string;
   usageLimitsLabel: string;
+  usageCompactAction: string;
+  usageCompactTooltip: string;
   fileMentionPalette: string;
   fileMentionLoading: string;
   fileMentionEmpty: string;
@@ -336,6 +338,7 @@ interface AgentGUINodeViewProps {
     createConversation: (options?: { projectPath?: string | null }) => void;
     selectConversation: (agentSessionId: string) => void;
     submitPrompt: (content: AgentPromptContentBlock[]) => void;
+    submitCompact: () => void;
     showPromptImagesUnsupported: () => void;
     submitApprovalOption: (requestId: string, optionId: string) => void;
     submitInteractivePrompt: (input: {
@@ -1566,6 +1569,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         showFailedSyncLabel={showFailedSyncLabel}
         usage={viewModel.usage}
         usageLimits={slashStatusLimits}
+        compactSupported={viewModel.compactSupported}
+        onSubmitCompact={actions.submitCompact}
       />
       <ScrollArea
         className="min-h-0 flex-1 [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"
@@ -1734,6 +1739,8 @@ interface AgentGUIDetailHeaderProps {
     | "usagePopoverTitle"
     | "usageTokensLabel"
     | "usageLimitsLabel"
+    | "usageCompactAction"
+    | "usageCompactTooltip"
   >;
   uiLanguage: UiLanguage;
   statusGroupTitle: string;
@@ -1747,6 +1754,8 @@ interface AgentGUIDetailHeaderProps {
   showFailedSyncLabel: boolean;
   usage: AgentActivityUsage | null;
   usageLimits: readonly AgentComposerSlashStatusLimit[];
+  compactSupported: boolean | null;
+  onSubmitCompact: () => void;
 }
 
 const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
@@ -1761,7 +1770,9 @@ const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
   activeConversationStatusLabel,
   showFailedSyncLabel,
   usage,
-  usageLimits
+  usageLimits,
+  compactSupported,
+  onSubmitCompact
 }: AgentGUIDetailHeaderProps): React.JSX.Element | null {
   "use memo";
 
@@ -1790,6 +1801,15 @@ const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
             totalTokens={usage.totalTokens}
             limits={usageLimits}
             labels={labels}
+          />
+        ) : null}
+        {usage && usage.percentUsed !== null && compactSupported !== false ? (
+          <AgentGUICompactButton
+            conversationId={activeConversation.id}
+            status={activeConversationStatus}
+            label={labels.usageCompactAction}
+            tooltip={labels.usageCompactTooltip}
+            onSubmitCompact={onSubmitCompact}
           />
         ) : null}
         <StatusDot
@@ -1841,6 +1861,68 @@ function AgentRunPathInfo({ path }: { path: string }): React.JSX.Element {
         className="max-w-[320px] text-xs [overflow-wrap:anywhere]"
       >
         {path}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function AgentGUICompactButton({
+  conversationId,
+  status,
+  label,
+  tooltip,
+  onSubmitCompact
+}: {
+  conversationId: string;
+  status: AgentGUINodeViewModel["conversations"][number]["status"] | undefined;
+  label: string;
+  tooltip: string;
+  onSubmitCompact: () => void;
+}): React.JSX.Element {
+  "use memo";
+
+  const [pendingConversationId, setPendingConversationId] = useState<
+    string | null
+  >(null);
+  const lastStatusRef = useRef(status);
+
+  useEffect(() => {
+    const previousStatus = lastStatusRef.current;
+    lastStatusRef.current = status;
+    if (status === "ready" && previousStatus !== "ready") {
+      setPendingConversationId(null);
+    }
+  }, [status]);
+
+  const isPending = pendingConversationId === conversationId;
+  const disabled = isPending || status === "working";
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className={styles.detailHeaderCompactButton}
+          data-testid="agent-gui-compact-button"
+          disabled={disabled}
+          aria-label={label}
+          onClick={() => {
+            if (disabled) {
+              return;
+            }
+            setPendingConversationId(conversationId);
+            onSubmitCompact();
+          }}
+        >
+          {label}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        side="bottom"
+        align="end"
+        className="max-w-[320px] text-xs"
+      >
+        {tooltip}
       </TooltipContent>
     </Tooltip>
   );
