@@ -49,19 +49,20 @@ export function installPreloadLinkInterception({
 }): () => void {
   installMainWorldOpenInterception({ executeInMainWorld, reportDiagnostic });
 
-  const originalOpen = scope.open;
-  if (typeof originalOpen === "function") {
-    scope.open = ((url?: string | URL, target?: string, features?: string) => {
+  const originalOpen =
+    typeof scope.open === "function" ? scope.open.bind(scope) : null;
+  if (originalOpen) {
+    scope.open = (url?: string | URL, target?: string, features?: string) => {
       if (shouldNavigateOpenInPlace(target)) {
         const resolvedSameOriginUrl = resolveSameOriginUrl(scope, url);
         if (resolvedSameOriginUrl) {
           scope.location.assign(resolvedSameOriginUrl);
-          return scope as unknown as WindowProxy;
+          return scope;
         }
       }
 
       return originalOpen.call(scope, url, target, features);
-    }) as Window["open"];
+    };
   }
 
   const handleClick = (event: MouseEvent) => {
@@ -144,7 +145,9 @@ export function installPreloadLinkInterception({
   scope.addEventListener("click", handleClick, true);
 
   return () => {
-    scope.open = originalOpen;
+    if (originalOpen) {
+      scope.open = originalOpen;
+    }
     scope.removeEventListener("click", handleClick, true);
   };
 }
@@ -195,13 +198,14 @@ function installWorkspaceAppMainWorldOpenInterception(): boolean {
     return true;
   }
 
-  const originalOpen = scope.open;
-  if (typeof originalOpen !== "function") {
+  const originalOpen =
+    typeof scope.open === "function" ? scope.open.bind(scope) : null;
+  if (!originalOpen) {
     return false;
   }
 
   globalScope[patchKey] = true;
-  scope.open = ((url?: string | URL, target?: string, features?: string) => {
+  scope.open = (url?: string | URL, target?: string, features?: string) => {
     if (shouldNavigate(target)) {
       const resolvedSameOriginUrl = resolveSameOrigin(url, scope.location.href);
       if (resolvedSameOriginUrl) {
@@ -211,7 +215,7 @@ function installWorkspaceAppMainWorldOpenInterception(): boolean {
     }
 
     return originalOpen.call(scope, url, target, features);
-  }) as Window["open"];
+  };
 
   return true;
 

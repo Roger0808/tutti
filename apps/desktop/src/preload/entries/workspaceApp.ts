@@ -19,7 +19,8 @@ const appContextChannels = {
 
 installWorkspaceAppLinkInterception({
   executeInMainWorld(script) {
-    return contextBridge.executeInMainWorld(script);
+    const result = contextBridge.executeInMainWorld(script) as unknown;
+    return result;
   },
   reportDiagnostic(diagnostic) {
     ipcRenderer.send(appContextChannels.diagnostic, {
