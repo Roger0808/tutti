@@ -1,0 +1,141 @@
+import { useMemo, type JSX } from "react";
+import { cn } from "@tutti-os/ui-system";
+import { useTranslation } from "../i18n/index";
+import type { WorkspaceLinkAction } from "../actions/workspaceLinkActions";
+import { WorkspaceAgentMessageCenterCard } from "./WorkspaceAgentMessageCenterCard";
+import type { WorkspaceAgentMessageCenterItem } from "./workspaceAgentMessageCenterModel";
+
+const DECK_MAX_PEEK = 2;
+
+export interface WorkspaceAgentMessageCenterAttentionDeckProps {
+  items: WorkspaceAgentMessageCenterItem[];
+  highlightedItemId?: string | null;
+  submittingPromptKey: string | null;
+  registerNode?: (itemId: string, node: HTMLElement | null) => void;
+  onLinkAction?: (action: WorkspaceLinkAction) => void;
+  onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
+  onSubmitPrompt: (
+    item: WorkspaceAgentMessageCenterItem,
+    input: {
+      action?: string;
+      optionId?: string;
+      payload?: Record<string, unknown>;
+      requestId: string;
+    }
+  ) => void;
+}
+
+export function WorkspaceAgentMessageCenterAttentionDeck({
+  items,
+  highlightedItemId = null,
+  submittingPromptKey,
+  registerNode,
+  onLinkAction,
+  onOpenChat,
+  onSubmitPrompt
+}: WorkspaceAgentMessageCenterAttentionDeckProps): JSX.Element | null {
+  "use memo";
+  const { t } = useTranslation();
+
+  const ordered = useMemo(
+    () => orderDeckItems(items, highlightedItemId),
+    [items, highlightedItemId]
+  );
+
+  const topItem = ordered[0];
+  if (!topItem) {
+    return null;
+  }
+
+  const behindItems = ordered.slice(1, 1 + DECK_MAX_PEEK);
+  const remainingCount = ordered.length - 1;
+  const topIsSubmitting =
+    submittingPromptKey ===
+    `${topItem.agentSessionId}:${topItem.pendingPrompt?.requestId}`;
+
+  return (
+    <section
+      className="flex min-w-0 flex-col gap-2.5"
+      aria-label={t("agentHost.workspaceAgentMessageCenterGroupNeedsAttention")}
+    >
+      <div className="flex min-w-0 items-center justify-between gap-3 px-0.5">
+        <h3 className="truncate text-xs font-bold leading-4 text-[var(--text-tertiary)]">
+          {t("agentHost.workspaceAgentMessageCenterGroupNeedsAttention")} ·{" "}
+          {ordered.length}
+        </h3>
+      </div>
+      <div
+        className="relative min-w-0"
+        data-testid="workspace-agent-message-center-attention-deck"
+        data-deck-count={ordered.length}
+        data-deck-top-item-id={topItem.id}
+      >
+        {behindItems.map((item, peekIndex) => {
+          const depth = peekIndex + 1;
+          return (
+            <div
+              key={item.agentSessionId}
+              aria-hidden="true"
+              inert
+              className="pointer-events-none absolute inset-x-0 top-0 min-w-0"
+              style={{
+                transform: `translateY(${depth * 10}px) scale(${1 - depth * 0.03})`,
+                opacity: Math.max(0.55 - peekIndex * 0.2, 0.2),
+                zIndex: DECK_MAX_PEEK - peekIndex
+              }}
+            >
+              <WorkspaceAgentMessageCenterCard
+                interactive={false}
+                isSubmitting={false}
+                item={item}
+                onOpenChat={onOpenChat}
+                onSubmitPrompt={() => {}}
+              />
+            </div>
+          );
+        })}
+        <div
+          className={cn("relative min-w-0", behindItems.length > 0 && "z-10")}
+        >
+          <WorkspaceAgentMessageCenterCard
+            cardRef={
+              registerNode
+                ? (node) => registerNode(topItem.id, node)
+                : undefined
+            }
+            highlighted={topItem.id === highlightedItemId}
+            interactive
+            isSubmitting={topIsSubmitting}
+            item={topItem}
+            onLinkAction={onLinkAction}
+            onOpenChat={onOpenChat}
+            onSubmitPrompt={(input) => onSubmitPrompt(topItem, input)}
+          />
+        </div>
+      </div>
+      {remainingCount > 0 ? (
+        <div className="px-0.5 text-xs leading-4 text-[var(--text-tertiary)]">
+          {t("agentHost.workspaceAgentMessageCenterAttentionDeckRemaining", {
+            count: remainingCount
+          })}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function orderDeckItems(
+  items: readonly WorkspaceAgentMessageCenterItem[],
+  highlightedItemId: string | null
+): WorkspaceAgentMessageCenterItem[] {
+  if (!highlightedItemId) {
+    return [...items];
+  }
+  const index = items.findIndex((item) => item.id === highlightedItemId);
+  if (index <= 0) {
+    return [...items];
+  }
+  const next = [...items];
+  const [picked] = next.splice(index, 1);
+  return picked ? [picked, ...next] : next;
+}
