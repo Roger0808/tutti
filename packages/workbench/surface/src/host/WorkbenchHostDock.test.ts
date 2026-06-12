@@ -83,11 +83,13 @@ test("dock hover panels survive pointer travel from slot to panel", () => {
     source,
     /const runDockMinimizedLaunchAfterCollapse = useCallback/
   );
-  assert.match(source, /const dockMinimizedSlotCollapseLaunchDelayMs = 520;/);
   assert.match(
     source,
-    /runDockMinimizedLaunchAfterCollapse\([\s\S]*?slot\.anchorKey[\s\S]*?context\.genie\.launchNodeFromAnchor/
+    /const runDockMinimizedLaunchAfterCollapse = useCallback\([\s\S]*?beginDockMinimizedInteraction\(anchorKey\);[\s\S]*?scheduleCollapsingMinimizedLaunchClear\(anchorKey\);[\s\S]*?launch\(\);/
   );
+  assert.match(source, /collapsingMinimizedLaunchAnchorKeys/);
+  assert.match(source, /minimizedDockSlotLayoutAnimationMs = 720;/);
+  assert.doesNotMatch(source, /dockMinimizedSlotCollapseLaunchDelayMs/);
   assert.doesNotMatch(
     source,
     /desktop-dock__minimized-btn[\s\S]{0,260}?beginDockIconInteraction/

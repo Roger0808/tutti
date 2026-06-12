@@ -44,6 +44,7 @@ import {
 } from "./dockScrollState.ts";
 import { readWorkbenchHostExternalState } from "./externalState.ts";
 import {
+  resolveWorkbenchMinimizedDockAnchorKeyForNode,
   resolveWorkbenchMinimizedDockSlots,
   type WorkbenchMinimizedDockNode,
   type WorkbenchMinimizedDockSlot
@@ -144,9 +145,6 @@ export function WorkbenchHostDock({
     clientX: number;
     clientY: number;
   } | null>(null);
-  const minimizedLaunchTimersRef = useRef(
-    new Map<string, ReturnType<typeof setTimeout>>()
-  );
   const hoverPanelRestTargetRef = useRef<{
     anchorKey: string;
     entryId: string;
@@ -182,6 +180,13 @@ export function WorkbenchHostDock({
     }));
   const [dockStateRevision, setDockStateRevision] = useState(0);
   const [externalStateRevision, setExternalStateRevision] = useState(0);
+  const [
+    collapsingMinimizedLaunchAnchorKeys,
+    setCollapsingMinimizedLaunchAnchorKeys
+  ] = useState<Set<string>>(() => new Set());
+  const collapsingMinimizedLaunchTimerRef = useRef(
+    new Map<string, ReturnType<typeof setTimeout>>()
+  );
 
   const clearHoverPanelCloseTimer = useCallback(() => {
     if (hoverPanelCloseTimerRef.current === null) {
@@ -204,12 +209,44 @@ export function WorkbenchHostDock({
     () => () => {
       clearHoverPanelCloseTimer();
       clearHoverPanelOpenTimer();
-      for (const timer of minimizedLaunchTimersRef.current.values()) {
+      for (const timer of collapsingMinimizedLaunchTimerRef.current.values()) {
         clearTimeout(timer);
       }
-      minimizedLaunchTimersRef.current.clear();
+      collapsingMinimizedLaunchTimerRef.current.clear();
     },
     [clearHoverPanelCloseTimer, clearHoverPanelOpenTimer]
+  );
+
+  const clearCollapsingMinimizedLaunch = useCallback((anchorKey: string) => {
+    const timer = collapsingMinimizedLaunchTimerRef.current.get(anchorKey);
+    if (timer) {
+      clearTimeout(timer);
+      collapsingMinimizedLaunchTimerRef.current.delete(anchorKey);
+    }
+    setCollapsingMinimizedLaunchAnchorKeys((current) => {
+      if (!current.has(anchorKey)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(anchorKey);
+      return next;
+    });
+  }, []);
+
+  const scheduleCollapsingMinimizedLaunchClear = useCallback(
+    (anchorKey: string) => {
+      const existing = collapsingMinimizedLaunchTimerRef.current.get(anchorKey);
+      if (existing) {
+        clearTimeout(existing);
+      }
+      collapsingMinimizedLaunchTimerRef.current.set(
+        anchorKey,
+        setTimeout(() => {
+          clearCollapsingMinimizedLaunch(anchorKey);
+        }, minimizedDockSlotLayoutAnimationMs)
+      );
+    },
+    [clearCollapsingMinimizedLaunch]
   );
 
   useLayoutEffect(() => {
@@ -543,21 +580,16 @@ export function WorkbenchHostDock({
 
   const runDockMinimizedLaunchAfterCollapse = useCallback(
     (anchorKey: string, launch: () => void) => {
-      const shouldDelayLaunch = beginDockMinimizedInteraction(anchorKey);
-      if (!shouldDelayLaunch) {
-        launch();
-        return;
-      }
-      if (minimizedLaunchTimersRef.current.has(anchorKey)) {
-        return;
-      }
-      const timer = setTimeout(() => {
-        minimizedLaunchTimersRef.current.delete(anchorKey);
-        launch();
-      }, dockMinimizedSlotCollapseLaunchDelayMs);
-      minimizedLaunchTimersRef.current.set(anchorKey, timer);
+      beginDockMinimizedInteraction(anchorKey);
+      setCollapsingMinimizedLaunchAnchorKeys((current) => {
+        const next = new Set(current);
+        next.add(anchorKey);
+        return next;
+      });
+      scheduleCollapsingMinimizedLaunchClear(anchorKey);
+      launch();
     },
-    [beginDockMinimizedInteraction]
+    [beginDockMinimizedInteraction, scheduleCollapsingMinimizedLaunchClear]
   );
 
   const handleDockPointerTravel = useCallback(
@@ -1288,6 +1320,11 @@ export function WorkbenchHostDock({
                     key={dockItem.key}
                     ref={registerDockSlot(slot.anchorKey)}
                     className="desktop-dock__slot desktop-dock__slot--minimized"
+                    data-collapsing={
+                      collapsingMinimizedLaunchAnchorKeys.has(slot.anchorKey)
+                        ? "true"
+                        : undefined
+                    }
                     data-desktop-dock-anchor-key={slot.anchorKey}
                     data-desktop-dock-slot="true"
                     data-node-state="minimized"
@@ -1493,13 +1530,16 @@ export function WorkbenchHostDock({
           onCreateNew={() => undefined}
           onSelectNode={(nodeId) => {
             closePopup();
-            context.genie.launchNodeFromAnchor(
-              activeMinimizedStackSlot.anchorKey,
-              nodeId,
-              () => {
+            const anchorKey =
+              resolveWorkbenchMinimizedDockAnchorKeyForNode({
+                nodeId,
+                slots: minimizedDockSlots
+              }) ?? activeMinimizedStackSlot.anchorKey;
+            runDockMinimizedLaunchAfterCollapse(anchorKey, () => {
+              context.genie.launchNodeFromAnchor(anchorKey, nodeId, () => {
                 host.focusNode(nodeId);
-              }
-            );
+              });
+            });
           }}
           showCreateNew={false}
           resolveDockPreviewCacheKey={(node) =>
@@ -2015,10 +2055,11 @@ function useDockPresenceItems(
       if (
         filteredItems.some(
           (item) =>
-            item.item.kind === "minimized" && item.presence === "entering"
+            item.item.kind === "minimized" &&
+            (item.presence === "entering" || item.presence === "exiting")
         )
       ) {
-        nextSettleMs = minimizedDockSlotEnterAnimationMs;
+        nextSettleMs = minimizedDockSlotLayoutAnimationMs;
       }
       return filteredItems;
     });
@@ -2046,7 +2087,6 @@ function useDockPresenceItems(
 }
 
 const DOCK_BOUNCE_MS = 600;
-const dockMinimizedSlotCollapseLaunchDelayMs = 520;
 
 function useDockBounce(slotRefs: RefObject<Map<string, HTMLElement>>) {
   const timeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -2124,7 +2164,7 @@ const dockHoverPanelOpenDelayMs = 450;
 const dockHoverPanelHitSlopPx = 12;
 const dockHoverPanelPointerRestTolerancePx = 4;
 const dockPresenceAnimationMs = 300;
-const minimizedDockSlotEnterAnimationMs = 720;
+const minimizedDockSlotLayoutAnimationMs = 720;
 const dockItemsGapPx = 10.8;
 const dockItemsHorizontalPaddingPx = 12.6;
 const dockSeparatorOuterWidthPx = 8.1;
