@@ -481,6 +481,8 @@ function cloneAgentActivityComposerOptions(
     reasoningEfforts: options.reasoningEfforts.map((option) => ({
       ...option
     })),
+    modelConfigurable: options.modelConfigurable ?? false,
+    reasoningConfigurable: options.reasoningConfigurable ?? false,
     permissionConfig: options.permissionConfig
       ? {
           configurable: options.permissionConfig.configurable,

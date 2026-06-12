@@ -118,6 +118,10 @@ export interface AgentActivityComposerOptions {
   provider: string;
   models: AgentActivityComposerSettingOption[];
   reasoningEfforts: AgentActivityComposerSettingOption[];
+  /** Mirrors nextopd modelConfig.configurable; false when absent. */
+  modelConfigurable?: boolean;
+  /** Mirrors nextopd reasoningConfig.configurable; false when absent. */
+  reasoningConfigurable?: boolean;
   permissionConfig?: AgentActivityComposerPermissionConfig | null;
   runtimeContext?: Record<string, unknown>;
   skills: AgentActivityComposerSkillOption[];

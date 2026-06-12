@@ -248,6 +248,8 @@ function agentActivityComposerOptionsFromNextopdResult(
             "model_reasoning_effort",
             "effort"
           ]),
+    modelConfigurable: modelConfig.configurable === true,
+    reasoningConfigurable: reasoningConfig.configurable === true,
     permissionConfig: permissionConfigFromValue(result.permissionConfig),
     runtimeContext,
     skills:
