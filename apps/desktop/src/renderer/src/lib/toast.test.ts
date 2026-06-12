@@ -180,7 +180,7 @@ test("desktop decision toast mirrors the message-center prompt card chrome", () 
   );
   assert.match(
     workspaceChromeSource,
-    /<h3 className="min-w-0 truncate text-[13px] font-bold leading-5 text-\[var\(--text-secondary\)\]">[\s\S]*\{displayTitle\}[\s\S]*<\/h3>/
+    /<h3 className="min-w-0 truncate text-\[13px\] font-bold leading-5 text-\[var\(--text-secondary\)\]">[\s\S]*\{displayTitle\}[\s\S]*<\/h3>/
   );
   assert.match(
     workspaceChromeSource,
@@ -204,7 +204,7 @@ test("desktop decision toast mirrors the message-center prompt card chrome", () 
   );
   assert.match(
     workspaceChromeSource,
-    /className="flex min-w-0 items-center gap-2 text-[13px] font-normal leading-5 text-\[var\(--text-secondary\)\]"/
+    /className="flex min-w-0 items-center gap-2 text-\[13px\] font-normal leading-5 text-\[var\(--text-secondary\)\]"/
   );
   assert.match(
     workspaceChromeSource,
