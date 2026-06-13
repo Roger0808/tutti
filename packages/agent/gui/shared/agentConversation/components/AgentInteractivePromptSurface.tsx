@@ -40,8 +40,22 @@ import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles"
 
 const COMMAND_TOOLTIP_DELAY_MS = 1000;
 
+/**
+ * Where the prompt is rendered, which sets its interaction budget:
+ * - "full" (conversation / composer): the user is focused here, so every action
+ *   is shown — primary decisions plus rich follow-ups (feedback textareas,
+ *   multi-step wizards, "stay in plan").
+ * - "compact" (message-center attention deck): a glanceable needs-attention card
+ *   across many sessions. Only the primary decision is shown; rich follow-up
+ *   input is deferred to the conversation, reachable via the card's "open
+ *   conversation" jump. New prompt kinds must consciously choose their compact
+ *   form here instead of silently inheriting the full conversation surface.
+ */
+export type AgentInteractivePromptVariant = "full" | "compact";
+
 interface AgentInteractivePromptSurfaceProps {
   prompt: AgentConversationPromptVM;
+  variant?: AgentInteractivePromptVariant;
   edgeGlow?: boolean;
   keyboardShortcuts?: boolean;
   isSubmitting: boolean;
@@ -73,6 +87,7 @@ interface AgentInteractivePromptSurfaceProps {
 
 export function AgentInteractivePromptSurface({
   prompt,
+  variant = "full",
   edgeGlow = false,
   embedded = false,
   keyboardShortcuts = true,
@@ -101,6 +116,7 @@ export function AgentInteractivePromptSurface({
     return (
       <ExitPlanPromptSurface
         prompt={prompt}
+        variant={variant}
         embedded={embedded}
         edgeGlow={edgeGlow}
         isSubmitting={isSubmitting}
@@ -113,6 +129,7 @@ export function AgentInteractivePromptSurface({
     return (
       <PlanImplementationSurface
         prompt={prompt}
+        variant={variant}
         embedded={embedded}
         edgeGlow={edgeGlow}
         isSubmitting={isSubmitting}
@@ -408,6 +425,7 @@ function ApprovalPromptSurface({
 
 function ExitPlanPromptSurface({
   prompt,
+  variant = "full",
   embedded = false,
   edgeGlow = false,
   isSubmitting,
@@ -419,6 +437,9 @@ function ExitPlanPromptSurface({
 }) {
   "use memo";
   const [feedback, setFeedback] = useState("");
+  // Compact (message-center deck): only the permission-mode decision buttons are
+  // offered; refining / staying in plan is deferred to the conversation.
+  const showFeedbackFooter = variant !== "compact";
   const [submittingOptionId, setSubmittingOptionId] = useState<string | null>(
     null
   );
@@ -469,30 +490,32 @@ function ExitPlanPromptSurface({
             );
           })}
         </div>
-        <div className={styles.interactivePromptFooter}>
-          <textarea
-            value={feedback}
-            placeholder={labels.feedbackPlaceholder}
-            disabled={isSubmitting}
-            className={styles.interactivePromptTextarea}
-            onChange={(event) => setFeedback(event.currentTarget.value)}
-          />
-          <div className={styles.interactivePromptActions}>
-            <button
-              type="button"
+        {showFeedbackFooter ? (
+          <div className={styles.interactivePromptFooter}>
+            <textarea
+              value={feedback}
+              placeholder={labels.feedbackPlaceholder}
               disabled={isSubmitting}
-              onClick={() =>
-                onSubmit({
-                  requestId: prompt.requestId,
-                  action: "deny",
-                  payload: trimmed ? { denyMessage: trimmed } : undefined
-                })
-              }
-            >
-              {continueLabel}
-            </button>
+              className={styles.interactivePromptTextarea}
+              onChange={(event) => setFeedback(event.currentTarget.value)}
+            />
+            <div className={styles.interactivePromptActions}>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() =>
+                  onSubmit({
+                    requestId: prompt.requestId,
+                    action: "deny",
+                    payload: trimmed ? { denyMessage: trimmed } : undefined
+                  })
+                }
+              >
+                {continueLabel}
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </section>
   );
@@ -503,6 +526,7 @@ function ExitPlanPromptSurface({
 // center) keyed on the action id rather than a server submitInteractive.
 function PlanImplementationSurface({
   prompt,
+  variant = "full",
   embedded = false,
   edgeGlow = false,
   isSubmitting,
@@ -519,6 +543,10 @@ function PlanImplementationSurface({
     trimmed === ""
       ? labels.planImplementationSkip
       : labels.planImplementationSend;
+  // Compact (message-center deck): only the "implement" decision is offered.
+  // Refining or staying in plan mode is deferred to the conversation, reachable
+  // via the card's "open conversation" jump.
+  const showFeedbackFooter = variant !== "compact";
 
   return (
     <section className={interactivePromptClassName(embedded)}>
@@ -544,35 +572,37 @@ function PlanImplementationSurface({
             </span>
           </button>
         </div>
-        <div className={styles.interactivePromptFooter}>
-          <textarea
-            value={feedback}
-            placeholder={labels.planImplementationFeedbackPlaceholder}
-            disabled={isSubmitting}
-            className={styles.interactivePromptTextarea}
-            data-testid="agent-plan-implementation-feedback"
-            onChange={(event) => setFeedback(event.currentTarget.value)}
-          />
-          <div className={styles.interactivePromptActions}>
-            <button
-              type="button"
-              data-testid="agent-plan-implementation-continue"
+        {showFeedbackFooter ? (
+          <div className={styles.interactivePromptFooter}>
+            <textarea
+              value={feedback}
+              placeholder={labels.planImplementationFeedbackPlaceholder}
               disabled={isSubmitting}
-              onClick={() =>
-                onSubmit({
-                  requestId: prompt.requestId,
-                  action:
-                    trimmed === ""
-                      ? PLAN_IMPLEMENTATION_ACTION_SKIP
-                      : PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
-                  payload: trimmed ? { text: trimmed } : undefined
-                })
-              }
-            >
-              {continueLabel}
-            </button>
+              className={styles.interactivePromptTextarea}
+              data-testid="agent-plan-implementation-feedback"
+              onChange={(event) => setFeedback(event.currentTarget.value)}
+            />
+            <div className={styles.interactivePromptActions}>
+              <button
+                type="button"
+                data-testid="agent-plan-implementation-continue"
+                disabled={isSubmitting}
+                onClick={() =>
+                  onSubmit({
+                    requestId: prompt.requestId,
+                    action:
+                      trimmed === ""
+                        ? PLAN_IMPLEMENTATION_ACTION_SKIP
+                        : PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
+                    payload: trimmed ? { text: trimmed } : undefined
+                  })
+                }
+              >
+                {continueLabel}
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </section>
   );

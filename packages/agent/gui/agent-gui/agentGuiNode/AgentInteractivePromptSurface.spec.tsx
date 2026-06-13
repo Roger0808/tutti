@@ -1070,4 +1070,35 @@ describe("AgentInteractivePromptSurface", () => {
       payload: { text: "focus on tests first" }
     });
   });
+
+  it("offers only the implement decision for a compact plan-implementation prompt", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "plan-implementation",
+          requestId: "plan-turn-1",
+          title: "Session 1"
+        }}
+        variant="compact"
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    // Compact (message-center deck): only the primary "implement" action is
+    // shown; refining / staying in plan is deferred to the conversation.
+    fireEvent.click(screen.getByTestId("agent-plan-implementation-implement"));
+    expect(onSubmit).toHaveBeenCalledWith({
+      requestId: "plan-turn-1",
+      action: "implement"
+    });
+    expect(
+      screen.queryByTestId("agent-plan-implementation-feedback")
+    ).toBeNull();
+    expect(
+      screen.queryByTestId("agent-plan-implementation-continue")
+    ).toBeNull();
+  });
 });

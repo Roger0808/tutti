@@ -140,6 +140,7 @@ export function WorkspaceAgentMessageCenterCard({
         <div className="min-w-0">
           <AgentInteractivePromptSurface
             embedded
+            variant="compact"
             keyboardShortcuts={false}
             prompt={prompt}
             isSubmitting={isSubmitting}
@@ -157,6 +158,10 @@ export function WorkspaceAgentMessageCenterCard({
         item={item}
         label={t("agentHost.workspaceAgentMessageCenterOpenChat")}
         onOpenChat={onOpenChat}
+        // Interactive deck cards only offer the primary decision inline; the
+        // jump to the conversation is the path for everything else (e.g.
+        // refining a plan), so keep it always visible rather than hover-only.
+        alwaysVisible={interactive && prompt !== null}
       />
     </article>
   );
@@ -595,11 +600,13 @@ function MessageCenterSummary({
 }
 
 function MessageCenterOpenChatButton({
+  alwaysVisible = false,
   item,
   label,
   onOpenChat,
   provider
 }: {
+  alwaysVisible?: boolean;
   item: WorkspaceAgentMessageCenterItem;
   label: string;
   onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
@@ -617,7 +624,11 @@ function MessageCenterOpenChatButton({
         type="button"
         variant="ghost"
         size="default"
-        className="workspace-agent-message-center__open-chat-button invisible h-auto gap-1.5 border-0 bg-transparent p-0 text-[var(--agent-gui-accent)] opacity-0 shadow-none transition-[color,opacity,visibility] group-hover/message-card:visible group-hover/message-card:opacity-100 group-focus-within/message-card:visible group-focus-within/message-card:opacity-100 hover:bg-transparent hover:text-[var(--agent-gui-accent)] focus-visible:bg-transparent focus-visible:text-[var(--agent-gui-accent)] active:bg-transparent"
+        className={cn(
+          "workspace-agent-message-center__open-chat-button h-auto gap-1.5 border-0 bg-transparent p-0 text-[var(--agent-gui-accent)] shadow-none transition-[color,opacity,visibility] hover:bg-transparent hover:text-[var(--agent-gui-accent)] focus-visible:bg-transparent focus-visible:text-[var(--agent-gui-accent)] active:bg-transparent",
+          !alwaysVisible &&
+            "invisible opacity-0 group-hover/message-card:visible group-hover/message-card:opacity-100 group-focus-within/message-card:visible group-focus-within/message-card:opacity-100"
+        )}
         onClick={() =>
           onOpenChat({
             agentSessionId: item.agentSessionId,

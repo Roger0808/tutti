@@ -12,9 +12,7 @@ import {
   buildWorkspaceAgentInteractivePromptLabels,
   buildWorkspaceAgentMessageCenterModel,
   isWaitingMessageCenterItem,
-  PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
   PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
-  PLAN_IMPLEMENTATION_ACTION_SKIP,
   PLAN_IMPLEMENTATION_PROMPT,
   WorkspaceAgentMessageCenterPanel,
   type WorkspaceAgentMessageCenterItem
@@ -680,11 +678,11 @@ function WorkspaceAgentMessageCenterAction({
         }}
         onOpenChat={openMessageCenterChat}
         onSubmitPrompt={async (input) => {
-          // Codex plan decisions have no provider-driven approval: implement and
-          // feedback are orchestrated client-side via the activity service (leave
-          // plan mode + send the literal prompt, or send the refinement) rather
-          // than through submitInteractive. Skip is a no-op here (the card simply
-          // closes; the offer is re-derived from the timeline).
+          // Codex plan decisions have no provider-driven approval. The compact
+          // deck card only offers "implement" (refining/skipping is deferred to
+          // the conversation via the open-conversation jump), so the message
+          // center orchestrates it client-side: leave plan mode, then send the
+          // literal implement prompt — not a submitInteractive call.
           if (input.action === PLAN_IMPLEMENTATION_ACTION_IMPLEMENT) {
             await workspaceAgentActivityService.updateSessionSettings({
               workspaceId: workspace.id,
@@ -696,23 +694,6 @@ function WorkspaceAgentMessageCenterAction({
               agentSessionId: input.agentSessionId,
               content: [{ type: "text", text: PLAN_IMPLEMENTATION_PROMPT }]
             });
-            return;
-          }
-          if (input.action === PLAN_IMPLEMENTATION_ACTION_FEEDBACK) {
-            const text =
-              typeof input.payload?.text === "string"
-                ? input.payload.text.trim()
-                : "";
-            if (text) {
-              await workspaceAgentActivityService.sendInput({
-                workspaceId: workspace.id,
-                agentSessionId: input.agentSessionId,
-                content: [{ type: "text", text }]
-              });
-            }
-            return;
-          }
-          if (input.action === PLAN_IMPLEMENTATION_ACTION_SKIP) {
             return;
           }
           await workspaceAgentActivityService.submitInteractive({
