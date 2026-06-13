@@ -7,6 +7,7 @@ import {
   type AgentActivitySnapshot
 } from "@tutti-os/agent-activity-core";
 import type { AgentConversationPromptVM } from "../shared/agentConversation/contracts/agentConversationVM";
+import { normalizeAskUserQuestions } from "../shared/agentConversation/askUserQuestions";
 import type { WorkspaceAgentActivityStatus } from "../shared/workspaceAgentActivityListViewModel";
 import {
   latestPlanTurnId,
@@ -374,38 +375,9 @@ function askUserPromptFromMessage(
       : recordValue(toolState.input);
   const rawQuestions =
     arrayValue(input.questions).length > 0
-      ? arrayValue(input.questions)
-      : arrayValue(payload.questions);
-  const questions = rawQuestions.flatMap((value, index) => {
-    const question = recordValue(value);
-    const header = stringValue(question.header);
-    const label =
-      stringValue(question.question) ?? header ?? stringValue(question.label);
-    if (!label && !header) {
-      return [];
-    }
-    return [
-      {
-        id: stringValue(question.id) ?? `question-${index + 1}`,
-        header: header ?? label ?? `Question ${index + 1}`,
-        question: label ?? header ?? `Question ${index + 1}`,
-        options: arrayValue(question.options).flatMap((optionValue) => {
-          const option = recordValue(optionValue);
-          const optionLabel = stringValue(option.label);
-          return optionLabel
-            ? [
-                {
-                  label: optionLabel,
-                  description: stringValue(option.description) ?? ""
-                }
-              ]
-            : [];
-        }),
-        multiSelect: Boolean(question.multiSelect),
-        answer: null
-      }
-    ];
-  });
+      ? input.questions
+      : payload.questions;
+  const questions = normalizeAskUserQuestions(rawQuestions);
   if (questions.length === 0) {
     return null;
   }
