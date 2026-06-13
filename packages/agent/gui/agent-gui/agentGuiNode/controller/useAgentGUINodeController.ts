@@ -126,6 +126,7 @@ import {
   PLAN_IMPLEMENTATION_ACTION_SKIP,
   PLAN_IMPLEMENTATION_PROMPT,
   latestPlanTurnId,
+  planDecisionOps,
   planImplementationPromptFromPlanTurn
 } from "../../../shared/agentConversation/planImplementation";
 import {
@@ -5628,29 +5629,43 @@ export function useAgentGUINodeController({
     if (!agentSessionId) {
       return;
     }
-    // Turn plan mode off on the daemon first so the coding turn starts
-    // without the plan collaboration mode, then mirror the setting locally
-    // and submit the same literal message as the codex TUI.
-    void Promise.resolve(
-      agentActivityRuntime.updateSessionSettings({
-        workspaceId,
-        agentSessionId,
-        settings: { planMode: false }
-      })
-    )
-      .then(() => {
+    // The implement sequence (turn plan mode off on the daemon, then submit
+    // the literal coding message) is defined once in planDecisionOps; here we
+    // execute those ops with the controller's runtime primitives and layer on
+    // the node-local UI effects (dismiss the plan card + mirror plan mode in
+    // the composer) that the shared op list intentionally omits.
+    const ops = planDecisionOps({
+      promptKind: "plan-implementation",
+      action: PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
+      requestId: agentSessionId
+    });
+    // Sequential for-await (mirrors the desktop service's op executor): the
+    // daemon planMode:false must settle before the literal prompt is submitted.
+    void (async () => {
+      try {
+        for (const op of ops) {
+          if (!isCurrentConversation(agentSessionId)) {
+            return;
+          }
+          if (op.type === "updateSettings") {
+            await agentActivityRuntime.updateSessionSettings({
+              workspaceId,
+              agentSessionId,
+              settings: op.settings
+            });
+            if (!isCurrentConversation(agentSessionId)) {
+              return;
+            }
+            dismissPlanImplementation();
+            updateComposerSettingsRef.current({ planMode: false });
+          } else if (op.type === "sendInput") {
+            submitPrompt(textPromptContent(op.text));
+          }
+        }
+      } catch (error) {
         if (!isCurrentConversation(agentSessionId)) {
           return;
         }
-        dismissPlanImplementation();
-        updateComposerSettingsRef.current({ planMode: false });
-        submitPrompt(textPromptContent(PLAN_IMPLEMENTATION_PROMPT));
-      })
-      .catch((error) => {
-        if (!isCurrentConversation(agentSessionId)) {
-          return;
-        }
-        const message = getAgentGUIErrorMessage(error);
         reportAgentGUIRuntimeError({
           agentSessionId,
           error,
@@ -5659,8 +5674,9 @@ export function useAgentGUINodeController({
           runtime: agentActivityRuntime,
           workspaceId
         });
-        setDetailError(message);
-      });
+        setDetailError(getAgentGUIErrorMessage(error));
+      }
+    })();
   }, [
     agentActivityRuntime,
     dismissPlanImplementation,
