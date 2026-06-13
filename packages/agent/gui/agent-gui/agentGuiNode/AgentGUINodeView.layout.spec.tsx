@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
@@ -903,6 +903,46 @@ describe("AgentGUINodeView compact action", () => {
       })
     );
     expect(screen.getByTestId("agent-gui-compact-button")).toBeEnabled();
+  });
+
+  it("enables compact retry when a pending compact submission fails the session", () => {
+    const actions = createActions();
+    const view = renderAgentGUINodeView({
+      viewModel: compactViewModel(),
+      actions
+    });
+
+    fireEvent.click(screen.getByTestId("agent-gui-compact-button"));
+    expect(screen.getByTestId("agent-gui-compact-button")).toBeDisabled();
+
+    view.rerender(
+      buildAgentGUINodeViewElement({
+        viewModel: compactViewModel({ status: "failed" }),
+        actions
+      })
+    );
+
+    expect(screen.getByTestId("agent-gui-compact-button")).toBeEnabled();
+  });
+
+  it("enables compact retry when compact submission is rejected", async () => {
+    const rejectedSubmission = Promise.reject(new Error("submit rejected"));
+    void rejectedSubmission.catch(() => undefined);
+    const actions = {
+      ...createActions(),
+      submitCompact: vi.fn(() => rejectedSubmission)
+    };
+    renderAgentGUINodeView({
+      viewModel: compactViewModel(),
+      actions
+    });
+
+    fireEvent.click(screen.getByTestId("agent-gui-compact-button"));
+    expect(screen.getByTestId("agent-gui-compact-button")).toBeDisabled();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("agent-gui-compact-button")).toBeEnabled();
+    });
   });
 
   it("disables the compact button while the session is working", () => {

@@ -341,7 +341,7 @@ interface AgentGUINodeViewProps {
     createConversation: (options?: { projectPath?: string | null }) => void;
     selectConversation: (agentSessionId: string) => void;
     submitPrompt: (content: AgentPromptContentBlock[]) => void;
-    submitCompact: () => void;
+    submitCompact: () => Promise<void> | void;
     dismissUsageAlert: () => void;
     showPromptImagesUnsupported: () => void;
     submitApprovalOption: (requestId: string, optionId: string) => void;
@@ -1961,7 +1961,7 @@ interface AgentGUIDetailHeaderProps {
   usage: AgentActivityUsage | null;
   usageLimits: readonly AgentComposerSlashStatusLimit[];
   compactSupported: boolean | null;
-  onSubmitCompact: () => void;
+  onSubmitCompact: () => Promise<void> | void;
 }
 
 const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
@@ -2083,7 +2083,7 @@ function AgentGUICompactButton({
   status: AgentGUINodeViewModel["conversations"][number]["status"] | undefined;
   label: string;
   tooltip: string;
-  onSubmitCompact: () => void;
+  onSubmitCompact: () => Promise<void> | void;
 }): React.JSX.Element {
   "use memo";
 
@@ -2095,10 +2095,16 @@ function AgentGUICompactButton({
   useEffect(() => {
     const previousStatus = lastStatusRef.current;
     lastStatusRef.current = status;
-    if (status === "ready" && previousStatus !== "ready") {
+    if (
+      pendingConversationId === conversationId &&
+      ((status === "ready" && previousStatus !== "ready") ||
+        status === "completed" ||
+        status === "failed" ||
+        status === "canceled")
+    ) {
       setPendingConversationId(null);
     }
-  }, [status]);
+  }, [conversationId, pendingConversationId, status]);
 
   const isPending = pendingConversationId === conversationId;
   const disabled = isPending || status === "working";
@@ -2117,7 +2123,12 @@ function AgentGUICompactButton({
               return;
             }
             setPendingConversationId(conversationId);
-            onSubmitCompact();
+            const submission = onSubmitCompact();
+            if (submission) {
+              void submission.catch(() => {
+                setPendingConversationId(null);
+              });
+            }
           }}
         >
           {label}
@@ -2477,8 +2488,12 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
 }: AgentGUIBottomDockPaneProps): React.JSX.Element {
   "use memo";
   const state = useSnapshot(store) as AgentGUIBottomDockStoreSnapshot;
-  const { composerProps, inlineNoticeChrome, isRespondingApproval, sessionChrome } =
-    state;
+  const {
+    composerProps,
+    inlineNoticeChrome,
+    isRespondingApproval,
+    sessionChrome
+  } = state;
 
   return (
     <div

@@ -55,6 +55,32 @@ test("outcome notification builder reports latest completed turn outcomes while 
   );
 });
 
+test("outcome notification builder reports terminal session status instead of stale turn outcomes", () => {
+  const failedSession = item({
+    status: "failed",
+    latestTurnOutcome: {
+      notificationKey: "session-1:turn:turn-1:completed",
+      status: "completed",
+      turnId: "turn-1"
+    }
+  });
+
+  assert.equal(
+    workspaceAgentOutcomeNotificationKey(failedSession),
+    "session-1:session:failed"
+  );
+  assert.deepEqual(
+    buildWorkspaceAgentOutcomeNotification(failedSession, labels),
+    {
+      agentName: "Codex",
+      agentSessionId: "session-1",
+      body: "The agent run failed.",
+      conversationTitle: "Build feature",
+      level: "error"
+    }
+  );
+});
+
 test("outcome notification builder reports failed turns as error", () => {
   assert.deepEqual(
     buildWorkspaceAgentOutcomeNotification(item({ status: "failed" }), labels),

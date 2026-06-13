@@ -37,7 +37,7 @@ export function buildWorkspaceAgentOutcomeNotification(
 export function workspaceAgentOutcomeNotificationKey(
   item: WorkspaceAgentMessageCenterItem
 ): string | null {
-  if (item.latestTurnOutcome) {
+  if (item.latestTurnOutcome && item.status === "idle") {
     return item.latestTurnOutcome.notificationKey;
   }
   const status = workspaceAgentOutcomeNotificationStatus(item);
@@ -50,7 +50,10 @@ export function workspaceAgentOutcomeNotificationKey(
 function workspaceAgentOutcomeNotificationStatus(
   item: WorkspaceAgentMessageCenterItem
 ): WorkspaceAgentMessageCenterItem["status"] | null {
-  return item.latestTurnOutcome?.status ?? item.status;
+  if (item.latestTurnOutcome && item.status === "idle") {
+    return item.latestTurnOutcome.status;
+  }
+  return item.status;
 }
 
 function outcomeNotificationLevel(
