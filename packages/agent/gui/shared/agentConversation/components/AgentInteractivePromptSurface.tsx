@@ -26,6 +26,7 @@ import {
   normalizeApprovalOptionToken
 } from "../approvalOptionPresentation";
 import type { AgentConversationPromptVM } from "../contracts/agentConversationVM";
+import { buildAskUserAnswerPayload } from "../interactiveAnswerPayload";
 import {
   PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
   PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
@@ -203,10 +204,9 @@ function CompactAskUserPromptSurface({
                       onSubmit({
                         requestId: prompt.requestId,
                         action: "submit",
-                        payload: {
-                          answers: [option.label],
-                          answersByQuestionId: { [question.id]: option.label }
-                        }
+                        payload: { ...buildAskUserAnswerPayload({
+                          [question.id]: option.label
+                        }) }
                       })
                     }
                   >
@@ -756,7 +756,6 @@ function FullAskUserPromptSurface({
 
   const payload = useMemo(() => {
     const answersByQuestionId: Record<string, string | string[]> = {};
-    const answers: string[] = [];
     for (const current of prompt.questions) {
       const chosen = selectedByQuestionId[current.id] ?? [];
       const other = (freeTextByQuestionId[current.id] ?? "").trim();
@@ -764,17 +763,15 @@ function FullAskUserPromptSurface({
         const value = other ? [...chosen, other] : chosen;
         if (value.length > 0) {
           answersByQuestionId[current.id] = value;
-          answers.push(value.join(", "));
         }
         continue;
       }
       const value = other || chosen[0];
       if (value) {
         answersByQuestionId[current.id] = value;
-        answers.push(value);
       }
     }
-    return { answers, answersByQuestionId };
+    return buildAskUserAnswerPayload(answersByQuestionId);
   }, [freeTextByQuestionId, prompt.questions, selectedByQuestionId]);
 
   if (!question) {
@@ -883,7 +880,7 @@ function FullAskUserPromptSurface({
                 onSubmit({
                   requestId: prompt.requestId,
                   action: "submit",
-                  payload
+                  payload: { ...payload }
                 })
               }
             >

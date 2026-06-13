@@ -1053,7 +1053,9 @@ func TestStandardACPAdapterSessionStateExposesPendingAskUserPrompt(t *testing.T)
 		AgentSessionID: session.AgentSessionID,
 		RequestID:      "permission-1",
 		Action:         "submit",
+		// Canonical GUI ask-user payload: flat display list + keyed map.
 		Payload: map[string]any{
+			"answers":             []any{"Renderer A"},
 			"answersByQuestionId": map[string]any{"render-path": "Renderer A"},
 		},
 	})
