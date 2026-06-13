@@ -26,7 +26,7 @@ test("pickOpenWithApplication returns null on non-macOS", async (t) => {
 
 test("filterOpenWithApplications removes video players from text file handlers", async () => {
   const workspaceRoot = await mkdtemp(
-    path.join(tmpdir(), "nextop-open-with-filter-")
+    path.join(tmpdir(), "tutti-open-with-filter-")
   );
   const quickTimePath = path.join(workspaceRoot, "QuickTime Player.app");
   const codePath = path.join(workspaceRoot, "Visual Studio Code.app");
@@ -64,7 +64,7 @@ test("filterOpenWithApplications removes video players from text file handlers",
 
 test("filterOpenWithApplications deduplicates by bundle id and skips inaccessible application paths", async () => {
   const workspaceRoot = await mkdtemp(
-    path.join(tmpdir(), "nextop-open-with-dedupe-")
+    path.join(tmpdir(), "tutti-open-with-dedupe-")
   );
   const firstQuarkPath = path.join(workspaceRoot, "Quark.app");
   const duplicateQuarkPath = path.join(workspaceRoot, "Quark Copy.app");
@@ -198,7 +198,7 @@ test("listOpenWithApplications returns installed handlers on macOS", async (t) =
   }
 
   const workspaceRoot = await mkdtemp(
-    path.join(tmpdir(), "nextop-open-with-list-")
+    path.join(tmpdir(), "tutti-open-with-list-")
   );
   const targetPath = path.join(workspaceRoot, "notes.txt");
   await writeFile(targetPath, "hello", "utf8");
@@ -232,7 +232,7 @@ test("readDefaultApplicationIconDataUrl returns default handler icon on macOS", 
   }
 
   const workspaceRoot = await mkdtemp(
-    path.join(tmpdir(), "nextop-default-app-icon-")
+    path.join(tmpdir(), "tutti-default-app-icon-")
   );
   const targetPath = path.join(workspaceRoot, "notes.txt");
   await writeFile(targetPath, "hello", "utf8");
@@ -254,7 +254,7 @@ test("openFileWithDefaultBrowser delegates to the macOS browser opener without l
   }
 
   const workspaceRoot = await mkdtemp(
-    path.join(tmpdir(), "nextop-open-with-default-browser-")
+    path.join(tmpdir(), "tutti-open-with-default-browser-")
   );
   const targetPath = path.join(workspaceRoot, "notes.html");
   await writeFile(targetPath, "<html></html>", "utf8");
@@ -280,7 +280,7 @@ test("openFileWithApplication delegates to macOS open without launching the appl
   }
 
   const workspaceRoot = await mkdtemp(
-    path.join(tmpdir(), "nextop-open-with-open-")
+    path.join(tmpdir(), "tutti-open-with-open-")
   );
   const targetPath = path.join(workspaceRoot, "notes.txt");
   const applicationPath = path.join(workspaceRoot, "TextEdit.app");

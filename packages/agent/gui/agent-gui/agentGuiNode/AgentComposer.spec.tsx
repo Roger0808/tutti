@@ -857,7 +857,7 @@ describe("AgentComposer", () => {
 
     expect(
       container.querySelector(
-        '[data-slot="select-content"] [data-value="__nextop_workspace_reference_add__"]'
+        '[data-slot="select-content"] [data-value="__tutti_workspace_reference_add__"]'
       )
     ).toBeNull();
   });

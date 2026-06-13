@@ -32,9 +32,9 @@ import type {
 import type { DesktopCustomWallpaperImage } from "@shared/contracts/ipc";
 import { processCustomWallpaperImage } from "./customWallpaperImageProcessing";
 import type {
-  NextopdClient,
-  NextopdEventStreamClient
-} from "@tutti-os/client-nextopd-ts";
+  TuttidClient,
+  TuttidEventStreamClient
+} from "@tutti-os/client-tuttid-ts";
 import type { DesktopWorkspaceWorkbenchRepository } from "./adapters/desktopWorkspaceWorkbenchRepository";
 import { createDesktopWorkspaceWorkbenchRepository } from "./adapters/desktopWorkspaceWorkbenchRepository";
 import { IDesktopRichTextAtService } from "../../../rich-text-at/services/richTextAtService.interface.ts";
@@ -109,8 +109,8 @@ export interface WorkspaceWorkbenchHostServiceDependencies {
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceAgentActivityService: WorkspaceAgentActivityService;
   workspaceAgentPromptSessionService: WorkspaceAgentPromptSessionService;
-  eventStreamClient?: NextopdEventStreamClient;
-  nextopdClient: NextopdClient;
+  eventStreamClient?: TuttidEventStreamClient;
+  tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
     "homeDirectory" | "os" | "resolveDroppedPaths"
@@ -125,11 +125,11 @@ export interface WorkspaceWorkbenchHostServiceDependencies {
 export interface WorkspaceWorkbenchHostExternalDependencies {
   browserApi?: DesktopBrowserApi;
   dockPreviewCacheApi: DesktopDockPreviewCacheApi;
-  eventStreamClient?: NextopdEventStreamClient;
+  eventStreamClient?: TuttidEventStreamClient;
   hostFilesApi: DesktopHostFilesApi;
   hostWindowApi: DesktopHostWindowApi;
   hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenSettingsRequest">;
-  nextopdClient: NextopdClient;
+  tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
     "homeDirectory" | "os" | "resolveDroppedPaths"
@@ -180,7 +180,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     workspaceUserProjectService: IWorkspaceUserProjectService
   ) {
     const repository = createDesktopWorkspaceWorkbenchRepository(
-      externalDependencies.nextopdClient
+      externalDependencies.tuttidClient
     );
     this.dependencies = {
       agentProviderStatusService,
@@ -198,7 +198,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       workspaceUserProjectService,
       workspaceAgentActivityService,
       workspaceAgentPromptSessionService,
-      nextopdClient: externalDependencies.nextopdClient,
+      tuttidClient: externalDependencies.tuttidClient,
       platformApi: externalDependencies.platformApi,
       repository,
       reporterService: externalDependencies.reporterService,
@@ -582,7 +582,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
             this.dependencies.workspaceAgentActivityService,
           workspaceAgentPromptSessionService:
             this.dependencies.workspaceAgentPromptSessionService,
-          nextopdClient: this.dependencies.nextopdClient,
+          tuttidClient: this.dependencies.tuttidClient,
           platformApi: this.dependencies.platformApi,
           reporterService: this.dependencies.reporterService,
           renderFilesNodeBody: (context) =>
@@ -1089,7 +1089,7 @@ function createWorkspaceWorkbenchDebugDiagnostics(
     isEnabled() {
       try {
         return (
-          globalThis.localStorage?.getItem("nextopWorkbenchDebugFrames") === "1"
+          globalThis.localStorage?.getItem("tuttiWorkbenchDebugFrames") === "1"
         );
       } catch {
         return false;

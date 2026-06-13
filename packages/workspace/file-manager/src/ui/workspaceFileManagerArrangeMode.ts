@@ -17,7 +17,7 @@ export type WorkspaceFileManagerArrangeMode =
   | "tags";
 
 export const workspaceFileManagerArrangeModeStorageKey =
-  "nextop.workspace-file-manager.arrange-mode";
+  "tutti.workspace-file-manager.arrange-mode";
 
 const workspaceFileManagerArrangeModes =
   new Set<WorkspaceFileManagerArrangeMode>([

@@ -12,7 +12,7 @@ test("resolveWorkspaceFileEntryIconDataUrl falls back to native icons for non-im
   }
 
   const workspaceRoot = await mkdtemp(
-    path.join(tmpdir(), "nextop-entry-icon-file-")
+    path.join(tmpdir(), "tutti-entry-icon-file-")
   );
   const targetPath = path.join(workspaceRoot, "example.txt");
   await writeFile(targetPath, "hello", "utf8");
@@ -37,9 +37,7 @@ test("resolveWorkspaceFileEntryIconDataUrl returns png data url for image files 
     return;
   }
 
-  const workspaceRoot = await mkdtemp(
-    path.join(tmpdir(), "nextop-entry-icon-")
-  );
+  const workspaceRoot = await mkdtemp(path.join(tmpdir(), "tutti-entry-icon-"));
   const targetPath = path.join(workspaceRoot, "photo.png");
   const pngBytes = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -63,7 +61,7 @@ test("resolveWorkspaceFileEntryIconDataUrl returns png data url for image files 
 
 test("resolveWorkspaceFileEntryIconDataUrl returns null for regular directories", async () => {
   const workspaceRoot = await mkdtemp(
-    path.join(tmpdir(), "nextop-entry-icon-dir-")
+    path.join(tmpdir(), "tutti-entry-icon-dir-")
   );
   const targetPath = path.join(workspaceRoot, "folder");
   await mkdir(targetPath);

@@ -44,12 +44,12 @@ test("desktop issue-manager agent runner creates execute session and opens it", 
   assert.doesNotMatch(capturedPrompt, /Task 标题：Port renderer/);
   assert.doesNotMatch(
     capturedPrompt,
-    /工作目录：\/Users\/liying\/\.nextop-dev\/sessions\/2026-06-03-001/
+    /工作目录：\/Users\/liying\/\.tutti-dev\/sessions\/2026-06-03-001/
   );
   assert.doesNotMatch(capturedPrompt, /建议输出目录：/);
   assert.doesNotMatch(capturedPrompt, /docs\/spec\.md/);
   assert.doesNotMatch(capturedPrompt, /docs\/design\.md/);
-  assert.doesNotMatch(capturedPrompt, /Nextop Issue Run Context/);
+  assert.doesNotMatch(capturedPrompt, /Tutti Issue Run Context/);
   assert.doesNotMatch(capturedPrompt, /Agent Provider：codex/);
   assert.doesNotMatch(capturedPrompt, /Agent Session ID：agent-session-1/);
   assert.deepEqual(result, {
@@ -102,16 +102,13 @@ test("desktop issue-manager agent runner passes selected execution directory to 
   });
 
   const result = await runner.runTask(
-    createRunRequest({ executionDirectory: "/Users/example/project/nextop" })
+    createRunRequest({ executionDirectory: "/Users/example/project/tutti" })
   );
   const prompt = capturedCreate?.prompt ?? "";
 
-  assert.equal(capturedCreate?.cwd, "/Users/example/project/nextop");
-  assert.equal(
-    capturedCreate?.userProjectPath,
-    "/Users/example/project/nextop"
-  );
-  assert.doesNotMatch(prompt, /\/Users\/example\/project\/nextop/);
+  assert.equal(capturedCreate?.cwd, "/Users/example/project/tutti");
+  assert.equal(capturedCreate?.userProjectPath, "/Users/example/project/tutti");
+  assert.doesNotMatch(prompt, /\/Users\/example\/project\/tutti/);
   assert.match(prompt, /mention:\/\/workspace-issue/);
   assert.equal(result.status, "opened");
 });
@@ -153,21 +150,18 @@ test("desktop issue-manager agent breakdown launcher creates session and opens i
       },
       tasks: []
     },
-    executionDirectory: "/Users/example/project/nextop",
+    executionDirectory: "/Users/example/project/tutti",
     provider: "gemini",
     workspaceId: "workspace-1"
   });
 
   assert.deepEqual(result, { status: "opened" });
   assert.ok(capturedCreate?.agentSessionId);
-  assert.equal(capturedCreate?.cwd, "/Users/example/project/nextop");
+  assert.equal(capturedCreate?.cwd, "/Users/example/project/tutti");
   assert.equal(capturedCreate?.provider, "gemini");
   assert.equal(capturedCreate?.source, "issue_manager_breakdown");
   assert.equal(capturedCreate?.title, "Plan migration");
-  assert.equal(
-    capturedCreate?.userProjectPath,
-    "/Users/example/project/nextop"
-  );
+  assert.equal(capturedCreate?.userProjectPath, "/Users/example/project/tutti");
   assert.equal(capturedCreate?.workspaceId, "workspace-1");
   assert.equal(capturedLaunch?.agentSessionId, "breakdown-session-1");
   assert.equal(capturedLaunch?.provider, "gemini");

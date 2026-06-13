@@ -1235,7 +1235,7 @@ test("controller actions open agent task breakdown with a provider override", as
       issueSearchQuery: "",
       issueStatusFilter: "all",
       selectedAgentProvider: "codex",
-      selectedExecutionDirectory: "/Users/example/project/nextop",
+      selectedExecutionDirectory: "/Users/example/project/tutti",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     }
@@ -1245,7 +1245,7 @@ test("controller actions open agent task breakdown with a provider override", as
 
   assert.deepEqual(breakdownCalls, [
     {
-      executionDirectory: "/Users/example/project/nextop",
+      executionDirectory: "/Users/example/project/tutti",
       issueDetail: {
         contextRefs: [createIssueContextRef({ path: "/workspace/spec.md" })],
         issue,
@@ -1455,7 +1455,7 @@ test("controller actions share the selected issue and task through the clipboard
     shareAdapter: {
       async createIssueLink(input) {
         shareCalls.push(input);
-        return "nextop://workspace/workspace-1/issues/issue-1/tasks/task-1";
+        return "tutti://workspace/workspace-1/issues/issue-1/tasks/task-1";
       }
     }
   });
@@ -1471,7 +1471,7 @@ test("controller actions share the selected issue and task through the clipboard
   ]);
   assert.equal(
     copiedText,
-    "nextop://workspace/workspace-1/issues/issue-1/tasks/task-1"
+    "tutti://workspace/workspace-1/issues/issue-1/tasks/task-1"
   );
   assert.deepEqual(analyticsEvents, []);
   assert.equal(harness.notificationState.current, null);

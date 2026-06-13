@@ -48,7 +48,7 @@ export const agentGuiWorkbenchDefaultUsableHeightRatio = 0.7;
 export const agentGuiWorkbenchCompactVisibleAreaRatio = 0.9;
 
 export const AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT =
-  "nextop:agent-gui-workbench-conversation-rail-toggle";
+  "tutti:agent-gui-workbench-conversation-rail-toggle";
 
 export interface AgentGuiWorkbenchConversationRailToggleDetail {
   conversationRailCollapsed: boolean;

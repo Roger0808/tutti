@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
-  NextopdClient,
+  TuttidClient,
   WorkbenchSnapshot,
   WorkspaceSummary
-} from "@tutti-os/client-nextopd-ts";
+} from "@tutti-os/client-tuttid-ts";
 import {
   createWorkspaceLaunch,
   type WorkspaceLaunchAdapters,
@@ -39,8 +39,8 @@ function createAdapters(
 }
 
 function createTransportClient(
-  overrides: Partial<NextopdClient> = {}
-): NextopdClient {
+  overrides: Partial<TuttidClient> = {}
+): TuttidClient {
   return {
     async listCliCapabilities() {
       throw new Error("not used");
@@ -237,7 +237,7 @@ function createTransportClient(
       throw new Error("not used");
     },
     async getHealth() {
-      return { service: "nextopd", status: "ok" as const };
+      return { service: "tuttid", status: "ok" as const };
     },
     async getStartupWorkspace() {
       return null;
@@ -484,7 +484,7 @@ test("workspace launch opens daemon-provided startup workspace", async () => {
         openedWorkspaceID = workspaceID;
       }
     }),
-    nextopdClient: createTransportClient({
+    tuttidClient: createTransportClient({
       async getStartupWorkspace() {
         return createWorkspaceSummary("ws-start");
       },
@@ -510,7 +510,7 @@ test("workspace launch opens the existing personal workspace when no startup wor
         events.push(`show:${workspaceID}`);
       }
     }),
-    nextopdClient: createTransportClient({
+    tuttidClient: createTransportClient({
       async getStartupWorkspace() {
         events.push("startup");
         return createWorkspaceSummary("ws-existing");
@@ -532,7 +532,7 @@ test("workspace launch creates and opens the default workspace when the catalog 
         events.push(`show:${workspaceID}`);
       }
     }),
-    nextopdClient: createTransportClient({
+    tuttidClient: createTransportClient({
       async getStartupWorkspace() {
         events.push("startup");
         return createWorkspaceSummary("ws-default");
@@ -554,7 +554,7 @@ test("workspace launch warns and rejects when startup resolution fails", async (
         warnedError = error;
       }
     }),
-    nextopdClient: createTransportClient({
+    tuttidClient: createTransportClient({
       async getStartupWorkspace() {
         throw new Error("boom");
       }
@@ -584,7 +584,7 @@ test("workspace launch waits for replacement workspace window before closing own
         });
       }
     }),
-    nextopdClient: createTransportClient()
+    tuttidClient: createTransportClient()
   });
 
   const openPromise = launch.showWorkspace(ownerWindow, "ws-alpha");
@@ -619,7 +619,7 @@ test("workspace launch prefers destroying owner windows after workspace handoff"
         events.push(`workspace:${workspaceID}`);
       }
     }),
-    nextopdClient: createTransportClient()
+    tuttidClient: createTransportClient()
   });
 
   await launch.showWorkspace(ownerWindow, "ws-destroy");
@@ -642,7 +642,7 @@ test("workspace launch keeps owner open when replacement workspace window fails"
         throw new Error("renderer failed");
       }
     }),
-    nextopdClient: createTransportClient()
+    tuttidClient: createTransportClient()
   });
 
   await assert.rejects(
@@ -664,7 +664,7 @@ test("workspace launch warns and rejects when startup workspace window fails", a
         warnedError = error;
       }
     }),
-    nextopdClient: createTransportClient({
+    tuttidClient: createTransportClient({
       async getStartupWorkspace() {
         return createWorkspaceSummary("ws-start");
       }

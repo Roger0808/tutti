@@ -1,6 +1,6 @@
 import { createElement, type ReactNode } from "react";
-import type { NextopdClient } from "@tutti-os/client-nextopd-ts";
-import { getNextopdProtocolErrorCode } from "@tutti-os/client-nextopd-ts";
+import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import { getTuttidProtocolErrorCode } from "@tutti-os/client-tuttid-ts";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { createTerminalNodeFeature } from "@tutti-os/workspace-terminal";
 import { TerminalDockPreview } from "@tutti-os/workspace-terminal/react";
@@ -54,7 +54,7 @@ export function createWorkspaceTerminalContribution(input: {
   dockIcon: ReactNode;
   hostFilesApi: DesktopHostFilesApi;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-  nextopdClient: NextopdClient;
+  tuttidClient: TuttidClient;
   platformApi: Pick<DesktopPlatformApi, "resolveDroppedPaths">;
   reporterService?: Pick<IReporterService, "trackEvents">;
   runtimeApi: DesktopRuntimeApi;
@@ -66,7 +66,7 @@ export function createWorkspaceTerminalContribution(input: {
   });
   const terminalAdapter = createDesktopWorkspaceTerminalAdapter({
     hostFilesApi: input.hostFilesApi,
-    nextopdClient: input.nextopdClient,
+    tuttidClient: input.tuttidClient,
     openBrowserUrl: requestWorkspaceBrowserLaunch,
     platformApi: input.platformApi,
     runtimeApi: input.runtimeApi,
@@ -110,7 +110,7 @@ export function createWorkspaceTerminalContribution(input: {
       logDesktopTerminalEvent({
         details: {
           error: error instanceof Error ? error.message : String(error),
-          protocolCode: getNextopdProtocolErrorCode(error)
+          protocolCode: getTuttidProtocolErrorCode(error)
         },
         event: "close.request.error",
         level: "warn",
@@ -192,7 +192,7 @@ export function createWorkspaceTerminalContribution(input: {
           logDesktopTerminalEvent({
             details: {
               error: error instanceof Error ? error.message : String(error),
-              protocolCode: getNextopdProtocolErrorCode(error)
+              protocolCode: getTuttidProtocolErrorCode(error)
             },
             event: "window.close.terminal.error",
             level: "warn",

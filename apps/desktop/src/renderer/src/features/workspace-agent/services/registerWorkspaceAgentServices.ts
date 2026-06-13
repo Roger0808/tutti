@@ -1,8 +1,8 @@
 import { SyncDescriptor, type ServiceRegistry } from "@zk-tech/bedrock/di";
 import type {
-  NextopdClient,
-  NextopdEventStreamClient
-} from "@tutti-os/client-nextopd-ts";
+  TuttidClient,
+  TuttidEventStreamClient
+} from "@tutti-os/client-tuttid-ts";
 import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
@@ -15,12 +15,12 @@ import { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.
 import { IWorkspaceAgentPromptSessionService } from "./workspaceAgentPromptSessionService.interface";
 
 export interface WorkspaceAgentServiceRegistrationInput {
-  eventStreamClient?: NextopdEventStreamClient;
+  eventStreamClient?: TuttidEventStreamClient;
   hostFilesApi: Pick<
     DesktopHostFilesApi,
     "createUserDocumentsProjectDirectory"
   >;
-  nextopdClient: NextopdClient;
+  tuttidClient: TuttidClient;
   reporterService?: Pick<IReporterService, "trackEvents">;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
   terminalCommandRunner: AgentProviderTerminalCommandRunner;
@@ -51,7 +51,7 @@ export function registerWorkspaceAgentServices(
     IAgentProviderStatusService,
     new SyncDescriptor(DesktopAgentProviderStatusService, [
       {
-        nextopdClient: input.nextopdClient,
+        tuttidClient: input.tuttidClient,
         reporterService: input.reporterService,
         terminalCommandRunner: input.terminalCommandRunner
       }

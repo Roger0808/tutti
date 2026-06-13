@@ -8,9 +8,9 @@ import {
   manageAgentCodexUrl,
   manageAgentGeminiUrl,
   manageAgentHermesUrl,
-  manageAgentNextopUrl,
+  manageAgentTuttiUrl,
   manageAgentOpenclawUrl,
-  nextopDocRoundedUrl,
+  tuttiDocRoundedUrl,
   openclawRoundedUrl
 } from "../managedAgentIconAssets";
 
@@ -20,7 +20,7 @@ export const MANAGED_AGENT_ICON_URLS: Record<string, string> = {
   codex: manageAgentCodexUrl,
   gemini: manageAgentGeminiUrl,
   hermes: manageAgentHermesUrl,
-  nextop: manageAgentNextopUrl,
+  tutti: manageAgentTuttiUrl,
   openclaw: manageAgentOpenclawUrl
 };
 
@@ -30,14 +30,14 @@ export const MANAGED_AGENT_ICON_ROUNDED_URLS: Record<string, string> = {
   codex: codexRoundedUrl,
   gemini: geminiRoundedUrl,
   hermes: hermesRoundedUrl,
-  nextop: nextopDocRoundedUrl,
+  tutti: tuttiDocRoundedUrl,
   openclaw: openclawRoundedUrl
 };
 
 /** 与 Manage Agents 列表用的方图区分；房间预览弹幕条等仅用圆图 */
-const MANAGED_AGENT_ROUNDED_ICON_FALLBACK_URL = nextopDocRoundedUrl;
+const MANAGED_AGENT_ROUNDED_ICON_FALLBACK_URL = tuttiDocRoundedUrl;
 
-export const MANAGED_AGENT_ICON_FALLBACK_URL = manageAgentNextopUrl;
+export const MANAGED_AGENT_ICON_FALLBACK_URL = manageAgentTuttiUrl;
 
 export function managedAgentRoundedIconUrl(
   provider: string | undefined

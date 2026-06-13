@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
-  NextopdClient,
-  NextopdEventStreamClient,
+  TuttidClient,
+  TuttidEventStreamClient,
   WorkspaceAgentSession
-} from "@tutti-os/client-nextopd-ts";
+} from "@tutti-os/client-tuttid-ts";
 import type { AgentPromptContentBlock } from "@tutti-os/agent-activity-core";
 import type {
   DesktopHostFilesApi,
@@ -231,10 +231,10 @@ interface DesktopAgentHostApiUnderTest {
   };
 }
 
-test("desktop agent host api routes session commands through injected nextopd client", async () => {
+test("desktop agent host api routes session commands through injected tuttid client", async () => {
   const calls: Array<{ method: string; args: unknown[] }> = [];
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async cancelWorkspaceAgentSessionWithResult(
         requestWorkspaceId: string,
         agentSessionId: string
@@ -460,7 +460,7 @@ test("desktop agent host api routes session commands through injected nextopd cl
 test("desktop agent host api returns no-active-turn cancel metadata", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async cancelWorkspaceAgentSessionWithResult(
         _requestWorkspaceId: string,
         agentSessionId: string
@@ -500,11 +500,11 @@ test("desktop agent host api returns no-active-turn cancel metadata", async () =
 test("desktop agent host api pins sessions through the canonical pinSession host method", async () => {
   const calls: unknown[] = [];
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async updateWorkspaceAgentSessionPin(
         requestWorkspaceId: string,
         agentSessionId: string,
-        request: Parameters<NextopdClient["updateWorkspaceAgentSessionPin"]>[2]
+        request: Parameters<TuttidClient["updateWorkspaceAgentSessionPin"]>[2]
       ) {
         calls.push([requestWorkspaceId, agentSessionId, request]);
         return createSession({
@@ -537,10 +537,10 @@ test("desktop agent host api pins sessions through the canonical pinSession host
 test("desktop agent host api tracks agent session lifecycle events", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async createWorkspaceAgentSession(
         _workspaceId,
-        request: Parameters<NextopdClient["createWorkspaceAgentSession"]>[1]
+        request: Parameters<TuttidClient["createWorkspaceAgentSession"]>[1]
       ) {
         return createSession({
           cwd: request.cwd,
@@ -656,10 +656,10 @@ test("desktop agent host api tracks agent session lifecycle events", async () =>
 test("desktop agent host api tracks agent session settings changes", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async createWorkspaceAgentSession(
         _workspaceId,
-        request: Parameters<NextopdClient["createWorkspaceAgentSession"]>[1]
+        request: Parameters<TuttidClient["createWorkspaceAgentSession"]>[1]
       ) {
         return createSession({
           id: request.agentSessionId,
@@ -675,7 +675,7 @@ test("desktop agent host api tracks agent session settings changes", async () =>
         _workspaceId,
         agentSessionId,
         settings: Parameters<
-          NextopdClient["updateWorkspaceAgentSessionSettings"]
+          TuttidClient["updateWorkspaceAgentSessionSettings"]
         >[2]
       ) {
         return createSession({
@@ -786,10 +786,10 @@ test("desktop agent host api tracks agent project setting changes", async () => 
   ]);
 });
 
-test("desktop agent host api deletes workspace agent sessions through nextopd", async () => {
+test("desktop agent host api deletes workspace agent sessions through tuttid", async () => {
   const calls: unknown[] = [];
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async deleteWorkspaceAgentSession(
         requestWorkspaceId: string,
         agentSessionId: string
@@ -811,7 +811,7 @@ test("desktop agent host api deletes workspace agent sessions through nextopd", 
 test("desktop agent host api passes supported session providers", async () => {
   const calls: unknown[] = [];
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async createWorkspaceAgentSession(_workspaceId, request) {
         calls.push(request);
         return createSession({
@@ -839,7 +839,7 @@ test("desktop agent host api passes supported session providers", async () => {
 test("desktop agent host api passes plan mode to new session creation", async () => {
   const calls: unknown[] = [];
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async createWorkspaceAgentSession(_workspaceId, request) {
         calls.push(request);
         return createSession({
@@ -873,7 +873,7 @@ test("desktop agent host api passes plan mode to new session creation", async ()
 test("desktop agent host api rejects unknown session providers", async () => {
   let createCalled = false;
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async createWorkspaceAgentSession() {
         createCalled = true;
         return createSession({ id: "created-session", status: "created" });
@@ -905,10 +905,10 @@ test("desktop agent host api rejects unknown session providers", async () => {
   assert.equal(createCalled, false);
 });
 
-test("desktop agent host api loads composer options through nextopd without creating a session", async () => {
+test("desktop agent host api loads composer options through tuttid without creating a session", async () => {
   const calls: Array<{ method: string; args: unknown[] }> = [];
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async createWorkspaceAgentSession(_workspaceId, _request) {
         calls.push({ args: [_workspaceId, _request], method: "create" });
         return createSession({ id: "created-session", status: "created" });
@@ -1016,7 +1016,7 @@ test("desktop agent host api loads composer options through nextopd without crea
 
 test("desktop agent host api exposes persisted session composer options", async () => {
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async getWorkspaceAgentSession(_workspaceId, agentSessionId) {
         return createSession({
           id: agentSessionId,
@@ -1059,10 +1059,10 @@ test("desktop agent host api exposes persisted session composer options", async 
   ]);
 });
 
-test("desktop agent host api resolves root cwd through nextopd workspace files", async () => {
+test("desktop agent host api resolves root cwd through tuttid workspace files", async () => {
   const calls: Array<{ method: string; args: unknown[] }> = [];
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async createWorkspaceAgentSession(
         requestWorkspaceId: string,
         request: { agentSessionId: string }
@@ -1084,7 +1084,7 @@ test("desktop agent host api resolves root cwd through nextopd workspace files",
         return {
           directoryPath: "/",
           entries: [],
-          root: "/Users/example/project/nextop",
+          root: "/Users/example/project/tutti",
           workspaceId: requestWorkspaceId
         };
       }
@@ -1109,7 +1109,7 @@ test("desktop agent host api resolves root cwd through nextopd workspace files",
         workspaceId,
         {
           agentSessionId: "33333333-3333-4333-8333-333333333333",
-          cwd: "/Users/example/project/nextop",
+          cwd: "/Users/example/project/tutti",
           initialContent: [{ type: "text", text: "Build" }],
           model: null,
           permissionModeId: null,
@@ -1125,7 +1125,7 @@ test("desktop agent host api resolves root cwd through nextopd workspace files",
   ]);
 });
 
-test("desktop agent host api creates no-project session cwd under user Documents/nextop", async () => {
+test("desktop agent host api creates no-project session cwd under user Documents/tutti", async () => {
   const calls: Array<{ method: string; args: unknown[] }> = [];
   const api = createAgentHostApi({
     hostFilesApi: createHostFilesApi({
@@ -1134,10 +1134,10 @@ test("desktop agent host api creates no-project session cwd under user Documents
           args: [input],
           method: "createUserDocumentsProjectDirectory"
         });
-        return { path: `/Users/local/Documents/nextop/${input.name}` };
+        return { path: `/Users/local/Documents/tutti/${input.name}` };
       }
     }),
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async createWorkspaceAgentSession(
         requestWorkspaceId: string,
         request: { agentSessionId: string; cwd?: string | null }
@@ -1165,23 +1165,23 @@ test("desktop agent host api creates no-project session cwd under user Documents
 
   assert.equal(
     result.session.cwd,
-    "/Users/local/Documents/nextop/session-44444444-4444-4444-8444-444444444444"
+    "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444"
   );
   assert.equal(
     api.userProjects.isNoProjectPath({
-      path: "/Users/local/Documents/nextop/session-44444444-4444-4444-8444-444444444444"
+      path: "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444"
     }),
     true
   );
   assert.equal(
     api.userProjects.isNoProjectPath({
-      path: "/Users/local/Documents/nextop/Demo project"
+      path: "/Users/local/Documents/tutti/Demo project"
     }),
     false
   );
   assert.equal(
     api.userProjects.isNoProjectPath({
-      path: "/tmp/nextop/session-44444444-4444-4444-8444-444444444444"
+      path: "/tmp/tutti/session-44444444-4444-4444-8444-444444444444"
     }),
     false
   );
@@ -1199,7 +1199,7 @@ test("desktop agent host api creates no-project session cwd under user Documents
         workspaceId,
         {
           agentSessionId: "44444444-4444-4444-8444-444444444444",
-          cwd: "/Users/local/Documents/nextop/session-44444444-4444-4444-8444-444444444444",
+          cwd: "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444",
           initialContent: [{ type: "text", text: "Scratch" }],
           model: null,
           permissionModeId: null,
@@ -1235,9 +1235,9 @@ test("desktop agent host api remembers the default project selection per workspa
     path: null
   });
 
-  await secondApi.userProjects.use({ path: "/workspace/nextop" });
+  await secondApi.userProjects.use({ path: "/workspace/tutti" });
   assert.deepEqual(await firstApi.userProjects.getDefaultSelection(), {
-    path: "/workspace/nextop"
+    path: "/workspace/tutti"
   });
 });
 
@@ -1336,7 +1336,7 @@ test("desktop agent host api delegates user project calls to the workspace user 
     }
   };
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async listUserProjects() {
         throw new Error("userProjects.list should use the service");
       },
@@ -1429,10 +1429,10 @@ test("desktop agent host api delegates user project calls to the workspace user 
   ]);
 });
 
-test("desktop agent host api reports failed activation from nextopd session", async () => {
+test("desktop agent host api reports failed activation from tuttid session", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async createWorkspaceAgentSession(_workspaceId, request) {
         return createSession({
           id: request.agentSessionId,
@@ -1490,7 +1490,7 @@ test("desktop agent host api reconciles event hub dirty signals into full sessio
   const eventHubListenerRef: {
     current: AgentActivityDirtySignalListener | null;
   } = { current: null };
-  const subscribeToEventHub: NextopdEventStreamClient["subscribe"] = (
+  const subscribeToEventHub: TuttidEventStreamClient["subscribe"] = (
     topic,
     listener
   ) => {
@@ -1500,7 +1500,7 @@ test("desktop agent host api reconciles event hub dirty signals into full sessio
     }
     return () => {};
   };
-  const eventStreamClient: NextopdEventStreamClient = {
+  const eventStreamClient: TuttidEventStreamClient = {
     async connect() {},
     dispose() {},
     async publishIntent() {},
@@ -1510,7 +1510,7 @@ test("desktop agent host api reconciles event hub dirty signals into full sessio
     }
   };
   const messageRequests: Array<number | undefined> = [];
-  const nextopdClient = createNextopdClient({
+  const tuttidClient = createTuttidClient({
     async getWorkspaceAgentSession(_workspaceId, agentSessionId) {
       return createSession({
         id: agentSessionId,
@@ -1571,10 +1571,10 @@ test("desktop agent host api reconciles event hub dirty signals into full sessio
     }
   });
   const api = createAgentHostApi({
-    nextopdClient,
+    tuttidClient,
     workspaceAgentActivityService: new WorkspaceAgentActivityService({
       eventStreamClient,
-      nextopdClient,
+      tuttidClient,
       runtimeApi: createRuntimeApi()
     })
   });
@@ -1662,7 +1662,7 @@ test("desktop agent host api batches inline streaming message updates", async ()
   const eventHubListenerRef: {
     current: AgentActivityDirtySignalListener | null;
   } = { current: null };
-  const eventStreamClient: NextopdEventStreamClient = {
+  const eventStreamClient: TuttidEventStreamClient = {
     async connect() {},
     dispose() {},
     async publishIntent() {},
@@ -1678,7 +1678,7 @@ test("desktop agent host api batches inline streaming message updates", async ()
     }
   };
   let messageRequestCount = 0;
-  const nextopdClient = createNextopdClient({
+  const tuttidClient = createTuttidClient({
     async listWorkspaceAgentSessionMessages(_workspaceId, agentSessionId) {
       messageRequestCount += 1;
       return {
@@ -1696,10 +1696,10 @@ test("desktop agent host api batches inline streaming message updates", async ()
     }
   });
   const api = createAgentHostApi({
-    nextopdClient,
+    tuttidClient,
     workspaceAgentActivityService: new WorkspaceAgentActivityService({
       eventStreamClient,
-      nextopdClient,
+      tuttidClient,
       runtimeApi: createRuntimeApi()
     })
   });
@@ -1790,7 +1790,7 @@ test("desktop agent host api preserves working state for user-only reconciled tu
   const eventHubListenerRef: {
     current: AgentActivityDirtySignalListener | null;
   } = { current: null };
-  const eventStreamClient: NextopdEventStreamClient = {
+  const eventStreamClient: TuttidEventStreamClient = {
     async connect() {},
     dispose() {},
     async publishIntent() {},
@@ -1805,7 +1805,7 @@ test("desktop agent host api preserves working state for user-only reconciled tu
       return () => {};
     }
   };
-  const nextopdClient = createNextopdClient({
+  const tuttidClient = createTuttidClient({
     async getWorkspaceAgentSession(_workspaceId, agentSessionId) {
       return createSession({
         id: agentSessionId,
@@ -1847,10 +1847,10 @@ test("desktop agent host api preserves working state for user-only reconciled tu
     }
   });
   const api = createAgentHostApi({
-    nextopdClient,
+    tuttidClient,
     workspaceAgentActivityService: new WorkspaceAgentActivityService({
       eventStreamClient,
-      nextopdClient,
+      tuttidClient,
       runtimeApi: createRuntimeApi()
     })
   });
@@ -1927,7 +1927,7 @@ test("desktop agent host api ignores stale reconcile after session deletion", as
   const eventHubListenerRef: {
     current: AgentActivityDirtySignalListener | null;
   } = { current: null };
-  const eventStreamClient: NextopdEventStreamClient = {
+  const eventStreamClient: TuttidEventStreamClient = {
     async connect() {},
     dispose() {},
     async publishIntent() {},
@@ -1945,7 +1945,7 @@ test("desktop agent host api ignores stale reconcile after session deletion", as
   const getSessionStarted = deferred<void>();
   const getSessionResponse = deferred<WorkspaceAgentSession>();
   let getSessionReturned = false;
-  const nextopdClient = createNextopdClient({
+  const tuttidClient = createTuttidClient({
     async getWorkspaceAgentSession(_workspaceId, agentSessionId) {
       getSessionStarted.resolve();
       const session = await getSessionResponse.promise;
@@ -1974,11 +1974,11 @@ test("desktop agent host api ignores stale reconcile after session deletion", as
   });
   const workspaceAgentActivityService = new WorkspaceAgentActivityService({
     eventStreamClient,
-    nextopdClient,
+    tuttidClient,
     runtimeApi: createRuntimeApi()
   });
   const api = createAgentHostApi({
-    nextopdClient,
+    tuttidClient,
     workspaceAgentActivityService
   });
 
@@ -2024,11 +2024,11 @@ test("desktop agent host api ignores stale reconcile after session deletion", as
   );
 });
 
-test("desktop agent host api propagates nextopd session message errors", async () => {
+test("desktop agent host api propagates tuttid session message errors", async () => {
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async listWorkspaceAgentSessionMessages() {
-        throw new Error("nextopd unavailable");
+        throw new Error("tuttid unavailable");
       }
     })
   });
@@ -2038,13 +2038,13 @@ test("desktop agent host api propagates nextopd session message errors", async (
       api.workspaceAgents.listSessionMessages({
         agentSessionId: "agent-session-1"
       }),
-    /nextopd unavailable/
+    /tuttid unavailable/
   );
 });
 
-test("desktop agent host api prefers persisted nextopd session messages when available", async () => {
+test("desktop agent host api prefers persisted tuttid session messages when available", async () => {
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async listWorkspaceAgentSessionMessages(
         requestWorkspaceId: string,
         agentSessionId: string,
@@ -2065,7 +2065,7 @@ test("desktop agent host api prefers persisted nextopd session messages when ava
               kind: "text",
               messageId: "message-8",
               occurredAtUnixMs: 1717200001000,
-              payload: { text: "from nextopd" },
+              payload: { text: "from tuttid" },
               role: "assistant",
               version: 8
             }
@@ -2092,7 +2092,7 @@ test("desktop agent host api prefers persisted nextopd session messages when ava
         kind: "text",
         messageId: "message-8",
         occurredAtUnixMs: 1717200001000,
-        payload: { text: "from nextopd" },
+        payload: { text: "from tuttid" },
         role: "assistant",
         startedAtUnixMs: undefined,
         status: undefined,
@@ -2116,7 +2116,7 @@ test("desktop agent host api preserves frontend session UUIDs as canonical ids",
   const calls: Array<{ method: string; args: unknown[] }> = [];
   const receivedEvents: unknown[] = [];
   const api = createAgentHostApi({
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async createWorkspaceAgentSession(requestWorkspaceId, request) {
         calls.push({ args: [requestWorkspaceId, request], method: "create" });
         return createSession({
@@ -2302,7 +2302,7 @@ test("desktop agent host api keeps canonical sessions across adapter recreation"
   const getCalls: Array<{ workspaceId: string; agentSessionId: string }> = [];
   const firstApi = createAgentHostApi({
     workspaceId: remountWorkspaceId,
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async createWorkspaceAgentSession(_workspaceId, request) {
         return createSession({ id: request.agentSessionId });
       }
@@ -2324,7 +2324,7 @@ test("desktop agent host api keeps canonical sessions across adapter recreation"
 
   const recreatedApi = createAgentHostApi({
     workspaceId: remountWorkspaceId,
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async getWorkspaceAgentSession(workspaceId, agentSessionId) {
         getCalls.push({ workspaceId, agentSessionId });
         return createSession({ id: agentSessionId });
@@ -2394,7 +2394,7 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     hostFilesApi: createHostFilesApi({
       async createUserDocumentsProjectDirectory(input) {
         assert.deepEqual(input, { name: "Demo project" });
-        return { path: "/Users/local/Documents/nextop/Demo project" };
+        return { path: "/Users/local/Documents/tutti/Demo project" };
       },
       async readPreviewFile(requestWorkspaceId, path) {
         assert.equal(requestWorkspaceId, workspaceId);
@@ -2416,7 +2416,7 @@ test("desktop agent host api reuses desktop host file operations", async () => {
         return ["/tmp/a.txt", "/tmp/b.txt"];
       }
     }),
-    nextopdClient: createNextopdClient({
+    tuttidClient: createTuttidClient({
       async checkUserProjectPath(payload) {
         return {
           exists: true,
@@ -2472,7 +2472,7 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     createdAtUnixMs: 1,
     id: "project-1",
     label: "Demo project",
-    path: "/Users/local/Documents/nextop/Demo project",
+    path: "/Users/local/Documents/tutti/Demo project",
     updatedAtUnixMs: 1
   });
   assert.deepEqual(await api.userProjects.checkPath?.({ path: "/workspace" }), {
@@ -2481,7 +2481,7 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     path: "/workspace"
   });
   assert.deepEqual(usedProjectPaths, [
-    "/Users/local/Documents/nextop/Demo project"
+    "/Users/local/Documents/tutti/Demo project"
   ]);
   assert.deepEqual(await api.workspace.selectFiles(), [
     { path: "/tmp/a.txt" },
@@ -2529,24 +2529,24 @@ function createAgentHostApi(
 ): DesktopAgentHostApiUnderTest {
   const {
     hostFilesApi: overriddenHostFilesApi,
-    nextopdClient: overriddenNextopdClient,
+    tuttidClient: overriddenTuttidClient,
     runtimeApi: overriddenRuntimeApi,
     workspaceAgentActivityService,
     ...apiOverrides
   } = overrides;
   const hostFilesApi = overriddenHostFilesApi ?? createHostFilesApi();
-  const nextopdClient = overriddenNextopdClient ?? createNextopdClient();
+  const tuttidClient = overriddenTuttidClient ?? createTuttidClient();
   const runtimeApi = overriddenRuntimeApi ?? createRuntimeApi();
   return createDesktopAgentHostApi({
     hostFilesApi,
-    nextopdClient,
+    tuttidClient,
     platformApi: createPlatformApi(),
     runtimeApi,
     workspaceAgentActivityService:
       workspaceAgentActivityService ??
       new WorkspaceAgentActivityService({
         hostFilesApi,
-        nextopdClient,
+        tuttidClient,
         runtimeApi
       }),
     workspaceId,
@@ -2588,7 +2588,7 @@ function createHostFilesApi(
 ): DesktopHostFilesApi {
   return {
     async createUserDocumentsProjectDirectory(input) {
-      return { path: `/Users/local/Documents/nextop/${input.name}` };
+      return { path: `/Users/local/Documents/tutti/${input.name}` };
     },
     async openExternal() {},
     async openFile() {},
@@ -2674,9 +2674,9 @@ function createRuntimeApi(): DesktopRuntimeApi {
   };
 }
 
-function createNextopdClient(
-  overrides: Partial<NextopdClient> = {}
-): NextopdClient {
+function createTuttidClient(
+  overrides: Partial<TuttidClient> = {}
+): TuttidClient {
   return {
     async cancelWorkspaceAgentSession() {
       return createSession({ status: "canceled" });
@@ -2703,8 +2703,8 @@ function createNextopdClient(
       return createSession({ id: agentSessionId });
     },
     async getAgentProviderComposerOptions(
-      provider: Parameters<NextopdClient["getAgentProviderComposerOptions"]>[0],
-      request: Parameters<NextopdClient["getAgentProviderComposerOptions"]>[1]
+      provider: Parameters<TuttidClient["getAgentProviderComposerOptions"]>[0],
+      request: Parameters<TuttidClient["getAgentProviderComposerOptions"]>[1]
     ) {
       const settings = request?.settings ?? {};
       return {
@@ -2789,7 +2789,7 @@ function createNextopdClient(
       return { projects: [] };
     },
     async checkUserProjectPath(
-      request: Parameters<NextopdClient["checkUserProjectPath"]>[0]
+      request: Parameters<TuttidClient["checkUserProjectPath"]>[0]
     ) {
       return {
         exists: true,
@@ -2820,7 +2820,7 @@ function createNextopdClient(
       _workspaceId: string,
       agentSessionId: string,
       settings: Parameters<
-        NextopdClient["updateWorkspaceAgentSessionSettings"]
+        TuttidClient["updateWorkspaceAgentSessionSettings"]
       >[2]
     ) {
       return createSession({ id: agentSessionId, settings });
@@ -2828,7 +2828,7 @@ function createNextopdClient(
     async updateWorkspaceAgentSessionPin(
       _workspaceId: string,
       agentSessionId: string,
-      request: Parameters<NextopdClient["updateWorkspaceAgentSessionPin"]>[2]
+      request: Parameters<TuttidClient["updateWorkspaceAgentSessionPin"]>[2]
     ) {
       return createSession({
         id: agentSessionId,
@@ -2836,7 +2836,7 @@ function createNextopdClient(
       });
     },
     async useUserProject(
-      request: Parameters<NextopdClient["useUserProject"]>[0]
+      request: Parameters<TuttidClient["useUserProject"]>[0]
     ) {
       return {
         createdAtUnixMs: 1,
@@ -2848,7 +2848,7 @@ function createNextopdClient(
     },
     async writeWorkspaceFileText(
       workspaceId: string,
-      request: Parameters<NextopdClient["writeWorkspaceFileText"]>[1]
+      request: Parameters<TuttidClient["writeWorkspaceFileText"]>[1]
     ) {
       return {
         entry: {
@@ -2864,7 +2864,7 @@ function createNextopdClient(
       };
     },
     ...overrides
-  } as unknown as NextopdClient;
+  } as unknown as TuttidClient;
 }
 
 function inlineActivityMessage(input: {

@@ -8,7 +8,7 @@ import {
   VideoFileIcon,
   cn
 } from "@tutti-os/ui-system";
-import type { NextopDateLocale } from "@tutti-os/ui-system/date-format";
+import type { TuttiDateLocale } from "@tutti-os/ui-system/date-format";
 import { WorkspaceFilePreviewSurface as SharedWorkspaceFilePreviewSurface } from "@tutti-os/workspace-file-preview/react";
 import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManagerI18n.ts";
 import type {
@@ -103,7 +103,7 @@ export function WorkspaceFileManagerPanels({
   arrangeMode: WorkspaceFileManagerArrangeMode;
   canMove: boolean;
   contextMenuEntryPath: string | null;
-  dateLocale?: NextopDateLocale;
+  dateLocale?: TuttiDateLocale;
   entryDragMode?: WorkspaceFileManagerEntryDragMode;
   entrySelectionEnabled?: boolean;
   copy: WorkspaceFileManagerI18nRuntime;
@@ -771,7 +771,7 @@ function EntryRow({
   canMove: boolean;
   contextMenuActive: boolean;
   copy: WorkspaceFileManagerI18nRuntime;
-  dateLocale?: NextopDateLocale;
+  dateLocale?: TuttiDateLocale;
   draggable: boolean;
   entry: WorkspaceFileEntry;
   gridClassName: string;
@@ -1229,7 +1229,7 @@ function PreviewPane({
   previewState
 }: {
   copy: WorkspaceFileManagerI18nRuntime;
-  dateLocale?: NextopDateLocale;
+  dateLocale?: TuttiDateLocale;
   entry: WorkspaceFileEntry | null;
   previewState: WorkspaceFilePreviewState;
 }): ReactElement {
