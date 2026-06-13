@@ -141,12 +141,91 @@ export function AgentInteractivePromptSurface({
   return (
     <AskUserPromptSurface
       prompt={prompt}
+      variant={variant}
       embedded={embedded}
       edgeGlow={edgeGlow}
       isSubmitting={isSubmitting}
       onSubmit={onSubmit}
       labels={labels}
     />
+  );
+}
+
+// Compact (message-center deck): a single-select question is answered with one
+// click — selecting an option submits it immediately, matching the approval and
+// plan cards. Multi-select / multi-question / free-text-only prompts can't be
+// answered in one tap, so they defer to the conversation (the card's "open
+// conversation" jump), showing just the question for context.
+function CompactAskUserPromptSurface({
+  prompt,
+  embedded = false,
+  edgeGlow = false,
+  isSubmitting,
+  onSubmit
+}: AgentInteractivePromptSurfaceProps & {
+  prompt: Extract<AgentConversationPromptVM, { kind: "ask-user" }>;
+  embedded?: boolean;
+}) {
+  "use memo";
+  const question = prompt.questions[0] ?? null;
+  const oneClickable =
+    prompt.questions.length === 1 &&
+    question !== null &&
+    !question.multiSelect &&
+    question.options.length > 0;
+
+  return (
+    <section className={interactivePromptClassName(embedded)}>
+      <div className={interactivePromptCardClassName(edgeGlow)}>
+        {question ? (
+          <>
+            <div className={styles.interactivePromptHeader}>
+              <span className={styles.interactivePromptLead}>
+                {stripPromptTitlePunctuation(question.header)}
+              </span>
+            </div>
+            <div className={styles.interactivePromptQuestion}>
+              {question.question}
+            </div>
+            {oneClickable ? (
+              <div className={styles.interactivePromptOptions}>
+                {question.options.map((option) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    className={styles.interactiveOptionButton}
+                    aria-label={interactiveOptionLabel(
+                      option.label,
+                      option.description
+                    )}
+                    disabled={isSubmitting}
+                    onClick={() =>
+                      onSubmit({
+                        requestId: prompt.requestId,
+                        action: "submit",
+                        payload: {
+                          answers: [option.label],
+                          answersByQuestionId: { [question.id]: option.label }
+                        }
+                      })
+                    }
+                  >
+                    <span className={styles.interactiveOptionTitle}>
+                      {option.label}
+                    </span>
+                    {option.description ? (
+                      <span className={styles.interactiveOptionDescription}>
+                        {option.description}
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -609,6 +688,43 @@ function PlanImplementationSurface({
 }
 
 function AskUserPromptSurface({
+  prompt,
+  variant = "full",
+  embedded = false,
+  edgeGlow = false,
+  isSubmitting,
+  onSubmit,
+  labels
+}: AgentInteractivePromptSurfaceProps & {
+  prompt: Extract<AgentConversationPromptVM, { kind: "ask-user" }>;
+  embedded?: boolean;
+}) {
+  "use memo";
+  if (variant === "compact") {
+    return (
+      <CompactAskUserPromptSurface
+        prompt={prompt}
+        embedded={embedded}
+        edgeGlow={edgeGlow}
+        isSubmitting={isSubmitting}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+  }
+  return (
+    <FullAskUserPromptSurface
+      prompt={prompt}
+      embedded={embedded}
+      edgeGlow={edgeGlow}
+      isSubmitting={isSubmitting}
+      onSubmit={onSubmit}
+      labels={labels}
+    />
+  );
+}
+
+function FullAskUserPromptSurface({
   prompt,
   embedded = false,
   edgeGlow = false,

@@ -1071,6 +1071,54 @@ describe("AgentInteractivePromptSurface", () => {
     });
   });
 
+  it("submits a single-select ask-user answer in one click when compact", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "ask-user",
+          requestId: "ask-req-1",
+          title: "Plan topic",
+          questions: [
+            {
+              id: "plan-kind",
+              header: "Plan topic",
+              question: "Which kind of plan?",
+              options: [
+                { label: "Health check", description: "Audit the repo" },
+                { label: "Feature plan", description: "Needs a name" }
+              ],
+              multiSelect: false,
+              answer: null
+            }
+          ]
+        }}
+        variant="compact"
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    // One click submits the chosen option directly — no separate submit step,
+    // no free-text box (that rich flow lives in the conversation).
+    fireEvent.click(screen.getByRole("button", { name: /Health check/ }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      requestId: "ask-req-1",
+      action: "submit",
+      payload: {
+        answers: ["Health check"],
+        answersByQuestionId: { "plan-kind": "Health check" }
+      }
+    });
+    expect(
+      screen.queryByPlaceholderText(labels.answerPlaceholder)
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: labels.submitAnswers })
+    ).toBeNull();
+  });
+
   it("offers only the implement decision for a compact plan-implementation prompt", () => {
     const onSubmit = vi.fn();
     render(
