@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"mime"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,6 +31,7 @@ type AppManifest struct {
 	Icon             AppManifestIcon              `json:"icon"`
 	Runtime          AppManifestRuntime           `json:"runtime"`
 	CLI              *AppManifestCLI              `json:"cli,omitempty"`
+	References       *AppManifestReferences       `json:"references,omitempty"`
 	Window           *AppManifestWindow           `json:"window,omitempty"`
 	Author           *AppManifestAuthor           `json:"author,omitempty"`
 	Tags             []string                     `json:"tags,omitempty"`
@@ -48,6 +50,10 @@ type AppManifestRuntime struct {
 
 type AppManifestCLI struct {
 	Manifest string `json:"manifest"`
+}
+
+type AppManifestReferences struct {
+	SearchEndpoint string `json:"searchEndpoint"`
 }
 
 type AppManifestWindow struct {
@@ -99,6 +105,10 @@ func (p AppPackage) DisplayName() string {
 
 func (p AppPackage) Description() string {
 	return p.Manifest.Description
+}
+
+func (p AppPackage) ReferenceSearchSupported() bool {
+	return p.Manifest.References != nil && strings.TrimSpace(p.Manifest.References.SearchEndpoint) != ""
 }
 
 func (p AppPackage) MinimizeBehavior() string {
@@ -258,7 +268,48 @@ type WorkspaceApp struct {
 	UpdateAvailable  bool
 	Runtime          AppRuntimeState
 	CLI              AppCLIState
+	References       AppReferencesState
 	StateRevision    int64
+}
+
+type AppReferencesState struct {
+	SearchSupported bool
+}
+
+type AppReferenceSearchInput struct {
+	Query  string
+	Limit  int
+	Cursor string
+	Kinds  []AppReferenceKind
+}
+
+type AppReferenceSearchResult struct {
+	References []AppReference
+	NextCursor *string
+}
+
+type AppReferenceKind string
+
+const (
+	AppReferenceKindFile AppReferenceKind = "file"
+)
+
+type AppReference interface {
+	AppReferenceKind() AppReferenceKind
+}
+
+type AppFileReference struct {
+	DisplayName string
+	Description string
+	Path        string
+	SizeBytes   *int64
+	MtimeMs     *int64
+	MimeType    string
+	Score       *float64
+}
+
+func (AppFileReference) AppReferenceKind() AppReferenceKind {
+	return AppReferenceKindFile
 }
 
 type AppCatalogLoadStatus string
@@ -404,6 +455,15 @@ func ValidateAppManifest(manifest AppManifest) error {
 			return errors.New("app manifest cli.manifest must be a relative package path")
 		}
 	}
+	if manifest.References != nil {
+		searchEndpoint := strings.TrimSpace(manifest.References.SearchEndpoint)
+		if searchEndpoint == "" {
+			return errors.New("app manifest references.searchEndpoint is required when references is provided")
+		}
+		if !isRelativeURLPath(searchEndpoint) {
+			return errors.New("app manifest references.searchEndpoint must be a relative URL path without query or fragment")
+		}
+	}
 	if manifest.Author != nil && strings.TrimSpace(manifest.Author.Name) == "" {
 		return errors.New("app manifest author.name is required when author is provided")
 	}
@@ -475,4 +535,16 @@ func isRelativePackagePath(value string) bool {
 		}
 	}
 	return true
+}
+
+func isRelativeURLPath(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || !strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "//") || strings.Contains(trimmed, "\x00") {
+		return false
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "" && parsed.Host == "" && parsed.RawQuery == "" && parsed.Fragment == "" && parsed.Path == trimmed
 }

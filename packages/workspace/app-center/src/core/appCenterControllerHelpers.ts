@@ -40,6 +40,7 @@ export function mergeWorkspaceAppCatalogFields(
     localizations: snapshotApp.localizations,
     minimizeBehavior: snapshotApp.minimizeBehavior,
     name: snapshotApp.name,
+    references: snapshotApp.references,
     source: snapshotApp.source,
     tags: snapshotApp.tags,
     updateAvailable: snapshotApp.updateAvailable
@@ -73,6 +74,8 @@ export function areWorkspaceAppCenterAppsEqual(
       ) &&
       leftApp.minimizeBehavior === rightApp.minimizeBehavior &&
       leftApp.name === rightApp.name &&
+      leftApp.references.searchSupported ===
+        rightApp.references.searchSupported &&
       leftApp.runtimeId === rightApp.runtimeId &&
       leftApp.runtimeStatus === rightApp.runtimeStatus &&
       leftApp.source === rightApp.source &&

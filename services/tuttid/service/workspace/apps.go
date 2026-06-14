@@ -470,6 +470,10 @@ func (s *AppCenterService) packageForRemoteBuiltinStart(ctx context.Context, bui
 		if shouldMaterializeRemoteBuiltin(existing, builtin) {
 			return s.downloadRemoteBuiltinPackage(ctx, builtin)
 		}
+		existing, err = s.syncRemoteBuiltinPackageManifestFromDisk(ctx, existing, builtin)
+		if err != nil {
+			return s.downloadRemoteBuiltinPackage(ctx, builtin)
+		}
 		if err := s.Store.SetActiveAppPackageVersion(ctx, appID, version); err != nil {
 			return workspacebiz.AppPackage{}, err
 		}

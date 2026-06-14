@@ -110,6 +110,10 @@ export interface IWorkspaceWorkbenchHostService {
   onOpenSettingsRequest(
     listener: (request: DesktopWorkspaceOpenSettingsRequest) => void
   ): () => void;
+  openWorkspaceFile(input: {
+    path: string;
+    workspaceId: string;
+  }): Promise<void>;
   readWallpaperDisplayMode(workspaceId: string): WorkspaceWallpaperDisplayMode;
   readWallpaperId(workspaceId: string): WorkspaceWallpaperId;
   ensureAgentProviderStatusesLoaded(): Promise<void>;

@@ -67,6 +67,7 @@ export interface WorkspaceAppLike {
   readonly localizations?: readonly WorkspaceAppLocalizationLike[];
   readonly minimizeBehavior?: "hibernate" | "keep-mounted";
   readonly port?: number | null;
+  readonly references?: WorkspaceApp["references"];
   readonly source: WorkspaceApp["source"];
   readonly startedAtUnixMs?: number | null;
   readonly stateRevision: number;
@@ -318,6 +319,9 @@ export function normalizeWorkspaceAppCenterApp(
     minimizeBehavior:
       app.minimizeBehavior === "hibernate" ? "hibernate" : "keep-mounted",
     name: app.displayName,
+    references: {
+      searchSupported: app.references?.searchSupported ?? false
+    },
     runtimeStatus: normalizeRuntimeStatus(app.status),
     runtimeId: app.runtimeId ?? null,
     source: normalizeWorkspaceAppCenterSource(app.source),

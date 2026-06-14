@@ -37,6 +37,7 @@ type AppCenterService interface {
 	ReplaceIcon(context.Context, string, string, string) (workspacebiz.WorkspaceApp, error)
 	Retry(context.Context, string, string) (workspacebiz.WorkspaceApp, error)
 	Rollback(context.Context, string, string, string) (workspacebiz.WorkspaceApp, error)
+	SearchReferences(context.Context, string, string, workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceSearchResult, error)
 	StartEnabled(context.Context, string) ([]workspacebiz.WorkspaceApp, error)
 	StopAll(context.Context, string) ([]workspacebiz.WorkspaceApp, error)
 	Uninstall(context.Context, string, string) (workspacebiz.WorkspaceApp, error)

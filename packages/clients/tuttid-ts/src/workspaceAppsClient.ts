@@ -17,6 +17,7 @@ import {
   retryWorkspaceApp,
   retryWorkspaceAppFactoryJobValidation,
   rollbackWorkspaceApp,
+  searchWorkspaceAppReferences,
   startEnabledWorkspaceApps,
   stopAllWorkspaceApps,
   uninstallWorkspaceApp
@@ -45,6 +46,7 @@ type WorkspaceAppsClient = Pick<
   | "retryWorkspaceApp"
   | "retryWorkspaceAppFactoryJobValidation"
   | "rollbackWorkspaceApp"
+  | "searchWorkspaceAppReferences"
   | "startEnabledWorkspaceApps"
   | "stopAllWorkspaceApps"
   | "uninstallWorkspaceApp"
@@ -58,6 +60,17 @@ export function createWorkspaceAppsClient(client: Client): WorkspaceAppsClient {
         path: { workspaceID }
       });
       return unwrapData(response, "List workspace apps request failed.");
+    },
+    async searchWorkspaceAppReferences(workspaceID, appID, request) {
+      const response = await searchWorkspaceAppReferences({
+        client,
+        body: request,
+        path: { appID, workspaceID }
+      });
+      return unwrapData(
+        response,
+        "Search workspace app references request failed."
+      );
     },
     async refreshWorkspaceAppCatalog(workspaceID) {
       const response = await refreshWorkspaceAppCatalog({

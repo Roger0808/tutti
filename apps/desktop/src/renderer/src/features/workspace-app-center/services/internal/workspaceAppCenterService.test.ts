@@ -1063,6 +1063,7 @@ function createApp(
     installed: true,
     minimizeBehavior: "keep-mounted",
     name: "App One",
+    references: { searchSupported: false },
     runtimeStatus: "idle",
     source: "generated",
     stateRevision: 1,

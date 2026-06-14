@@ -404,6 +404,7 @@ function createComingSoonWorkspaceApp(input: {
     ],
     minimizeBehavior: "keep-mounted",
     name: input.name,
+    references: { searchSupported: false },
     runtimeStatus: "idle",
     source: "builtin",
     stateRevision: 0,

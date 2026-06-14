@@ -92,6 +92,46 @@ func TestValidateAppManifestRejectsInvalidLocalizationInfo(t *testing.T) {
 	}
 }
 
+func TestValidateAppManifestAcceptsReferencesSearchEndpoint(t *testing.T) {
+	t.Parallel()
+
+	manifest := validTestAppManifest()
+	manifest.References = &AppManifestReferences{
+		SearchEndpoint: "/tutti/references/search",
+	}
+
+	if err := ValidateAppManifest(manifest); err != nil {
+		t.Fatalf("ValidateAppManifest() error = %v, want nil", err)
+	}
+}
+
+func TestValidateAppManifestRejectsInvalidReferencesSearchEndpoint(t *testing.T) {
+	t.Parallel()
+
+	for _, endpoint := range []string{
+		"",
+		"tutti/references/search",
+		"//example.test/references",
+		"https://example.test/references",
+		"/tutti/references/search?query=1",
+		"/tutti/references/search#fragment",
+		"/%zz",
+		"/foo%20bar",
+		"/foo%2Fbar",
+		"/a%2e%2e/b",
+	} {
+		t.Run(endpoint, func(t *testing.T) {
+			manifest := validTestAppManifest()
+			manifest.References = &AppManifestReferences{
+				SearchEndpoint: endpoint,
+			}
+			if err := ValidateAppManifest(manifest); err == nil {
+				t.Fatal("ValidateAppManifest() error = nil, want invalid references error")
+			}
+		})
+	}
+}
+
 func TestAppPackageMinimizeBehaviorDefaultsToKeepMounted(t *testing.T) {
 	t.Parallel()
 

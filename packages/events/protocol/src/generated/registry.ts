@@ -33,7 +33,7 @@ export interface BusinessEventDefinition {
   scope: BusinessEventScopeName;
 }
 
-export const businessEventCatalogRevision = "sha256:2dec191914d2e14c" as const;
+export const businessEventCatalogRevision = "sha256:af057c7c4057cb9f" as const;
 
 export const businessEventDefinitions = [
   {

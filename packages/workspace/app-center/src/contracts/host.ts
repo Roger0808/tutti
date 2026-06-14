@@ -32,6 +32,10 @@ export interface WorkspaceAppCenterCliState {
   status: WorkspaceAppCenterCliStatus;
 }
 
+export interface WorkspaceAppCenterReferencesState {
+  searchSupported: boolean;
+}
+
 export interface WorkspaceAppCenterApp {
   availableIconUrl?: string | null;
   availableVersion?: string | null;
@@ -50,6 +54,7 @@ export interface WorkspaceAppCenterApp {
   localizations?: readonly WorkspaceAppCenterLocalization[];
   minimizeBehavior: WorkspaceAppMinimizeBehavior;
   name: string;
+  references: WorkspaceAppCenterReferencesState;
   runtimeStatus: WorkspaceAppCenterRuntimeStatus;
   source: WorkspaceAppCenterSource;
   stateRevision: number;

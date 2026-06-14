@@ -540,6 +540,7 @@ function createDependenciesStub(): {
       updateWorkspaceAgentSessionSettings: fail,
       updateWorkspaceAgentSessionPin: fail,
       submitWorkspaceAgentInteractive: fail,
+      searchWorkspaceAppReferences: fail,
       searchWorkspaceFiles: fail,
       startEnabledWorkspaceApps: fail,
       stopAllWorkspaceApps: fail,

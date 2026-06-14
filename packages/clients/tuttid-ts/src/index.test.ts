@@ -12,6 +12,7 @@ import {
   workspaceProtocolErrorCodes,
   type ApiErrorResponse,
   type AgentProviderComposerOptionsResponse,
+  type AppReference,
   type ListWorkspacesResponse,
   type WorkspaceFilePreviewResponse
 } from "./index.ts";
@@ -30,6 +31,15 @@ test("generated tuttid client returns parsed health response", async () => {
   assert.deepEqual(response.data, { service: "tuttid", status: "ok" });
   assert.equal(response.error, undefined);
 });
+
+function assertAppReferenceNarrowing(reference: AppReference): string {
+  if (reference.kind === "file") {
+    return reference.path;
+  }
+  return "";
+}
+
+void assertAppReferenceNarrowing;
 
 test("generated tuttid client surfaces structured protocol errors", async () => {
   const client = createClient({

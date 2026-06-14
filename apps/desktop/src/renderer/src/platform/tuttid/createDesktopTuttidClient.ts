@@ -183,6 +183,13 @@ export function createDesktopTuttidClient(
     async listWorkspaceApps(workspaceID) {
       return (await resolveClient()).listWorkspaceApps(workspaceID);
     },
+    async searchWorkspaceAppReferences(workspaceID, appID, request) {
+      return (await resolveClient()).searchWorkspaceAppReferences(
+        workspaceID,
+        appID,
+        request
+      );
+    },
     async refreshWorkspaceAppCatalog(workspaceID) {
       return (await resolveClient()).refreshWorkspaceAppCatalog(workspaceID);
     },

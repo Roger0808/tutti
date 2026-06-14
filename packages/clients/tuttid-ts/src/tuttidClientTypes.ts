@@ -4,6 +4,8 @@ import type {
   AgentProviderProbeResponse,
   AgentProviderActionId,
   AgentProviderActionRunResponse,
+  AppReferenceSearchRequest,
+  AppReferenceSearchResponse,
   AgentProviderStatusListResponse,
   CancelWorkspaceAgentSessionResponse,
   CliCapabilitiesResponse,
@@ -262,6 +264,11 @@ export interface TuttidClient {
   ): Promise<WorkspaceTerminalSnapshot>;
   getWorkspaceWorkbench(workspaceID: string): Promise<WorkbenchSnapshot>;
   listWorkspaceApps(workspaceID: string): Promise<WorkspaceAppListResponse>;
+  searchWorkspaceAppReferences(
+    workspaceID: string,
+    appID: string,
+    request: AppReferenceSearchRequest
+  ): Promise<AppReferenceSearchResponse>;
   refreshWorkspaceAppCatalog(
     workspaceID: string
   ): Promise<WorkspaceAppListResponse>;
