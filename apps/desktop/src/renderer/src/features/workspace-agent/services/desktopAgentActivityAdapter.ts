@@ -95,6 +95,7 @@ export function createDesktopAgentActivityAdapter({
           permissionModeId: input.permissionModeId ?? null,
           provider: workspaceAgentProvider(input.provider),
           reasoningEffort: input.reasoningEffort ?? null,
+          speed: input.speed ?? null,
           title: input.title ?? null,
           visible: input.visible ?? null
         }

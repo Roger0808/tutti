@@ -217,6 +217,7 @@ export interface AgentActivityCreateSessionInput {
   permissionModeId?: string | null;
   provider: string;
   reasoningEffort?: string | null;
+  speed?: string | null;
   title?: string | null;
   visible?: boolean | null;
   signal?: AbortSignal;
