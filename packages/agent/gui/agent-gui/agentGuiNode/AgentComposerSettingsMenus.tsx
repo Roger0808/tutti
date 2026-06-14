@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   WorkspaceUserProjectSelect,
   type WorkspaceUserProjectSelectChangeAction,
@@ -396,11 +396,20 @@ export function AgentModelReasoningDropdown({
   }) => void;
 }): React.JSX.Element {
   "use memo";
+  const [menuOpen, setMenuOpen] = useState(false);
   const menu = buildComposerModelMenuModel(composerSettings, labels);
   const menuDisabled = disabled || menu.disabled;
+  const applySettingsChange = (patch: {
+    model?: string;
+    reasoningEffort?: string;
+    speed?: string;
+  }): void => {
+    onSettingsChange(patch);
+    setMenuOpen(false);
+  };
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
       <DropdownMenuTrigger asChild disabled={menuDisabled}>
         <button
           type="button"
@@ -458,7 +467,7 @@ export function AgentModelReasoningDropdown({
               options={menu.model.options}
               selectedValue={menu.model.selectedValue}
               withDescription
-              onSelect={(value) => onSettingsChange({ model: value })}
+              onSelect={(value) => applySettingsChange({ model: value })}
             />
           </>
         ) : null}
@@ -485,7 +494,7 @@ export function AgentModelReasoningDropdown({
                 options={menu.reasoning.options}
                 selectedValue={menu.reasoning.selectedValue}
                 onSelect={(value) =>
-                  onSettingsChange({ reasoningEffort: value })
+                  applySettingsChange({ reasoningEffort: value })
                 }
               />
             </DropdownMenuSubContent>
@@ -511,7 +520,7 @@ export function AgentModelReasoningDropdown({
                 options={menu.speed.options}
                 selectedValue={menu.speed.selectedValue}
                 withDescription
-                onSelect={(value) => onSettingsChange({ speed: value })}
+                onSelect={(value) => applySettingsChange({ speed: value })}
               />
             </DropdownMenuSubContent>
           </DropdownMenuSub>
@@ -521,10 +530,10 @@ export function AgentModelReasoningDropdown({
   );
 }
 
-// Renders a list of pick-to-apply menu items. Uses DropdownMenuItem + onSelect
-// (the canonical radix menu action that fires on every activation) rather than
-// a RadioGroup, so selecting always applies — independent of the current value
-// or any mid-interaction re-render. The check marks the active option.
+// Renders a list of pick-to-apply menu items. Pointer activation applies
+// directly because runtime evidence showed submenu items can receive
+// pointerdown while Radix onSelect never fires in this embedded menu. onSelect
+// remains for keyboard activation and normal Radix paths.
 function ComposerMenuOptionItems({
   options,
   selectedValue,
@@ -542,7 +551,15 @@ function ComposerMenuOptionItems({
         <DropdownMenuItem
           key={option.value}
           className={styles.composerMenuItem}
-          onSelect={() => onSelect(option.value)}
+          onPointerDown={(event) => {
+            if (event.button === 0 && !event.ctrlKey) {
+              event.preventDefault();
+              onSelect(option.value);
+            }
+          }}
+          onSelect={() => {
+            onSelect(option.value);
+          }}
         >
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="min-w-0 truncate">{option.label}</span>
