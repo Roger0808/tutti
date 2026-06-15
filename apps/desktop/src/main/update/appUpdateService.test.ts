@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createAppUpdateService } from "./appUpdateService.ts";
+import {
+  createAppUpdateService,
+  createElectronUpdaterLogger
+} from "./appUpdateService.ts";
 
 test("createAppUpdateService can enable dev updates with an injected current version", async () => {
   const env = withAppUpdateEnv({
@@ -108,6 +111,29 @@ test("createAppUpdateService recognizes prefixed GitHub rc release tags", async 
     service?.dispose();
     env.restore();
   }
+});
+
+test("createElectronUpdaterLogger defers no published versions errors during prefixed fallback", () => {
+  const calls: Array<{ level: string; message: string }> = [];
+  const logger = createElectronUpdaterLogger({
+    logger: {
+      debug: (message) => calls.push({ level: "debug", message }),
+      error: (message) => calls.push({ level: "error", message }),
+      info: (message) => calls.push({ level: "info", message }),
+      warn: (message) => calls.push({ level: "warn", message })
+    },
+    shouldSuppressNoPublishedVersionsError: () => true
+  });
+
+  logger.error(new Error("No published versions on GitHub"));
+
+  assert.deepEqual(calls, [
+    {
+      level: "info",
+      message:
+        "electron updater error deferred for prefixed GitHub release fallback"
+    }
+  ]);
 });
 
 function withAppUpdateEnv(values: Record<string, string>): {

@@ -13,7 +13,7 @@ import {
   type AppUpdateStatus,
   type ConfigureAppUpdatesInput
 } from "../../shared/contracts/ipc.ts";
-import { getDesktopLogger } from "../logging.ts";
+import { getDesktopLogger, type DesktopLogger } from "../logging.ts";
 import {
   resolveMacAppBundlePath,
   resolveMacUpdaterSupport
@@ -30,6 +30,13 @@ const { app, BrowserWindow } = electron;
 const updateCheckIntervalMs = 1000 * 60 * 60 * 6;
 
 type DriverDisposer = () => void;
+
+interface ElectronUpdaterLogger {
+  debug?(message?: unknown, ...optionalParams: unknown[]): void;
+  error(message?: unknown, ...optionalParams: unknown[]): void;
+  info(message?: unknown, ...optionalParams: unknown[]): void;
+  warn(message?: unknown, ...optionalParams: unknown[]): void;
+}
 
 interface AppUpdateDriver {
   checkForUpdates(): Promise<void>;
@@ -72,7 +79,18 @@ interface AppUpdateServiceOptions {
   unsupportedMessage?: string;
 }
 
-function createElectronAppUpdateDriver(updater: AppUpdater): AppUpdateDriver {
+function createElectronAppUpdateDriver(
+  updater: AppUpdater,
+  options: {
+    shouldSuppressNoPublishedVersionsError(): boolean;
+  }
+): AppUpdateDriver {
+  updater.logger = createElectronUpdaterLogger({
+    logger: getDesktopLogger(),
+    shouldSuppressNoPublishedVersionsError: () =>
+      options.shouldSuppressNoPublishedVersionsError()
+  });
+
   const emitter = updater as unknown as {
     on: (event: string, listener: (...args: unknown[]) => void) => void;
     removeListener: (
@@ -124,6 +142,52 @@ function createElectronAppUpdateDriver(updater: AppUpdater): AppUpdateDriver {
       listen<UpdateInfo>("update-not-available", listener),
     quitAndInstall: () => {
       updater.quitAndInstall();
+    }
+  };
+}
+
+export function createElectronUpdaterLogger(options: {
+  logger: Pick<DesktopLogger, "debug" | "error" | "info" | "warn">;
+  shouldSuppressNoPublishedVersionsError(): boolean;
+}): ElectronUpdaterLogger {
+  const formatArguments = (
+    message?: unknown,
+    optionalParams: unknown[] = []
+  ): string => [message, ...optionalParams].map(formatLogArgument).join(" ");
+
+  return {
+    debug(message, ...optionalParams) {
+      options.logger.debug("electron updater debug", {
+        detail: formatArguments(message, optionalParams)
+      });
+    },
+    error(message, ...optionalParams) {
+      if (
+        options.shouldSuppressNoPublishedVersionsError() &&
+        isNoPublishedVersionsLogArgument(message)
+      ) {
+        options.logger.info(
+          "electron updater error deferred for prefixed GitHub release fallback",
+          {
+            detail: formatArguments(message, optionalParams)
+          }
+        );
+        return;
+      }
+
+      options.logger.error("electron updater error", {
+        detail: formatArguments(message, optionalParams)
+      });
+    },
+    info(message, ...optionalParams) {
+      options.logger.info("electron updater info", {
+        detail: formatArguments(message, optionalParams)
+      });
+    },
+    warn(message, ...optionalParams) {
+      options.logger.warn("electron updater warning", {
+        detail: formatArguments(message, optionalParams)
+      });
     }
   };
 }
@@ -205,6 +269,14 @@ function formatErrorDetail(error: unknown): string {
   return typeof error === "string" ? error : String(error);
 }
 
+function formatLogArgument(value: unknown): string {
+  if (value instanceof Error) {
+    return value.stack ?? `${value.name}: ${value.message}`;
+  }
+
+  return typeof value === "string" ? value : String(value);
+}
+
 function envFlagEnabled(name: string): boolean {
   const value = process.env[name]?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes" || value === "on";
@@ -233,6 +305,13 @@ function isNoPublishedVersionsError(error: unknown): boolean {
   return (
     error instanceof Error &&
     error.message.includes("No published versions on GitHub")
+  );
+}
+
+function isNoPublishedVersionsLogArgument(value: unknown): boolean {
+  return (
+    isNoPublishedVersionsError(value) ||
+    formatLogArgument(value).includes("No published versions on GitHub")
   );
 }
 
@@ -344,14 +423,18 @@ export function createAppUpdateService(
   const devUpdatesEnabled = envFlagEnabled("TUTTI_APP_UPDATE_DEV");
   const appVersion = app?.getVersion?.() ?? "0.0.0";
   const currentVersion = resolveCurrentVersion(appVersion, isPackaged);
-  const resolvedDriver =
-    driver ??
-    createDevelopmentMockAppUpdateDriver(currentVersion) ??
-    createElectronAppUpdateDriver(electronUpdater.autoUpdater);
   const prefixedReleaseResolver =
     options.prefixedReleaseResolver === undefined
       ? createGitHubPrefixedDesktopReleaseResolver()
       : options.prefixedReleaseResolver;
+  let activeCheckCanUsePrefixedFallback = false;
+  const resolvedDriver =
+    driver ??
+    createDevelopmentMockAppUpdateDriver(currentVersion) ??
+    createElectronAppUpdateDriver(electronUpdater.autoUpdater, {
+      shouldSuppressNoPublishedVersionsError: () =>
+        activeCheckCanUsePrefixedFallback
+    });
   let supportsUpdates =
     options.supportsUpdates ??
     ((process.env.NODE_ENV !== "test" && isPackaged) || devUpdatesEnabled);
@@ -385,7 +468,6 @@ export function createAppUpdateService(
   );
   let intervalId: ReturnType<typeof setInterval> | null = null;
   let activeCheckPromise: Promise<void> | null = null;
-  let activeCheckCanUsePrefixedFallback = false;
   let activeDownloadPromise: Promise<void> | null = null;
   const stateChangedListeners = new Set<
     (state: AppUpdateState, previousState: AppUpdateState) => void
