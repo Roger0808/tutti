@@ -35,6 +35,7 @@ export interface WorkspaceManagedModelProviderDraft extends WorkspaceManagedMode
 export interface WorkspaceSettingsManagedModelsMutableState {
   deletingProvider: WorkspaceManagedModelProviderID | null;
   detectingProvider: WorkspaceManagedModelProviderID | null;
+  draft: WorkspaceManagedModelProviderDraft | null;
   focusedProvider: WorkspaceManagedModelProviderID | null;
   focusRequestID: number;
   loading: boolean;
@@ -46,6 +47,7 @@ export interface WorkspaceSettingsManagedModelsMutableState {
 export interface WorkspaceSettingsManagedModelsSnapshotState {
   readonly deletingProvider: WorkspaceManagedModelProviderID | null;
   readonly detectingProvider: WorkspaceManagedModelProviderID | null;
+  readonly draft: WorkspaceManagedModelProviderDraft | null;
   readonly focusedProvider: WorkspaceManagedModelProviderID | null;
   readonly focusRequestID: number;
   readonly loading: boolean;

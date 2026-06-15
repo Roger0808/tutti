@@ -288,6 +288,13 @@ export const en = {
       apps: {
         managedModels: {
           apiKey: "API key",
+          addProvider: "Add provider",
+          collapse: "Collapse",
+          deleteConfirm: "Delete this provider?",
+          emptyDescription: "Add one to connect Agnes, OpenAI, or Anthropic.",
+          emptyTitle: "No model providers yet",
+          expand: "Expand",
+          modelCount: "{{count}} models",
           baseUrl: "Base URL",
           customProvider: "Custom provider",
           delete: "Delete",

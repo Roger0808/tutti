@@ -273,6 +273,13 @@ export const zhCN = {
       apps: {
         managedModels: {
           apiKey: "API Key",
+          addProvider: "添加",
+          collapse: "收起",
+          deleteConfirm: "删除此配置？",
+          emptyDescription: "点击「添加」接入 Agnes、OpenAI 或 Anthropic。",
+          emptyTitle: "还没有配置任何模型供应商",
+          expand: "展开",
+          modelCount: "{{count}} 个模型",
           baseUrl: "Base URL",
           customProvider: "自定义 provider",
           delete: "删除",
