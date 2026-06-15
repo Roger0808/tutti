@@ -67,12 +67,15 @@ test("createAppUpdateService recognizes prefixed GitHub rc release tags", async 
   });
   const driver = createFakeDriver({
     checkForUpdates: async () => {
+      driver.emitError(new Error("No published versions on GitHub"));
       throw new Error("No published versions on GitHub");
     }
   });
+  const emittedStatuses: string[] = [];
+  let service: ReturnType<typeof createAppUpdateService> | null = null;
 
   try {
-    const service = createAppUpdateService(driver, {
+    service = createAppUpdateService(driver, {
       prefixedReleaseResolver: async () => ({
         htmlUrl:
           "https://github.com/tutti-os/tutti/releases/tag/tutti-desktop-v0.0.1-rc.17",
@@ -82,6 +85,9 @@ test("createAppUpdateService recognizes prefixed GitHub rc release tags", async 
         version: "0.0.1-rc.17"
       }),
       supportsUpdates: true
+    });
+    service.onStateChanged((state) => {
+      emittedStatuses.push(state.status);
     });
     await service.configure({
       channel: "rc",
@@ -97,8 +103,9 @@ test("createAppUpdateService recognizes prefixed GitHub rc release tags", async 
       "https://github.com/tutti-os/tutti/releases/tag/tutti-desktop-v0.0.1-rc.17"
     );
     assert.equal(state.status, "available");
-    service.dispose();
+    assert.ok(!emittedStatuses.includes("error"));
   } finally {
+    service?.dispose();
     env.restore();
   }
 });
@@ -137,10 +144,17 @@ function createFakeDriver(
   overrides: Partial<Parameters<typeof createAppUpdateService>[0]> = {}
 ): Parameters<typeof createAppUpdateService>[0] & {
   configureCalls: DriverConfigureCall[];
+  emitError(error: Error): void;
 } {
   const configureCalls: DriverConfigureCall[] = [];
+  const errorListeners = new Set<(error: Error) => void>();
   return {
     configureCalls,
+    emitError(error) {
+      for (const listener of errorListeners) {
+        listener(error);
+      }
+    },
     checkForUpdates: async () => {},
     configure(options) {
       configureCalls.push(options);
@@ -148,7 +162,10 @@ function createFakeDriver(
     downloadUpdate: async () => {},
     onCheckingForUpdate: () => noop,
     onDownloadProgress: () => noop,
-    onError: () => noop,
+    onError(listener) {
+      errorListeners.add(listener);
+      return () => errorListeners.delete(listener);
+    },
     onUpdateAvailable: () => noop,
     onUpdateDownloaded: () => noop,
     onUpdateNotAvailable: () => noop,

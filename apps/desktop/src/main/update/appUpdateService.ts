@@ -385,6 +385,7 @@ export function createAppUpdateService(
   );
   let intervalId: ReturnType<typeof setInterval> | null = null;
   let activeCheckPromise: Promise<void> | null = null;
+  let activeCheckCanUsePrefixedFallback = false;
   let activeDownloadPromise: Promise<void> | null = null;
   const stateChangedListeners = new Set<
     (state: AppUpdateState, previousState: AppUpdateState) => void
@@ -512,6 +513,20 @@ export function createAppUpdateService(
       });
     }),
     resolvedDriver.onError((error) => {
+      if (
+        activeCheckCanUsePrefixedFallback &&
+        isNoPublishedVersionsError(error)
+      ) {
+        getDesktopLogger().info(
+          "application updater error deferred for prefixed GitHub release fallback",
+          {
+            error: error.message,
+            error_name: error.name
+          }
+        );
+        return;
+      }
+
       getDesktopLogger().error("application updater failed", {
         error: error.message,
         error_name: error.name
@@ -547,8 +562,10 @@ export function createAppUpdateService(
         return state;
       }
 
+      activeCheckCanUsePrefixedFallback = Boolean(prefixedReleaseResolver);
       activeCheckPromise = resolvedDriver.checkForUpdates().finally(() => {
         activeCheckPromise = null;
+        activeCheckCanUsePrefixedFallback = false;
       });
       try {
         await activeCheckPromise;
