@@ -133,6 +133,7 @@ export class AppUpdateService implements IAppUpdateService {
       action: view.action
     });
 
+    let keepActing = false;
     try {
       if (view.action === "download") {
         if (!this.applyUpdateState(await this.updateClient.downloadUpdate())) {
@@ -140,6 +141,7 @@ export class AppUpdateService implements IAppUpdateService {
         }
       } else if (view.action === "install") {
         await this.updateClient.installUpdate();
+        keepActing = true;
       } else {
         if (!this.applyUpdateState(await this.updateClient.checkForUpdates())) {
           return;
@@ -162,8 +164,10 @@ export class AppUpdateService implements IAppUpdateService {
       }
     } finally {
       if (!this.disposed) {
-        this.store.isActing = false;
-        this.updateView();
+        if (!keepActing) {
+          this.store.isActing = false;
+          this.updateView();
+        }
         this.recordDiagnostic("app_update.primary_action_finished", {
           action: view.action
         });

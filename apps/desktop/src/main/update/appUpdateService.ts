@@ -724,13 +724,6 @@ export function createAppUpdateService(
         return state;
       }
 
-      applyState({
-        ...state,
-        downloadedBytes: 0,
-        downloadPercent: 0,
-        status: "downloading",
-        totalBytes: null
-      });
       activeDownloadPromise = resolvedDriver.downloadUpdate().finally(() => {
         activeDownloadPromise = null;
       });

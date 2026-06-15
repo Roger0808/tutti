@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { UpdateDownloadedEvent, UpdateInfo } from "electron-updater";
 import {
   createAppUpdateService,
   createElectronAppUpdateDriver,
@@ -132,6 +133,51 @@ test("createAppUpdateService recognizes prefixed GitHub rc release tags", async 
   }
 });
 
+test("createAppUpdateService skips downloading state when cached update is already downloaded", async () => {
+  const listeners: {
+    available?: (info: UpdateInfo) => void;
+    downloaded?: (info: UpdateDownloadedEvent) => void;
+  } = {};
+  const emittedStatuses: string[] = [];
+  const updateInfo = createUpdateInfoFixture("1.1.0");
+  const downloadedInfo = createUpdateDownloadedInfoFixture("1.1.0");
+  const driver = createFakeDriver({
+    async downloadUpdate() {
+      listeners.downloaded?.(downloadedInfo);
+    },
+    onUpdateAvailable(listener) {
+      listeners.available = listener;
+      return noop;
+    },
+    onUpdateDownloaded(listener) {
+      listeners.downloaded = listener;
+      return noop;
+    }
+  });
+  const service = createAppUpdateService(driver, {
+    supportsUpdates: true
+  });
+
+  try {
+    service.onStateChanged((state) => {
+      emittedStatuses.push(state.status);
+    });
+    await service.configure({
+      channel: "stable",
+      policy: "prompt"
+    });
+    listeners.available?.(updateInfo);
+    emittedStatuses.length = 0;
+
+    const state = await service.downloadUpdate();
+
+    assert.equal(state.status, "downloaded");
+    assert.deepEqual(emittedStatuses, ["downloaded"]);
+  } finally {
+    service.dispose();
+  }
+});
+
 test("createElectronUpdaterLogger defers no published versions errors during prefixed fallback", () => {
   const calls: Array<{ level: string; message: string }> = [];
   const logger = createElectronUpdaterLogger({
@@ -154,6 +200,26 @@ test("createElectronUpdaterLogger defers no published versions errors during pre
     }
   ]);
 });
+
+function createUpdateInfoFixture(version: string): UpdateInfo {
+  return {
+    files: [],
+    path: "",
+    releaseDate: "2026-06-15T00:00:00.000Z",
+    releaseName: version,
+    sha512: "",
+    version
+  };
+}
+
+function createUpdateDownloadedInfoFixture(
+  version: string
+): UpdateDownloadedEvent {
+  return {
+    ...createUpdateInfoFixture(version),
+    downloadedFile: "/tmp/Tutti.zip"
+  };
+}
 
 function withAppUpdateEnv(values: Record<string, string>): {
   restore(): void;
