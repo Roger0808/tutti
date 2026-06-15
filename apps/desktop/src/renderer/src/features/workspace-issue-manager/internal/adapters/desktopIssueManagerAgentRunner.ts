@@ -76,23 +76,26 @@ function openIssueManagerAgentDraft(input: {
   sessionId?: string;
   status: "opened" | "failed";
 }> {
-  if (!input.launchAgentGui) {
+  const launchAgentGui = input.launchAgentGui;
+  if (!launchAgentGui) {
     return Promise.resolve({
       errorMessage: "issue_manager.agent_gui_launch_unavailable",
       status: "failed"
     });
   }
 
-  return Promise.resolve(
-    input.launchAgentGui({
-      draftPrompt: input.draftPrompt,
-      provider: input.provider,
-      userProjectPath: input.userProjectPath,
-      workspaceId: input.workspaceId
-    })
-  ).then(() => ({
-    status: "opened" as const
-  }));
+  return Promise.resolve()
+    .then(() =>
+      launchAgentGui({
+        draftPrompt: input.draftPrompt,
+        provider: input.provider,
+        userProjectPath: input.userProjectPath,
+        workspaceId: input.workspaceId
+      })
+    )
+    .then(() => ({
+      status: "opened" as const
+    }));
 }
 
 export function createDesktopIssueManagerAgentBreakdownLauncher(input: {

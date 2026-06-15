@@ -5020,10 +5020,8 @@ export function useAgentGUINodeController({
     const projectPath = normalizeProjectDraftPath(
       prefillPromptRequest.userProjectPath
     );
-    if (projectPath) {
-      selectedProjectPathRef.current = projectPath;
-      setSelectedProjectPath(projectPath);
-    }
+    selectedProjectPathRef.current = projectPath;
+    setSelectedProjectPath(projectPath);
 
     const previous = activeConversationIdRef.current;
     if (previous) {

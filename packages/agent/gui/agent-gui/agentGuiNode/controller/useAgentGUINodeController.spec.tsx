@@ -553,6 +553,9 @@ describe("useAgentGUINodeController", () => {
     });
     await waitFor(() => {
       expect(result.current.viewModel.draftPrompt).toBe("Next issue");
+      expect(
+        result.current.viewModel.composerSettings.selectedProjectPath
+      ).toBe(null);
     });
     expect(activate).not.toHaveBeenCalled();
     expect(exec).not.toHaveBeenCalled();
