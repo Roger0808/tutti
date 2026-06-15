@@ -1,11 +1,9 @@
 import { useEffect } from "react";
 import {
-  Badge,
   Button,
-  CapabilityIcon,
+  DownloadIcon,
   LaunchIcon,
-  LoadingIcon,
-  WarningLinedIcon
+  LoadingIcon
 } from "@tutti-os/ui-system";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
@@ -45,34 +43,9 @@ export function AppUpdateStatus({
           : "border-border/70 bg-[var(--background-fronted)] text-foreground"
       )}
     >
-      <div className="flex min-w-0 items-center gap-3">
-        <div
-          className={cn(
-            "flex shrink-0 items-center justify-center rounded-lg",
-            compact ? "size-6" : "size-8",
-            isError
-              ? "bg-[var(--on-danger-hover)] text-[var(--state-danger)]"
-              : "bg-transparency-block text-primary"
-          )}
-        >
-          {view.icon === "loading" ? (
-            <LoadingIcon className="size-4 animate-spin" />
-          ) : view.icon === "alert" ? (
-            <WarningLinedIcon className="size-4" />
-          ) : (
-            <CapabilityIcon className="size-4" />
-          )}
-        </div>
+      <div className="flex min-w-0 items-center">
         <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Badge
-              variant={isError ? "destructive" : "outline"}
-              className={cn(compact && "px-1.5 py-0 text-[0.68rem]")}
-            >
-              {t("updates.badge")}
-            </Badge>
-            <p className="truncate font-medium">{label}</p>
-          </div>
+          <p className="truncate font-medium">{label}</p>
           {view.progressPercent !== null ? (
             <div
               className={cn(
@@ -102,6 +75,8 @@ export function AppUpdateStatus({
         >
           {state.isActing ? (
             <LoadingIcon className="size-4 animate-spin" />
+          ) : view.action === "download" ? (
+            <DownloadIcon className="size-4" />
           ) : (
             <LaunchIcon className="size-4" />
           )}
