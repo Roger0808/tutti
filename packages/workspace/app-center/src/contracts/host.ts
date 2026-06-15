@@ -33,7 +33,7 @@ export interface WorkspaceAppCenterCliState {
 }
 
 export interface WorkspaceAppCenterReferencesState {
-  searchSupported: boolean;
+  listSupported: boolean;
 }
 
 export interface WorkspaceAppCenterApp {

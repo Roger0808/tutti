@@ -326,7 +326,7 @@ export function normalizeWorkspaceAppCenterApp(
       app.minimizeBehavior === "hibernate" ? "hibernate" : "keep-mounted",
     name: app.displayName,
     references: {
-      searchSupported: app.references?.searchSupported ?? false
+      listSupported: app.references?.listSupported ?? false
     },
     runtimeStatus: normalizeRuntimeStatus(app.status),
     runtimeId: app.runtimeId ?? null,

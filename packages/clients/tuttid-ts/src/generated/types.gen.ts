@@ -283,23 +283,55 @@ export type WorkspaceAppCliState = {
 };
 
 export type WorkspaceAppReferencesState = {
-  searchSupported: boolean;
+  listSupported: boolean;
 };
 
 export type AppReferenceKind = "file";
 
-export type AppReferenceSearchRequest = {
-  query: string;
+export type AppReferenceListRequest = {
+  parentGroupId?: string | null;
+  filterText?: string | null;
   limit?: number;
-  cursor?: string;
+  cursor?: string | null;
   kinds?: Array<AppReferenceKind>;
+  timeRange?: AppReferenceListTimeRange;
 };
 
-export type AppReferenceSearchResponse = {
+/**
+ * Inclusive timestamp range for references. For file references, runtimes should filter by the file mtimeMs when available.
+ *
+ */
+export type AppReferenceListTimeRange = {
+  fromMs?: number;
+  toMs?: number;
+};
+
+export type AppReferenceListResponse = {
   workspaceId: string;
   appId: string;
-  references: Array<AppReference>;
+  items: Array<AppReferenceListItem>;
   nextCursor: string | null;
+};
+
+export type AppReferenceListItem =
+  | ({
+      type: "group";
+    } & AppReferenceGroup)
+  | ({
+      type: "reference";
+    } & AppReferenceListReferenceItem);
+
+export type AppReferenceGroup = {
+  type: "group";
+  id: string;
+  displayName: string;
+  description?: string | null;
+  referenceCount: number;
+};
+
+export type AppReferenceListReferenceItem = {
+  type: "reference";
+  reference: AppReference;
 };
 
 export type AppReference = {
@@ -2571,17 +2603,17 @@ export type InstallWorkspaceAppResponses = {
 export type InstallWorkspaceAppResponse =
   InstallWorkspaceAppResponses[keyof InstallWorkspaceAppResponses];
 
-export type SearchWorkspaceAppReferencesData = {
-  body: AppReferenceSearchRequest;
+export type ListWorkspaceAppReferencesData = {
+  body: AppReferenceListRequest;
   path: {
     workspaceID: string;
     appID: string;
   };
   query?: never;
-  url: "/v1/workspaces/{workspaceID}/apps/{appID}/references/search";
+  url: "/v1/workspaces/{workspaceID}/apps/{appID}/references/list";
 };
 
-export type SearchWorkspaceAppReferencesErrors = {
+export type ListWorkspaceAppReferencesErrors = {
   /**
    * Request payload or parameters are invalid
    */
@@ -2608,18 +2640,18 @@ export type SearchWorkspaceAppReferencesErrors = {
   503: ApiErrorResponse;
 };
 
-export type SearchWorkspaceAppReferencesError =
-  SearchWorkspaceAppReferencesErrors[keyof SearchWorkspaceAppReferencesErrors];
+export type ListWorkspaceAppReferencesError =
+  ListWorkspaceAppReferencesErrors[keyof ListWorkspaceAppReferencesErrors];
 
-export type SearchWorkspaceAppReferencesResponses = {
+export type ListWorkspaceAppReferencesResponses = {
   /**
-   * Workspace app references
+   * Workspace app reference list
    */
-  200: AppReferenceSearchResponse;
+  200: AppReferenceListResponse;
 };
 
-export type SearchWorkspaceAppReferencesResponse =
-  SearchWorkspaceAppReferencesResponses[keyof SearchWorkspaceAppReferencesResponses];
+export type ListWorkspaceAppReferencesResponse =
+  ListWorkspaceAppReferencesResponses[keyof ListWorkspaceAppReferencesResponses];
 
 export type ExportWorkspaceAppData = {
   body: ExportWorkspaceAppRequest;

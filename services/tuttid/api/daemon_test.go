@@ -100,6 +100,10 @@ func (s stubAppCenterService) Launch(ctx context.Context, workspaceID string, ap
 	return s.launchFn(ctx, workspaceID, appID)
 }
 
+func (stubAppCenterService) ListReferences(context.Context, string, string, workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error) {
+	return workspacebiz.AppReferenceListResult{}, nil
+}
+
 func (stubAppCenterService) List(context.Context, string) ([]workspacebiz.WorkspaceApp, error) {
 	return nil, nil
 }
@@ -129,10 +133,6 @@ func (s stubAppCenterService) Retry(ctx context.Context, workspaceID string, app
 
 func (stubAppCenterService) Rollback(context.Context, string, string, string) (workspacebiz.WorkspaceApp, error) {
 	return workspacebiz.WorkspaceApp{}, nil
-}
-
-func (stubAppCenterService) SearchReferences(context.Context, string, string, workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceSearchResult, error) {
-	return workspacebiz.AppReferenceSearchResult{}, nil
 }
 
 func (stubAppCenterService) StartEnabled(context.Context, string) ([]workspacebiz.WorkspaceApp, error) {

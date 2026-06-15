@@ -142,7 +142,7 @@ export interface WorkspaceWorkspaceAppV1 {
   windowMinWidth: number | null;
   windowMinHeight: number | null;
   references: {
-    searchSupported: boolean;
+    listSupported: boolean;
   };
 }
 

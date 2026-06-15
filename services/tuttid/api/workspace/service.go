@@ -31,6 +31,7 @@ type AppCenterService interface {
 	ImportPackage(context.Context, string) (workspacebiz.WorkspaceApp, error)
 	Install(context.Context, string, string) (workspacebiz.WorkspaceApp, error)
 	Launch(context.Context, string, string) (workspacebiz.WorkspaceApp, error)
+	ListReferences(context.Context, string, string, workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error)
 	List(context.Context, string) ([]workspacebiz.WorkspaceApp, error)
 	CatalogLoadState() workspacebiz.AppCatalogLoadState
 	RefreshCatalog(context.Context, string) ([]workspacebiz.WorkspaceApp, error)
@@ -38,7 +39,6 @@ type AppCenterService interface {
 	ReplaceIcon(context.Context, string, string, string) (workspacebiz.WorkspaceApp, error)
 	Retry(context.Context, string, string) (workspacebiz.WorkspaceApp, error)
 	Rollback(context.Context, string, string, string) (workspacebiz.WorkspaceApp, error)
-	SearchReferences(context.Context, string, string, workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceSearchResult, error)
 	StartEnabled(context.Context, string) ([]workspacebiz.WorkspaceApp, error)
 	StopAll(context.Context, string) ([]workspacebiz.WorkspaceApp, error)
 	Uninstall(context.Context, string, string) (workspacebiz.WorkspaceApp, error)

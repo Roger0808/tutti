@@ -183,8 +183,8 @@ export function createDesktopTuttidClient(
     async listWorkspaceApps(workspaceID) {
       return (await resolveClient()).listWorkspaceApps(workspaceID);
     },
-    async searchWorkspaceAppReferences(workspaceID, appID, request) {
-      return (await resolveClient()).searchWorkspaceAppReferences(
+    async listWorkspaceAppReferences(workspaceID, appID, request) {
+      return (await resolveClient()).listWorkspaceAppReferences(
         workspaceID,
         appID,
         request
