@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RichTextAtProvider } from "@tutti-os/ui-rich-text/types";
+import type { RichTextMentionAttrs } from "@tutti-os/ui-rich-text/types";
 import type { WorkspaceUserProjectService } from "@tutti-os/workspace-user-project/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type {
@@ -39,10 +40,12 @@ import { createIssueManagerControllerActionsBridge } from "./createIssueManagerC
 import { createIssueManagerControllerBindings } from "./createIssueManagerControllerBindings.ts";
 import { resolveIssueManagerTopicDeleteErrorMessage } from "../../../../services/internal/controllerUtils.ts";
 import { useIssueManagerControllerRuntime } from "./useIssueManagerControllerRuntime.ts";
+import type { IssueManagerDiagnostics } from "../../../../internal/issueManagerDiagnostics.ts";
 
 export type IssueManagerRichTextSurface = "issue" | "task";
 
 export interface UseIssueManagerControllerInput {
+  diagnostics?: IssueManagerDiagnostics | null;
   feature: IssueManagerFeature;
   openSource?: IssueManagerOpenSource;
   onStateChange?: (state: IssueManagerNodeState) => void;
@@ -63,6 +66,7 @@ export interface IssueManagerController {
   canReferenceWorkspaceFiles: boolean;
   canUploadWorkspaceFiles: boolean;
   copy: IssueManagerI18nRuntime;
+  diagnostics: IssueManagerDiagnostics | null;
   createTopic: (
     input: Omit<IssueManagerCreateTopicInput, "workspaceId">
   ) => Promise<void>;
@@ -81,6 +85,7 @@ export interface IssueManagerController {
   nodeState: IssueManagerNodeState;
   notification: IssueManagerNotificationState | null;
   openAgentSession: (run: IssueManagerRun) => Promise<void>;
+  openMention: (mention: RichTextMentionAttrs) => Promise<void>;
   openReference: (reference: IssueManagerFileReference) => Promise<void>;
   providerOptions: readonly IssueManagerAgentProviderOption[];
   executionDirectoryProjectService: WorkspaceUserProjectService | null;
@@ -140,6 +145,7 @@ export interface IssueManagerController {
 }
 
 export function useIssueManagerController({
+  diagnostics,
   feature,
   openSource,
   onStateChange,
@@ -151,6 +157,7 @@ export function useIssueManagerController({
   const copy = feature.i18n;
   const { controllerSession, floatingNotice, snapshot } =
     useIssueManagerControllerRuntime({
+      diagnostics,
       feature,
       openSource,
       onStateChange,
@@ -196,6 +203,7 @@ export function useIssueManagerController({
   const actions = createIssueManagerControllerActionsBridge({
     controllerSession,
     copy,
+    diagnostics,
     feature,
     issueDetail,
     issueDraft,
@@ -209,6 +217,7 @@ export function useIssueManagerController({
   });
   const bindings = createIssueManagerControllerBindings({
     controllerSession,
+    diagnostics,
     feature,
     issueEditorMode,
     nodeState,
@@ -234,6 +243,7 @@ export function useIssueManagerController({
     canSelectExecutionDirectory,
     canUploadWorkspaceFiles,
     copy,
+    diagnostics: diagnostics ?? null,
     async createTopic(topicInput) {
       try {
         const topic = await feature.backend.createTopic({
@@ -282,6 +292,12 @@ export function useIssueManagerController({
     isRunningTask,
     nodeState,
     notification,
+    async openMention(mention) {
+      await feature.mentionActionHandler?.openMention({
+        mention,
+        workspaceId
+      });
+    },
     providerOptions,
     executionDirectoryProjectService:
       feature.executionDirectoryPicker?.service ?? null,

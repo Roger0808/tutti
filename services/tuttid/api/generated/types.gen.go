@@ -2403,6 +2403,12 @@ type WorkspaceAgentSessionEventEnvelope struct {
 	Type           string                 `json:"type"`
 }
 
+// WorkspaceAgentSessionGitBranchesResponse defines model for WorkspaceAgentSessionGitBranchesResponse.
+type WorkspaceAgentSessionGitBranchesResponse struct {
+	Branches      []string `json:"branches"`
+	CurrentBranch *string  `json:"currentBranch,omitempty"`
+}
+
 // WorkspaceAgentSessionListResponse defines model for WorkspaceAgentSessionListResponse.
 type WorkspaceAgentSessionListResponse struct {
 	Sessions    []WorkspaceAgentSession `json:"sessions"`
@@ -2959,6 +2965,11 @@ type GetWorkspaceFileTreeSnapshotParams struct {
 	IncludeHidden    *WorkspaceFileIncludeHidden    `form:"includeHidden,omitempty" json:"includeHidden,omitempty"`
 	PrefetchDepth    *WorkspaceFilePrefetchDepth    `form:"prefetchDepth,omitempty" json:"prefetchDepth,omitempty"`
 	PrefetchBudgetMs *WorkspaceFilePrefetchBudgetMs `form:"prefetchBudgetMs,omitempty" json:"prefetchBudgetMs,omitempty"`
+}
+
+// ListWorkspaceGitBranchesParams defines parameters for ListWorkspaceGitBranches.
+type ListWorkspaceGitBranchesParams struct {
+	WorkingDirectory string `form:"workingDirectory" json:"workingDirectory"`
 }
 
 // ListWorkspaceIssuesParams defines parameters for ListWorkspaceIssues.

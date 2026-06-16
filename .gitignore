@@ -11,6 +11,7 @@ coverage/
 .cache/
 .superpowers/
 .claude/
+.agents/
 docs/superpowers/
 __pycache__/
 *.py[cod]

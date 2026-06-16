@@ -172,6 +172,7 @@ test("desktop rich text @ service assembles workspace issue providers by capabil
       label: "Login polish",
       meta: {
         contentPreview: "Handle flaky login captcha",
+        creatorDisplayName: "Alice",
         status: "running",
         topicId: "topic-1",
         workspaceId: "workspace-1"
@@ -389,6 +390,130 @@ test("desktop rich text @ service assembles workspace app providers by capabilit
   });
 });
 
+test("desktop rich text @ service assembles provider agent mention apps from capabilities", async () => {
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listCliCapabilities() {
+        return {
+          commands: [
+            {
+              id: "agent-context.codex.start",
+              description:
+                "Start a Codex agent session in the current workspace.",
+              path: ["codex", "start"],
+              summary: "Start a Codex agent session",
+              output: { defaultMode: "table", json: true, table: null },
+              source: {
+                appId: "agent-codex",
+                appName: "Codex",
+                cliDescription:
+                  "Start a Codex agent session in the current workspace.",
+                kind: "app"
+              }
+            },
+            {
+              id: "agent-context.claude.start",
+              description:
+                "Start a Claude Code agent session in the current workspace.",
+              path: ["claude", "start"],
+              summary: "Start a Claude Code agent session",
+              output: { defaultMode: "table", json: true, table: null },
+              source: {
+                appId: "agent-claude-code",
+                appName: "Claude Code",
+                cliDescription:
+                  "Start a Claude Code agent session in the current workspace.",
+                kind: "app"
+              }
+            }
+          ]
+        };
+      }
+    } as unknown as TuttidClient
+  });
+
+  const [provider] = service.getProviders({
+    capabilities: ["workspace-app"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(provider);
+  const items = await provider.query({
+    context: {},
+    keyword: "agent",
+    maxResults: 5
+  });
+
+  assert.equal(items.length, 2);
+  const claudeItem = items[0];
+  const codexItem = items[1];
+  const claudeIconUrl = iconUrlFromProviderItem(claudeItem);
+  const codexIconUrl = iconUrlFromProviderItem(codexItem);
+  assert.match(claudeIconUrl, /claudecode.*\.png$/u);
+  assert.match(codexIconUrl, /codex.*\.png$/u);
+  assert.deepEqual(items, [
+    {
+      appId: "agent-claude-code",
+      commandCount: 1,
+      commandDescriptions: [
+        "Start a Claude Code agent session in the current workspace."
+      ],
+      commandPaths: ["claude start"],
+      description:
+        "Start a Claude Code agent session in the current workspace.",
+      commandSummaries: ["Start a Claude Code agent session"],
+      displayName: "Claude Code",
+      iconUrl: claudeIconUrl,
+      scopes: ["claude"],
+      workspaceId: "workspace-1"
+    },
+    {
+      appId: "agent-codex",
+      commandCount: 1,
+      commandDescriptions: [
+        "Start a Codex agent session in the current workspace."
+      ],
+      commandPaths: ["codex start"],
+      description: "Start a Codex agent session in the current workspace.",
+      commandSummaries: ["Start a Codex agent session"],
+      displayName: "Codex",
+      iconUrl: codexIconUrl,
+      scopes: ["codex"],
+      workspaceId: "workspace-1"
+    }
+  ]);
+  assert.deepEqual(provider.toInsertResult(codexItem), {
+    kind: "mention",
+    mention: {
+      entityId: "agent-codex",
+      href: "mention://workspace-app?appId=agent-codex&workspaceId=workspace-1",
+      kind: "workspace-app",
+      label: "Codex",
+      meta: {
+        appId: "agent-codex",
+        commandCount: "1",
+        commandDescriptions:
+          "Start a Codex agent session in the current workspace.",
+        commandPaths: "codex start",
+        commandSummaries: "Start a Codex agent session",
+        description: "Start a Codex agent session in the current workspace.",
+        iconUrl: codexIconUrl,
+        scopes: "codex",
+        workspaceId: "workspace-1"
+      }
+    }
+  });
+});
+
+function iconUrlFromProviderItem(item: unknown): string {
+  if (!item || typeof item !== "object") {
+    return "";
+  }
+  const iconUrl = (item as { readonly iconUrl?: unknown }).iconUrl;
+  return typeof iconUrl === "string" ? iconUrl : "";
+}
+
 test("desktop rich text @ service falls back to app description for workspace app mentions", async () => {
   const service = new DesktopRichTextAtService({
     tuttidClient: {
@@ -489,6 +614,120 @@ test("desktop rich text @ service prefers cli scope description for workspace ap
   assert.equal(item.displayName, "Automation");
   assert.equal(item.description, "Manage automations.");
   assert.equal(provider.getItemSubtitle?.(item), "Manage automations.");
+});
+
+test("desktop rich text @ service emits enriched app + session meta when enrichment deps supplied", async () => {
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listCliCapabilities() {
+        return {
+          commands: [
+            {
+              id: "app.app-weather.weather.forecast",
+              description: "Inspect weather forecasts.",
+              path: ["weather", "forecast"],
+              summary: "Get a forecast",
+              output: { defaultMode: "json", json: true, table: null },
+              source: {
+                appId: "app-weather",
+                appDescription: "Weather app manifest description.",
+                appName: "Weather Desk",
+                cliDescription: "Plan weather-sensitive work.",
+                kind: "app"
+              }
+            }
+          ]
+        };
+      },
+      async listWorkspaceAgentSessions(workspaceId: string) {
+        return {
+          workspaceId,
+          sessions: [
+            {
+              createdAt: "2026-06-01T00:00:00Z",
+              cwd: null,
+              id: "session-1",
+              provider: "codex",
+              status: "working",
+              title: "Codex run",
+              updatedAt: null
+            }
+          ]
+        };
+      }
+    } as unknown as TuttidClient,
+    appCenterApps: () => [
+      {
+        appId: "app-weather",
+        name: "Weather Desk",
+        description: "Plan weather-sensitive work.",
+        localizations: [
+          {
+            locale: "fr-FR",
+            name: "Bureau Météo",
+            description: "Planifiez selon la météo."
+          }
+        ]
+      } as never
+    ],
+    resolveAppIconUrl: (appId) =>
+      appId === "app-weather" ? "https://icons/weather.png" : null,
+    getLocale: () => "fr-FR",
+    resolveAgentIconUrl: (provider) => `https://agents/${provider}.png`,
+    userAvatarPlaceholderUrl: "https://avatars/placeholder.png",
+    resolveSessionStatusView: (status) => ({
+      dataStatus: status,
+      label: status === "working" ? "Working" : status,
+      pulse: status === "working"
+    })
+  });
+
+  const [appProvider] = service.getProviders({
+    capabilities: ["workspace-app"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(appProvider);
+  const appItems = await appProvider.query({
+    context: {},
+    keyword: "",
+    maxResults: 5
+  });
+  const appInsert = appProvider.toInsertResult(appItems[0]);
+  assert.equal(appInsert.kind, "mention");
+  assert.equal(appInsert.mention.label, "Bureau Météo");
+  assert.equal(
+    appInsert.mention.meta?.description,
+    "Planifiez selon la météo."
+  );
+  assert.equal(appInsert.mention.meta?.iconUrl, "https://icons/weather.png");
+
+  const [sessionProvider] = service.getProviders({
+    capabilities: ["agent-session"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(sessionProvider);
+  const sessionItems = await sessionProvider.query({
+    context: {},
+    keyword: "",
+    maxResults: 5
+  });
+  const sessionInsert = sessionProvider.toInsertResult(sessionItems[0]);
+  assert.equal(sessionInsert.kind, "mention");
+  assert.equal(
+    sessionInsert.mention.meta?.agentIconUrl,
+    "https://agents/codex.png"
+  );
+  assert.equal(
+    sessionInsert.mention.meta?.userAvatarPlaceholderUrl,
+    "https://avatars/placeholder.png"
+  );
+  assert.equal(sessionInsert.mention.meta?.statusLabel, "Working");
+  assert.equal(sessionInsert.mention.meta?.statusDataStatus, "working");
+  assert.equal(sessionInsert.mention.meta?.statusPulse, "true");
 });
 
 test("desktop rich text @ service returns no providers without requested capabilities", () => {
