@@ -49,24 +49,26 @@ const (
 	appServerMethodPatchApprovalV1     = "applyPatchApproval"
 
 	// Server -> client notifications.
-	appServerNotifyThreadStarted     = "thread/started"
-	appServerNotifyTurnStarted       = "turn/started"
-	appServerNotifyTurnCompleted     = "turn/completed"
-	appServerNotifyAgentMessageDelta = "item/agentMessage/delta"
-	appServerNotifyReasoningDelta    = "item/reasoning/textDelta"
-	appServerNotifyReasoningSummary  = "item/reasoning/summaryTextDelta"
-	appServerNotifyItemStarted       = "item/started"
-	appServerNotifyItemCompleted     = "item/completed"
-	appServerNotifyTokenUsage        = "thread/tokenUsage/updated"
-	appServerNotifyPlanUpdated       = "turn/plan/updated"
-	appServerNotifyThreadNameUpdated = "thread/name/updated"
-	appServerNotifyRateLimitsUpdated = "account/rateLimits/updated"
-	appServerNotifyAccountUpdated    = "account/updated"
-	appServerNotifyError             = "error"
-	appServerNotifyWarning           = "warning"
-	appServerNotifyDeprecation       = "deprecationNotice"
-	appServerNotifyModelRerouted     = "model/rerouted"
-	appServerNotifyThreadCompacted   = "thread/compacted"
+	appServerNotifyThreadStarted         = "thread/started"
+	appServerNotifyTurnStarted           = "turn/started"
+	appServerNotifyTurnCompleted         = "turn/completed"
+	appServerNotifyAgentMessageDelta     = "item/agentMessage/delta"
+	appServerNotifyReasoningDelta        = "item/reasoning/textDelta"
+	appServerNotifyReasoningSummary      = "item/reasoning/summaryTextDelta"
+	appServerNotifyReasoningSummaryPart  = "item/reasoning/summaryPartAdded"
+	appServerNotifyThreadSettingsUpdated = "thread/settings/updated"
+	appServerNotifyItemStarted           = "item/started"
+	appServerNotifyItemCompleted         = "item/completed"
+	appServerNotifyTokenUsage            = "thread/tokenUsage/updated"
+	appServerNotifyPlanUpdated           = "turn/plan/updated"
+	appServerNotifyThreadNameUpdated     = "thread/name/updated"
+	appServerNotifyRateLimitsUpdated     = "account/rateLimits/updated"
+	appServerNotifyAccountUpdated        = "account/updated"
+	appServerNotifyError                 = "error"
+	appServerNotifyWarning               = "warning"
+	appServerNotifyDeprecation           = "deprecationNotice"
+	appServerNotifyModelRerouted         = "model/rerouted"
+	appServerNotifyThreadCompacted       = "thread/compacted"
 )
 
 const (
@@ -367,6 +369,13 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) err
 		authState:       "authenticated",
 		acpLiveState:    liveState,
 		pendingRequests: make(map[string]*pendingACPRequest),
+	})
+	// Mirror Start: push the command snapshot so a resumed session advertises
+	// review/compact/undo to the GUI (otherwise the slash palette and the
+	// review picker only work on freshly created sessions).
+	a.emitCommandSnapshot(AgentSessionCommandSnapshot{
+		AgentSessionID: strings.TrimSpace(session.AgentSessionID),
+		Commands:       codexAppServerCommands(),
 	})
 	return nil
 }
@@ -845,11 +854,7 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 	case appServerSlashCompact:
 		_, err := appSession.client.Call(ctx, appServerMethodThreadCompact, map[string]any{
 			"threadId": appSession.threadID,
-		}, func(ctx context.Context, message acpMessage) error {
-			next, err := a.handleAppServerMessage(ctx, appSession.client, session, turnID, message, normalizer, emitEvents, emitCommands)
-			emitEvents(next)
-			return err
-		})
+		}, a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands))
 		if err != nil {
 			emitTerminal([]activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err))})
 			return true, nil
@@ -863,44 +868,12 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 		))
 		return true, nil
 	case appServerSlashReview:
-		params := map[string]any{
-			"threadId": appSession.threadID,
-			"target":   appServerReviewTarget(args),
-			"delivery": "inline",
-		}
-		result, err := appSession.client.Call(ctx, appServerMethodReviewStart, params,
-			func(ctx context.Context, message acpMessage) error {
-				next, err := a.handleAppServerMessage(ctx, appSession.client, session, turnID, message, normalizer, emitEvents, emitCommands)
-				emitEvents(next)
-				return err
-			})
-		if err != nil {
-			emitTerminal([]activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err))})
-			return true, nil
-		}
-		initialTurn := appServerTurnFromResult(result)
-		if providerTurnID := asString(initialTurn["id"]); providerTurnID != "" {
-			a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID)
-		}
-		finalTurn, finishErr := a.awaitTurnCompletion(ctx, appSession, appTurn, initialTurn)
-		if finishErr != nil {
-			terminalEvents := normalizer.FinishFailed(session, turnID)
-			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(finishErr)))
-			emitTerminal(terminalEvents)
-			return true, nil
-		}
-		normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
-		emitTerminal(appServerTurnTerminalEvents(session, turnID, finalTurn, normalizer))
-		return true, nil
+		return a.execReviewSlashCommand(ctx, appSession, session, args, turnID, appTurn, normalizer, emitEvents, emitTerminal, emitCommands)
 	case appServerSlashUndo:
 		_, err := appSession.client.Call(ctx, appServerMethodThreadRollback, map[string]any{
 			"threadId": appSession.threadID,
 			"numTurns": 1,
-		}, func(ctx context.Context, message acpMessage) error {
-			next, err := a.handleAppServerMessage(ctx, appSession.client, session, turnID, message, normalizer, emitEvents, emitCommands)
-			emitEvents(next)
-			return err
-		})
+		}, a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands))
 		if err != nil {
 			emitTerminal([]activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err))})
 			return true, nil
