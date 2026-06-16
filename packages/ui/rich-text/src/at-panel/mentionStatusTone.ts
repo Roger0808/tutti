@@ -64,6 +64,33 @@ export function mentionStatusBadgeClassName(input: {
 }
 
 /**
+ * Map a normalized agent-activity display status to its badge tone. Shared by
+ * every `@`-mention surface that renders a session row (agent composer,
+ * issue-manager) so the activity status badge color is identical across
+ * surfaces. Mirrors the agent composer's local `mentionStatusTone` mapping
+ * verbatim (the agent keeps its own copy producing identical values). The label
+ * is resolved by each surface; only the tone lives here.
+ */
+export function activityMentionStatusTone(
+  status: string
+): MentionRowStatusTone {
+  switch (status.trim().toLowerCase()) {
+    case "working":
+      return "blue";
+    case "waiting":
+    case "canceled":
+      return "amber";
+    case "completed":
+    case "idle":
+      return "green";
+    case "failed":
+      return "red";
+    default:
+      return "neutral";
+  }
+}
+
+/**
  * Map an issue status string to its badge tone. Shared by every `@`-mention
  * surface that renders an issue row (agent composer, issue-manager) so the
  * status badge color is identical across surfaces. The label is resolved by

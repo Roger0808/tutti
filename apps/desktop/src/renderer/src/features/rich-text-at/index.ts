@@ -9,3 +9,7 @@ export {
   type CreateDesktopWorkspaceAppMentionProviderInput,
   type DesktopWorkspaceAppMentionItem
 } from "./providers/desktopWorkspaceAppMentionProvider.ts";
+export {
+  createDesktopAgentSessionMentionProvider,
+  type CreateDesktopAgentSessionMentionProviderInput
+} from "./providers/desktopAgentSessionMentionProvider.ts";

@@ -18,6 +18,7 @@ export {
 } from "./mentionFileVisualKind.ts";
 export {
   activityMentionStatusBadgeClassName,
+  activityMentionStatusTone,
   issueMentionStatusBadgeClassName,
   issueMentionStatusTone,
   mentionStatusBadgeClassName,

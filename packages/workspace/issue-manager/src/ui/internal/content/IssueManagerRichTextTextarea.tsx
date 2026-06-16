@@ -9,6 +9,7 @@ import {
 import {
   DEFAULT_RICH_TEXT_AT_PANEL_PAGE_SIZE,
   MentionPalette,
+  activityMentionStatusTone,
   buildMentionPaletteState,
   flattenMentionPaletteEntries,
   issueMentionStatusTone,
@@ -292,14 +293,23 @@ function issueMatchToRowItem(
   }
 
   if (match.providerId === ISSUE_MANAGER_RICH_AT_PROVIDER_GROUP_IDS.sessions) {
+    // The desktop seam (createDesktopAgentSessionMentionProvider) resolves the
+    // agent-app-coupled session visuals — the rounded provider icon, the user
+    // avatar placeholder asset, the "initiator & agent" participant line, and a
+    // localized activity status — and threads them through `meta`, so this row
+    // renders the 2-avatar stack + participant + status badge identically to the
+    // agent composer without coupling this package to agent-gui.
     return {
       kind: "session",
-      participant: label,
-      summary: nonEmptyText(match.subtitle),
-      userAvatarUrl: null,
-      // Neutral placeholders; Phase 4 wires the avatar/provider-icon assets.
-      userAvatarPlaceholderUrl: "",
-      agentIconUrl: ""
+      participant: nonEmptyText(meta?.participant) ?? label,
+      summary: nonEmptyText(meta?.title) ?? nonEmptyText(match.subtitle),
+      userAvatarUrl: nonEmptyText(meta?.userAvatarUrl),
+      userAvatarPlaceholderUrl: meta?.userAvatarPlaceholderUrl ?? "",
+      agentIconUrl: meta?.agentIconUrl ?? "",
+      statusTag: sessionStatusTagFromMeta(meta?.statusLabel, {
+        dataStatus: meta?.statusDataStatus,
+        pulse: meta?.statusPulse
+      })
     };
   }
 
@@ -338,6 +348,33 @@ function issueStatusTagFromMeta(
     tone: issueMentionStatusTone(normalized),
     variant: "issue",
     dataStatus: normalized.toLowerCase() || "not_started"
+  };
+}
+
+/**
+ * Resolve an issue-manager `@`-mention session status into the shared, display-
+ * ready activity badge. The localized {@link statusLabel} and normalized
+ * {@link options.dataStatus} are resolved at the desktop seam (the same way the
+ * agent composer does, via the agent's activity-status i18n) and threaded
+ * through `meta`; the badge tone comes from the shared
+ * {@link activityMentionStatusTone} the agent composer also uses, so the session
+ * status badge is identical across surfaces.
+ */
+function sessionStatusTagFromMeta(
+  statusLabel: string | null | undefined,
+  options: { dataStatus?: string | null; pulse?: string | null }
+): MentionRowStatusTag | null {
+  const label = nonEmptyText(statusLabel);
+  if (!label) {
+    return null;
+  }
+  const dataStatus = nonEmptyText(options.dataStatus);
+  return {
+    label,
+    tone: activityMentionStatusTone(dataStatus ?? ""),
+    pulse: options.pulse === "true",
+    variant: "activity",
+    dataStatus: dataStatus ?? undefined
   };
 }
 
