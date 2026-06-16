@@ -68,10 +68,6 @@ export interface RichTextAtEditorProps {
   // Tab/Shift+Tab cycle the at-panel filter tabs (parity with the agent
   // composer). When omitted, Tab is left to the browser.
   onCycleFilter?: (delta: 1 | -1) => void;
-  // Footer keyboard hints (parity with the agent composer). The Tab hint only
-  // renders when onCycleFilter is provided.
-  cycleFilterHintLabel?: string;
-  moveSelectionHintLabel?: string;
 }
 
 type RichTextEditorAtQueryState = {
@@ -91,6 +87,7 @@ export interface RichTextAtEditorPanelContext {
   onNavigationMatchesChange: (
     matches: readonly RichTextAtQueryMatch[] | null
   ) => void;
+  onMoveSelection: (delta: 1 | -1) => void;
   onSelect: (match: RichTextAtQueryMatch) => void;
   providerContext: RichTextAtProviderContext;
   providers: readonly RichTextAtProvider[];
@@ -115,9 +112,7 @@ export function RichTextAtEditor({
   overlay,
   focusSignal,
   renderPanel,
-  onCycleFilter,
-  cycleFilterHintLabel,
-  moveSelectionHintLabel
+  onCycleFilter
 }: RichTextAtEditorProps): JSX.Element {
   const menuOffset = 6;
   const normalizedValue = normalizeRichTextContent(value);
@@ -567,9 +562,7 @@ export function RichTextAtEditor({
             }
           }}
         >
-          <div className="flex max-h-64 min-h-0 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto p-1">
-              {renderPanel ? (
+          {renderPanel ? (
             renderPanel({
               activeIndex,
               activeMatch,
@@ -579,6 +572,7 @@ export function RichTextAtEditor({
               onActiveIndexChange: handleActiveIndexChange,
               onActiveMatchChange: setActiveNavigationMatch,
               onNavigationMatchesChange: updateNavigationMatches,
+              onMoveSelection: moveSelection,
               onSelect: applyMatch,
               providerContext: editor
                 ? createRichTextAtEditorProviderContext(editor)
@@ -587,116 +581,45 @@ export function RichTextAtEditor({
               query,
               text
             })
-          ) : matches.length > 0 ? (
-            matches.map((match, index) => (
-              <button
-                key={`${match.providerId}:${match.key}`}
-                aria-selected={index === activeIndex}
-                className={cn(
-                  "flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-md px-2.5 py-2 text-left outline-none transition-colors",
-                  index === activeIndex
-                    ? "bg-transparency-block text-[var(--text-primary)]"
-                    : "text-[var(--text-primary)] hover:bg-transparency-block"
-                )}
-                type="button"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  applyMatch(match);
-                }}
-              >
-                <div className="text-[13px] leading-5 font-medium">
-                  {match.label}
-                </div>
-                {match.subtitle ? (
-                  <div className="text-[11px] leading-4 text-[var(--text-secondary)]">
-                    {match.subtitle}
+          ) : (
+            <div className="flex max-h-64 min-h-0 flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto p-1">
+                {matches.length > 0 ? (
+                  matches.map((match, index) => (
+                    <button
+                      key={`${match.providerId}:${match.key}`}
+                      aria-selected={index === activeIndex}
+                      className={cn(
+                        "flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-md px-2.5 py-2 text-left outline-none transition-colors",
+                        index === activeIndex
+                          ? "bg-transparency-block text-[var(--text-primary)]"
+                          : "text-[var(--text-primary)] hover:bg-transparency-block"
+                      )}
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        applyMatch(match);
+                      }}
+                    >
+                      <div className="text-[13px] leading-5 font-medium">
+                        {match.label}
+                      </div>
+                      {match.subtitle ? (
+                        <div className="text-[11px] leading-4 text-[var(--text-secondary)]">
+                          {match.subtitle}
+                        </div>
+                      ) : null}
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-2 text-[11px] leading-4 text-[var(--text-secondary)]">
+                    {isLoading ? text.loadingLabel : text.noMatchesLabel}
                   </div>
-                ) : null}
-              </button>
-            ))
-              ) : (
-                <div className="px-3 py-2 text-[11px] leading-4 text-[var(--text-secondary)]">
-                  {isLoading ? text.loadingLabel : text.noMatchesLabel}
-                </div>
-              )}
+                )}
+              </div>
             </div>
-            <RichTextAtMenuFooter
-              cycleFilterHintLabel={
-                onCycleFilter ? cycleFilterHintLabel : undefined
-              }
-              moveSelectionHintLabel={moveSelectionHintLabel}
-              onCycleFilter={onCycleFilter}
-              onMoveSelection={moveSelection}
-            />
-          </div>
+          )}
         </ViewportMenuSurface>
-      ) : null}
-    </div>
-  );
-}
-
-function RichTextAtMenuFooter({
-  cycleFilterHintLabel,
-  moveSelectionHintLabel,
-  onCycleFilter,
-  onMoveSelection
-}: {
-  cycleFilterHintLabel?: string;
-  moveSelectionHintLabel?: string;
-  onCycleFilter?: (delta: 1 | -1) => void;
-  onMoveSelection: (delta: 1 | -1) => void;
-}): JSX.Element | null {
-  const showCycleHint = !!cycleFilterHintLabel && !!onCycleFilter;
-  const showMoveHint = !!moveSelectionHintLabel;
-  if (!showCycleHint && !showMoveHint) {
-    return null;
-  }
-  const arrowButtonClassName =
-    "flex h-5 min-w-[1.25rem] items-center justify-center rounded border border-[var(--line-1)] bg-[var(--transparency-block)] px-1 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]";
-  return (
-    <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--line-1)] px-2 py-1.5 text-[11px] text-[var(--text-tertiary)]">
-      {showCycleHint ? (
-        <button
-          type="button"
-          className="flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:text-[var(--text-secondary)]"
-          aria-label={cycleFilterHintLabel}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onCycleFilter?.(1)}
-        >
-          {/* i18n-check-ignore: Keyboard key label. */}
-          <kbd className={arrowButtonClassName}>Tab</kbd>
-          <span>{cycleFilterHintLabel}</span>
-        </button>
-      ) : null}
-      {showCycleHint && showMoveHint ? (
-        <span aria-hidden="true" className="text-[var(--line-1)]">
-          ｜
-        </span>
-      ) : null}
-      {showMoveHint ? (
-        <span className="flex items-center gap-1.5">
-          <span className="flex items-center gap-1">
-            <button
-              type="button"
-              className={arrowButtonClassName}
-              aria-label={`↑ ${moveSelectionHintLabel}`}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onMoveSelection(-1)}
-            >
-              ↑
-            </button>
-            <button
-              type="button"
-              className={arrowButtonClassName}
-              aria-label={`↓ ${moveSelectionHintLabel}`}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onMoveSelection(1)}
-            >
-              ↓
-            </button>
-          </span>
-          <span>{moveSelectionHintLabel}</span>
-        </span>
       ) : null}
     </div>
   );

@@ -6,8 +6,17 @@ import {
   useState,
   type JSX
 } from "react";
-import { RichTextAtPanel } from "@tutti-os/ui-rich-text/at-panel";
-import { RichTextAtEditor } from "@tutti-os/ui-rich-text/editor";
+import {
+  DEFAULT_RICH_TEXT_AT_PANEL_PAGE_SIZE,
+  MentionPalette,
+  buildMentionPaletteState,
+  type MentionPaletteGroup
+} from "@tutti-os/ui-rich-text/at-panel";
+import {
+  RichTextAtEditor,
+  type RichTextAtEditorPanelContext
+} from "@tutti-os/ui-rich-text/editor";
+import type { RichTextAtQueryMatch } from "@tutti-os/ui-rich-text/types";
 import { Button, LinkIcon, cn } from "@tutti-os/ui-system";
 import type {
   IssueManagerController,
@@ -96,6 +105,17 @@ export function IssueManagerRichTextTextarea({
   const [activeFilterId, setActiveFilterId] = useState<string>(
     richAtPanelConfig.filterTabs[0]?.id ?? "all"
   );
+  const [expandedCounts, setExpandedCounts] = useState<
+    Record<string, number | undefined>
+  >({});
+  const expandGroup = useCallback((groupId: string) => {
+    setExpandedCounts((current) => ({
+      ...current,
+      [groupId]:
+        (current[groupId] ?? DEFAULT_RICH_TEXT_AT_PANEL_PAGE_SIZE) +
+        DEFAULT_RICH_TEXT_AT_PANEL_PAGE_SIZE
+    }));
+  }, []);
   // Tab/Shift+Tab cycle through every filter tab (including empty ones) with
   // wraparound, matching the agent composer's keyboard behavior.
   const cycleFilter = useCallback(
@@ -135,9 +155,9 @@ export function IssueManagerRichTextTextarea({
       focusSignal={focusSignal}
       maxResults={8}
       minQueryLength={ISSUE_MANAGER_RICH_AT_PANEL_ENABLED ? 0 : 1}
-      onCycleFilter={ISSUE_MANAGER_RICH_AT_PANEL_ENABLED ? cycleFilter : undefined}
-      cycleFilterHintLabel={controller.copy.t("richTextAt.switchCategory")}
-      moveSelectionHintLabel={controller.copy.t("richTextAt.switchSelection")}
+      onCycleFilter={
+        ISSUE_MANAGER_RICH_AT_PANEL_ENABLED ? cycleFilter : undefined
+      }
       providers={providers}
       textOverrides={{
         loadingLabel: controller.copy.t("richTextAt.loading"),
@@ -158,22 +178,16 @@ export function IssueManagerRichTextTextarea({
       renderPanel={
         ISSUE_MANAGER_RICH_AT_PANEL_ENABLED
           ? (context) => (
-              <RichTextAtPanel
-                {...context}
-                filterTabs={richAtPanelConfig.filterTabs}
+              <IssueManagerMentionPanel
                 activeFilterId={activeFilterId}
-                onActiveFilterChange={setActiveFilterId}
-                providerContext={context.providerContext}
+                context={context}
+                controller={controller}
+                expandedCounts={expandedCounts}
+                filterTabs={richAtPanelConfig.filterTabs}
                 providerGroups={richAtPanelConfig.providerGroups}
-                providers={context.providers}
-                queryKeyword={context.query.keyword}
-                referencePageSize={5}
-                text={{
-                  ...context.text,
-                  allFilterLabel: controller.copy.t("richTextAt.all"),
-                  showMoreLabel: (count) =>
-                    controller.copy.t("richTextAt.showMore", { count })
-                }}
+                onCycleFilter={cycleFilter}
+                onExpandGroup={expandGroup}
+                onSelectFilter={setActiveFilterId}
               />
             )
           : undefined
@@ -198,6 +212,152 @@ export function IssueManagerRichTextTextarea({
           </div>
         ) : null
       }
+    />
+  );
+}
+
+const ISSUE_MANAGER_MENTION_PALETTE_MAX_HEIGHT_PX = 256;
+
+function issueManagerMentionMatchKey(match: RichTextAtQueryMatch): string {
+  return `${match.providerId}:${match.key}`;
+}
+
+function IssueManagerMentionPanel({
+  activeFilterId,
+  context,
+  controller,
+  expandedCounts,
+  filterTabs,
+  providerGroups,
+  onCycleFilter,
+  onExpandGroup,
+  onSelectFilter
+}: {
+  activeFilterId: string;
+  context: RichTextAtEditorPanelContext;
+  controller: IssueManagerController;
+  expandedCounts: Record<string, number | undefined>;
+  filterTabs: readonly { id: string; label: string }[];
+  providerGroups: Parameters<
+    typeof buildMentionPaletteState
+  >[0]["providerGroups"];
+  onCycleFilter: (delta: 1 | -1) => void;
+  onExpandGroup: (groupId: string) => void;
+  onSelectFilter: (filterId: string) => void;
+}): JSX.Element {
+  const copy = controller.copy;
+  const state = useMemo(
+    () =>
+      buildMentionPaletteState({
+        matches: context.matches,
+        providerGroups,
+        filterTabs,
+        activeFilterId,
+        expandedCounts,
+        query: context.query.keyword,
+        isLoading: context.isLoading,
+        showMoreLabel: (count) => copy.t("richTextAt.showMore", { count })
+      }),
+    [
+      activeFilterId,
+      context.isLoading,
+      context.matches,
+      context.query.keyword,
+      copy,
+      expandedCounts,
+      filterTabs,
+      providerGroups
+    ]
+  );
+
+  // Flat, display-ordered item list. This is the single source of truth for
+  // both the editor's keyboard navigation order and the highlight bridge below.
+  const navigationMatches = useMemo(
+    () => state.groups.flatMap((group) => group.items),
+    [state.groups]
+  );
+
+  // entryKey (`${group.id}:${matchKey}`) → match, so we can map between the
+  // shell's highlightedKey and the editor's activeMatch.
+  const matchByEntryKey = useMemo(() => {
+    const map = new Map<string, RichTextAtQueryMatch>();
+    for (const group of state.groups) {
+      for (const item of group.items) {
+        map.set(`${group.id}:${issueManagerMentionMatchKey(item)}`, item);
+      }
+    }
+    return map;
+  }, [state.groups]);
+
+  const entryKeyByMatchKey = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [entryKey, match] of matchByEntryKey) {
+      map.set(issueManagerMentionMatchKey(match), entryKey);
+    }
+    return map;
+  }, [matchByEntryKey]);
+
+  // Keep the editor's keyboard ↑/↓ order aligned with the displayed list.
+  const onNavigationMatchesChange = context.onNavigationMatchesChange;
+  useEffect(() => {
+    onNavigationMatchesChange(navigationMatches);
+  }, [navigationMatches, onNavigationMatchesChange]);
+  useEffect(() => {
+    return () => {
+      onNavigationMatchesChange(null);
+    };
+  }, [onNavigationMatchesChange]);
+
+  const activeMatch =
+    context.activeMatch ?? context.matches[context.activeIndex];
+  const highlightedKey = activeMatch
+    ? (entryKeyByMatchKey.get(issueManagerMentionMatchKey(activeMatch)) ?? null)
+    : null;
+
+  return (
+    <MentionPalette<RichTextAtQueryMatch>
+      state={state}
+      highlightedKey={highlightedKey}
+      getItemKey={(item) => issueManagerMentionMatchKey(item)}
+      renderItem={(item) => (
+        <span className="flex min-w-0 max-w-full items-start gap-2">
+          <span className="grid min-w-0 gap-0.5">
+            <span className="truncate text-[13px] leading-5 font-medium">
+              {item.label}
+            </span>
+            {item.subtitle ? (
+              <span className="truncate text-[11px] leading-4 text-[var(--text-secondary)]">
+                {item.subtitle}
+              </span>
+            ) : null}
+          </span>
+        </span>
+      )}
+      labels={{
+        loading: copy.t("richTextAt.loading"),
+        empty: copy.t("richTextAt.noMatches"),
+        error: copy.t("richTextAt.noMatches"),
+        tabHint: ""
+      }}
+      hintLabels={{
+        cycleFilter: copy.t("richTextAt.switchCategory"),
+        moveSelection: copy.t("richTextAt.switchSelection")
+      }}
+      maxHeightPx={ISSUE_MANAGER_MENTION_PALETTE_MAX_HEIGHT_PX}
+      onHighlightChange={(key) => {
+        const match = matchByEntryKey.get(key);
+        if (match) {
+          context.onActiveMatchChange(match);
+        }
+      }}
+      onSelectItem={(item) => context.onSelect(item)}
+      onSelectCategory={(categoryId) => onSelectFilter(categoryId)}
+      onSelectFilter={(filterId) => onSelectFilter(filterId)}
+      onExpandGroup={(
+        groupId: MentionPaletteGroup<RichTextAtQueryMatch>["id"]
+      ) => onExpandGroup(groupId)}
+      onCycleFilter={onCycleFilter}
+      onMoveSelection={context.onMoveSelection}
     />
   );
 }
