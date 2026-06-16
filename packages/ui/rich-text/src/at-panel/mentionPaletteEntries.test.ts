@@ -9,7 +9,7 @@ import type {
 
 type Item = { id: string; kind: string };
 
-function getItemKey(item: Item, groupId: string): string {
+function getItemKey(item: Item, _groupId: string): string {
   return `${item.kind}:${item.id}`;
 }
 
