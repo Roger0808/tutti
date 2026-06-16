@@ -9,8 +9,7 @@ import {
 } from "@tutti-os/ui-rich-text/plugins";
 import type {
   RichTextAtProvider,
-  RichTextAtQueryInput,
-  RichTextAtReferenceItemsResult
+  RichTextAtQueryInput
 } from "@tutti-os/ui-rich-text/types";
 import type {
   DesktopRichTextAtCapability,

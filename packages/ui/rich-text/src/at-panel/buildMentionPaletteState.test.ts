@@ -3,7 +3,6 @@ import test from "node:test";
 import { buildMentionPaletteState } from "./buildMentionPaletteState.ts";
 import type { RichTextAtQueryMatch } from "../types/at.ts";
 import type { RichTextAtProviderGroup } from "./types.ts";
-import { DEFAULT_RICH_TEXT_AT_PANEL_PAGE_SIZE } from "./searchHelpers.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
