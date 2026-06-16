@@ -104,6 +104,20 @@ const {
   workspaceIssue: WORKSPACE_ISSUE_PROVIDER_ID
 } = AGENT_GUI_MENTION_PROVIDER_IDS;
 
+const agentClaudeCodeAppIconUrl = new URL(
+  "../../../../assets/workspace-canvas/dock/default/claudecode.png",
+  import.meta.url
+).href;
+const agentCodexAppIconUrl = new URL(
+  "../../../../assets/workspace-canvas/dock/default/codex.png",
+  import.meta.url
+).href;
+
+const agentWorkspaceAppIconUrls = new Map<string, string>([
+  ["agent-claude-code", agentClaudeCodeAppIconUrl],
+  ["agent-codex", agentCodexAppIconUrl]
+]);
+
 export class DesktopRichTextAtService implements IDesktopRichTextAtService {
   readonly _serviceBrand = undefined;
   private readonly contributors: readonly DesktopRichTextAtContributor[];
@@ -309,6 +323,8 @@ function workspaceAppAtItemsFromCapabilities(input: {
     if (!appId) {
       continue;
     }
+    const sourceIconUrl = command.source.iconUrl?.trim() || null;
+    const iconUrl = workspaceAppIconUrl(command, appId);
     const appName = command.source.appName?.trim() || appId;
     const existing = appsById.get(appId);
     const item =
@@ -321,13 +337,13 @@ function workspaceAppAtItemsFromCapabilities(input: {
         description: "",
         commandSummaries: [],
         displayName: appName,
-        iconUrl: command.source.iconUrl?.trim() || null,
+        iconUrl,
         scopes: [],
         workspaceId: input.workspaceId
       } satisfies WorkspaceAppAtItem);
     item.commandCount += 1;
-    if (!item.iconUrl) {
-      item.iconUrl = command.source.iconUrl?.trim() || null;
+    if (sourceIconUrl || !item.iconUrl) {
+      item.iconUrl = iconUrl;
     }
     const description = workspaceAppDescriptionFromCapability(command);
     if (description && !item.description) {
@@ -360,6 +376,19 @@ function workspaceAppAtItemsFromCapabilities(input: {
     .filter((app) => workspaceAppMatchesKeyword(app, keyword))
     .sort((left, right) => left.displayName.localeCompare(right.displayName));
   return apps;
+}
+
+function workspaceAppIconUrl(
+  command: Awaited<
+    ReturnType<TuttidClient["listCliCapabilities"]>
+  >["commands"][number],
+  appId: string
+): string | null {
+  return (
+    command.source.iconUrl?.trim() ||
+    agentWorkspaceAppIconUrls.get(appId) ||
+    null
+  );
 }
 
 function workspaceAppMatchesKeyword(

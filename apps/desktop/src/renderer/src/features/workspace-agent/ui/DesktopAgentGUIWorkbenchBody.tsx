@@ -60,6 +60,7 @@ import {
 } from "../services/internal/desktopManagedAgentProviders.ts";
 import { resolveWorkbenchDockFileAtItems } from "../services/internal/resolveWorkbenchDockFileAtItems.ts";
 import { createDesktopAgentGeneratedFileMentionProvider } from "../services/internal/createDesktopAgentGeneratedFileMentionProvider.ts";
+import { resolveDesktopWorkspaceAppIconEntries } from "../services/internal/desktopWorkspaceAppIcons.ts";
 import { wrapDesktopFileMentionProviderWithDockFiles } from "../services/internal/wrapDesktopFileMentionProviderWithDockFiles.ts";
 import {
   desktopAgentComposerDefaultsEqual,
@@ -228,17 +229,11 @@ export function DesktopAgentGUIWorkbenchBody({
   const appCenterState = useSnapshot(appCenterService.store);
   const workspaceAppIcons = useMemo(
     () =>
-      appCenterState.apps
-        .map((app) => ({
-          appId: app.appId,
-          iconUrl:
-            resolveAppIconUrl?.(app.appId) ??
-            app.iconUrl ??
-            app.availableIconUrl ??
-            null,
-          workspaceId
-        }))
-        .filter((app) => app.iconUrl),
+      resolveDesktopWorkspaceAppIconEntries({
+        apps: appCenterState.apps,
+        resolveAppIconUrl,
+        workspaceId
+      }),
     [appCenterState.apps, resolveAppIconUrl, workspaceId]
   );
   const resolveDockFiles = useCallback(
