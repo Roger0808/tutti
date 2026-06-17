@@ -623,7 +623,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(conversationFlowMock.calls).toHaveLength(initialRenderCount);
   });
 
-  it("shows ready detail status as a compact green pulse dot", () => {
+  it("hides the ready detail status indicator and label", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -633,14 +633,9 @@ describe("AgentGUINodeView layout persistence", () => {
       }
     });
 
-    expect(statusDotMock.calls).toContainEqual(
-      expect.objectContaining({
-        ariaLabel: "statusReady",
-        pulse: true,
-        size: "sm",
-        title: "statusReady",
-        tone: "green"
-      })
+    expect(screen.queryByText("statusReady")).not.toBeInTheDocument();
+    expect(statusDotMock.calls).not.toContainEqual(
+      expect.objectContaining({ ariaLabel: "statusReady" })
     );
   });
 

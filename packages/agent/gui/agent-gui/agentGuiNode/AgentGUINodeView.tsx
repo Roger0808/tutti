@@ -2125,6 +2125,13 @@ const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
   }
 
   const runPath = activeConversation.cwd.trim();
+  const showConversationStatus = activeConversationStatus !== "ready";
+  let statusTitle: string | undefined;
+  if (showConversationStatus) {
+    statusTitle = statusGroupTitle;
+  } else if (showSyncIndicator) {
+    statusTitle = syncLabel;
+  }
 
   return (
     <div className={styles.detailHeader}>
@@ -2136,7 +2143,7 @@ const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
       </span>
       <span
         className="inline-flex flex-none items-center gap-2 whitespace-nowrap"
-        title={statusGroupTitle}
+        title={statusTitle}
       >
         {usage && usage.percentUsed !== null ? (
           <AgentUsageChip
@@ -2156,16 +2163,20 @@ const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
             onSubmitCompact={onSubmitCompact}
           />
         ) : null}
-        <StatusDot
-          tone={conversationStatusTone(activeConversationStatus)}
-          pulse={conversationStatusPulse(activeConversationStatus)}
-          size="sm"
-          ariaLabel={activeConversationStatusLabel}
-          title={activeConversationStatusLabel}
-        />
-        <span className={styles.detailHeaderStatus}>
-          {activeConversationStatusLabel}
-        </span>
+        {showConversationStatus ? (
+          <>
+            <StatusDot
+              tone={conversationStatusTone(activeConversationStatus)}
+              pulse={conversationStatusPulse(activeConversationStatus)}
+              size="sm"
+              ariaLabel={activeConversationStatusLabel}
+              title={activeConversationStatusLabel}
+            />
+            <span className={styles.detailHeaderStatus}>
+              {activeConversationStatusLabel}
+            </span>
+          </>
+        ) : null}
         {showSyncIndicator ? (
           <StatusDot
             tone={syncStateTone(syncStatus)}
