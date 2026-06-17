@@ -134,6 +134,48 @@ describe("buildComposerModelMenuModel", () => {
     expect(menu.model.options[0]?.description).toBe("Frontier");
   });
 
+  it("preserves Claude ACP model descriptions", () => {
+    const menu = buildComposerModelMenuModel(
+      vm({
+        draftSettings: {
+          model: "default",
+          reasoningEffort: "high",
+          speed: "standard",
+          planMode: false,
+          permissionModeId: "preset"
+        },
+        selectedModelValue: "default",
+        availableModels: [
+          {
+            value: "default",
+            label: "Default (recommended)",
+            description:
+              "Opus 4.8 with 1M context · Most capable for complex work"
+          },
+          {
+            value: "sonnet",
+            label: "Sonnet",
+            description: "Sonnet 4.6 · Best for everyday tasks"
+          }
+        ]
+      }),
+      labels
+    );
+
+    expect(menu.model.options).toEqual([
+      {
+        value: "default",
+        label: "Default (Recommended)",
+        description: "Opus 4.8 with 1M context · Most capable for complex work"
+      },
+      {
+        value: "sonnet",
+        label: "Sonnet",
+        description: "Sonnet 4.6 · Best for everyday tasks"
+      }
+    ]);
+  });
+
   it("injects the selected value when missing from the advertised options", () => {
     const menu = buildComposerModelMenuModel(
       vm({

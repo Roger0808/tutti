@@ -326,12 +326,9 @@ function settingOptionsFromRawOptions(
     valueKeys: readonly string[];
   }
 ): AgentActivityComposerSettingOption[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
   const options: AgentActivityComposerSettingOption[] = [];
   const seen = new Set<string>();
-  for (const item of value) {
+  for (const item of flattenRawSettingOptions(value)) {
     const record = recordValue(item);
     const optionValue = firstTextValue(record, keys.valueKeys);
     if (!optionValue || seen.has(optionValue)) {
@@ -347,6 +344,22 @@ function settingOptionsFromRawOptions(
     });
   }
   return options;
+}
+
+function flattenRawSettingOptions(value: unknown): unknown[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const flattened: unknown[] = [];
+  for (const item of value as unknown[]) {
+    const record = recordValue(item);
+    if (Array.isArray(record.options)) {
+      flattened.push(...flattenRawSettingOptions(record.options));
+    } else {
+      flattened.push(item);
+    }
+  }
+  return flattened;
 }
 
 function appendCurrentOption(

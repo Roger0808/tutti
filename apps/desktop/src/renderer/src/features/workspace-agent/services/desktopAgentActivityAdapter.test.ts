@@ -496,8 +496,16 @@ test("desktop agent activity adapter prefers live model list over static catalog
                 id: "model",
                 currentValue: "default",
                 options: [
-                  { value: "default", name: "Default" },
-                  { value: "claude-opus-4-6", name: "Opus 4.6" }
+                  {
+                    value: "default",
+                    name: "Default",
+                    description: "Opus 4.8 with 1M context"
+                  },
+                  {
+                    value: "claude-opus-4-6",
+                    name: "Opus 4.6",
+                    description: "Most capable for complex work"
+                  }
                 ]
               }
             ]
@@ -515,8 +523,78 @@ test("desktop agent activity adapter prefers live model list over static catalog
   });
 
   assert.deepEqual(options.models, [
-    { value: "default", label: "Default" },
-    { value: "claude-opus-4-6", label: "Opus 4.6" }
+    {
+      value: "default",
+      label: "Default",
+      description: "Opus 4.8 with 1M context"
+    },
+    {
+      value: "claude-opus-4-6",
+      label: "Opus 4.6",
+      description: "Most capable for complex work"
+    }
+  ]);
+});
+
+test("desktop agent activity adapter flattens grouped runtime config options", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async getAgentProviderComposerOptions(provider) {
+        return {
+          provider,
+          effectiveSettings: {},
+          modelConfig: {
+            configurable: true,
+            currentValue: "sonnet",
+            options: []
+          },
+          permissionConfig: {
+            configurable: false,
+            modes: []
+          },
+          reasoningConfig: {
+            configurable: true,
+            options: []
+          },
+          runtimeContext: {
+            configOptions: [
+              {
+                id: "model",
+                currentValue: "sonnet",
+                options: [
+                  {
+                    group: "claude",
+                    name: "Claude",
+                    options: [
+                      {
+                        value: "sonnet",
+                        name: "Sonnet",
+                        description: "Best for everyday tasks"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          skills: []
+        };
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const options = await adapter.loadComposerOptions({
+    workspaceId,
+    provider: "claude-code"
+  });
+
+  assert.deepEqual(options.models, [
+    {
+      value: "sonnet",
+      label: "Sonnet",
+      description: "Best for everyday tasks"
+    }
   ]);
 });
 

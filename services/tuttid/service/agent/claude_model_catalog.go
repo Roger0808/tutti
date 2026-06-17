@@ -13,11 +13,6 @@ var claudeCodeStaticModels = []AgentModelOption{
 		Description: "Claude Code model alias",
 	},
 	{
-		ID:          "opus",
-		DisplayName: "opus",
-		Description: "Claude Code model alias",
-	},
-	{
 		ID:          "haiku",
 		DisplayName: "haiku",
 		Description: "Claude Code model alias",
@@ -25,11 +20,6 @@ var claudeCodeStaticModels = []AgentModelOption{
 	{
 		ID:          "sonnet[1m]",
 		DisplayName: "sonnet[1m]",
-		Description: "Claude Code model alias",
-	},
-	{
-		ID:          "opusplan",
-		DisplayName: "opusplan",
 		Description: "Claude Code model alias",
 	},
 }

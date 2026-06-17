@@ -302,8 +302,23 @@ func normalizeComposerSettingsForProvider(provider string, settings ComposerSett
 	settings.ReasoningEffort = normalizeReasoningEffortForProvider(provider, settings.ReasoningEffort)
 	settings.Speed = normalizeSpeedForProvider(provider, settings.Speed)
 	settings.Model = clampComposerModelForProvider(provider, settings.Model)
+	settings.Model = normalizeComposerModelForProvider(provider, settings.Model)
 	settings.PlanMode = clampComposerPlanModeForProvider(provider, settings.PlanMode)
 	return settings
+}
+
+func normalizeComposerModelForProvider(provider string, model string) string {
+	if agentprovider.Normalize(provider) != agentprovider.ClaudeCode {
+		return strings.TrimSpace(model)
+	}
+	switch strings.TrimSpace(model) {
+	case "opus", "opusplan":
+		// Retired Claude Code aliases; Opus tier is exposed as "default" in
+		// newer claude-agent-acp builds.
+		return "default"
+	default:
+		return strings.TrimSpace(model)
+	}
 }
 
 // clampComposerModelForProvider clears model overrides for providers without

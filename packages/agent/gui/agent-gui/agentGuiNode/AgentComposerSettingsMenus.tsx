@@ -237,7 +237,7 @@ export function AgentPermissionModeDropdown({
               key={option.value}
               value={option.value}
               disabled={selectDisabled}
-              className={cn(styles.composerMenuItem, "group/permission-option")}
+              className={cn(styles.composerMenuItem, "group/composer-option")}
               onPointerDown={(event) =>
                 handleSelectedItemPointerDown(event, option.value)
               }
@@ -245,7 +245,7 @@ export function AgentPermissionModeDropdown({
               <span className="flex min-w-0 items-center gap-1.5">
                 <span className="min-w-0 truncate">{option.label}</span>
                 {option.description ? (
-                  <PermissionModeOptionInfo description={option.description} />
+                  <ComposerOptionInfoTooltip description={option.description} />
                 ) : null}
               </span>
             </SelectItem>
@@ -328,7 +328,7 @@ export function AgentProjectMissingStatusProbe({
   return null;
 }
 
-function PermissionModeOptionInfo({
+function ComposerOptionInfoTooltip({
   description
 }: {
   description: string;
@@ -342,8 +342,8 @@ function PermissionModeOptionInfo({
     <Tooltip>
       <TooltipTrigger asChild>
         <span
-          className="inline-flex shrink-0 cursor-help text-[var(--agent-gui-text-tertiary)] opacity-0 transition-opacity group-hover/permission-option:opacity-100 group-hover/permission-option:pointer-events-auto group-data-[highlighted]/permission-option:opacity-100 group-data-[highlighted]/permission-option:pointer-events-auto pointer-events-none"
-          data-agent-permission-info-trigger="true"
+          className="pointer-events-none inline-flex shrink-0 cursor-help text-[var(--agent-gui-text-tertiary)] opacity-0 transition-opacity group-hover/composer-option:pointer-events-auto group-hover/composer-option:opacity-100 group-data-[highlighted]/composer-option:pointer-events-auto group-data-[highlighted]/composer-option:opacity-100"
+          data-agent-composer-option-info-trigger="true"
           onClick={stopSelect}
           onPointerDown={stopSelect}
         >
@@ -471,7 +471,7 @@ export function AgentModelReasoningDropdown({
             <ComposerMenuOptionItems
               options={menu.model.options}
               selectedValue={menu.model.selectedValue}
-              withDescription
+              descriptionPresentation="tooltip"
               onSelect={(value) => applySettingsChange({ model: value })}
             />
           </>
@@ -526,7 +526,7 @@ export function AgentModelReasoningDropdown({
               <ComposerMenuOptionItems
                 options={menu.speed.options}
                 selectedValue={menu.speed.selectedValue}
-                withDescription
+                descriptionPresentation="inline"
                 onSelect={(value) => applySettingsChange({ speed: value })}
               />
             </DropdownMenuSubContent>
@@ -544,57 +544,70 @@ export function AgentModelReasoningDropdown({
 function ComposerMenuOptionItems({
   options,
   selectedValue,
-  withDescription = false,
+  descriptionPresentation = "none",
   onSelect
 }: {
   options: ComposerMenuOption[];
   selectedValue: string;
-  withDescription?: boolean;
+  descriptionPresentation?: "inline" | "none" | "tooltip";
   onSelect: (value: string) => void;
 }): React.JSX.Element {
   return (
     <>
-      {options.map((option) => (
-        <DropdownMenuItem
-          key={option.value}
-          className={cn(
-            styles.composerMenuItem,
-            withDescription && option.description && "items-start"
-          )}
-          onPointerDown={(event) => {
-            if (event.button === 0 && !event.ctrlKey) {
-              event.preventDefault();
+      {options.map((option) => {
+        const hasDescription = Boolean(option.description);
+        const showInlineDescription =
+          descriptionPresentation === "inline" && hasDescription;
+        const showTooltipDescription =
+          descriptionPresentation === "tooltip" && hasDescription;
+        return (
+          <DropdownMenuItem
+            key={option.value}
+            className={cn(
+              styles.composerMenuItem,
+              "group/composer-option",
+              showInlineDescription && "items-start"
+            )}
+            onPointerDown={(event) => {
+              if (event.button === 0 && !event.ctrlKey) {
+                event.preventDefault();
+                onSelect(option.value);
+              }
+            }}
+            onSelect={() => {
               onSelect(option.value);
-            }
-          }}
-          onSelect={() => {
-            onSelect(option.value);
-          }}
-        >
-          <span
-            className={cn(
-              "flex min-w-0 flex-1 flex-col",
-              withDescription && option.description ? "gap-0.5" : "gap-0"
-            )}
+            }}
           >
-            <span className="min-w-0 truncate leading-[1.15]">
-              {option.label}
-            </span>
-            {withDescription && option.description ? (
-              <span className="whitespace-normal text-[11px] leading-[1.2] text-[var(--text-tertiary)]">
-                {option.description}
+            <span
+              className={cn(
+                "flex min-w-0 flex-1 flex-col",
+                showInlineDescription ? "gap-0.5" : "gap-0"
+              )}
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 truncate leading-[1.15]">
+                  {option.label}
+                </span>
+                {showTooltipDescription && option.description ? (
+                  <ComposerOptionInfoTooltip description={option.description} />
+                ) : null}
               </span>
-            ) : null}
-          </span>
-          <CheckIcon
-            aria-hidden
-            className={cn(
-              "ml-2 size-3.5 shrink-0 text-[var(--tutti-purple)]",
-              option.value !== selectedValue && "invisible"
-            )}
-          />
-        </DropdownMenuItem>
-      ))}
+              {showInlineDescription && option.description ? (
+                <span className="whitespace-normal text-[11px] leading-[1.2] text-[var(--text-tertiary)]">
+                  {option.description}
+                </span>
+              ) : null}
+            </span>
+            <CheckIcon
+              aria-hidden
+              className={cn(
+                "ml-2 size-3.5 shrink-0 text-[var(--tutti-purple)]",
+                option.value !== selectedValue && "invisible"
+              )}
+            />
+          </DropdownMenuItem>
+        );
+      })}
     </>
   );
 }

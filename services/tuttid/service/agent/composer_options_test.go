@@ -97,6 +97,12 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 	if codex.Model != "gpt-5.3-codex" || codex.ReasoningEffort != "high" {
 		t.Fatalf("codex settings clamped unexpectedly: %+v", codex)
 	}
+	claude := normalizeComposerSettingsForProvider("claude-code", ComposerSettings{
+		Model: "opus",
+	})
+	if claude.Model != "default" {
+		t.Fatalf("claude legacy opus model = %q, want default", claude.Model)
+	}
 }
 
 func TestComposerConfigConfigurableTruthTable(t *testing.T) {

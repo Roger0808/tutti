@@ -33,6 +33,7 @@ type standardACPConfig struct {
 	setModeParams      func(Session) map[string]any
 	failOnSetModeError bool
 	env                func(Session) []string
+	commandResolver    ProviderCommandResolver
 	beforeNewSession   func(context.Context, *acpClient, Session, json.RawMessage) error
 }
 
@@ -70,6 +71,19 @@ var claudeCodeACPModelAliases = map[string]bool{
 	"haiku":      true,
 	"sonnet[1m]": true,
 	"opusplan":   true,
+}
+
+// claudeCodeLegacyACPModelCandidates lists live ACP model values to try when a
+// persisted alias (e.g. "opus") is not directly advertised. Order matters:
+// claude-agent-acp 0.46+ exposes Opus as "opus[1m]"; 0.42.x folded Opus into
+// "default" and rejected bare "opus".
+func claudeCodeLegacyACPModelCandidates(model string) []string {
+	switch strings.TrimSpace(model) {
+	case "opus", "opusplan":
+		return []string{"opus[1m]", "opus", "default"}
+	default:
+		return nil
+	}
 }
 
 func NewGeminiAdapter(transport ProcessTransport) *standardACPAdapter {
@@ -370,6 +384,14 @@ func NewClaudeCodeAdapter(transport ProcessTransport) *standardACPAdapter {
 }
 
 func NewClaudeCodeAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *standardACPAdapter {
+	return newClaudeCodeAdapterWithHostMetadata(transport, host, nil)
+}
+
+func newClaudeCodeAdapterWithHostMetadata(
+	transport ProcessTransport,
+	host HostMetadata,
+	commandResolver ProviderCommandResolver,
+) *standardACPAdapter {
 	return &standardACPAdapter{
 		config: standardACPConfig{
 			provider:            ProviderClaudeCode,
@@ -382,6 +404,7 @@ func NewClaudeCodeAdapterWithHostMetadata(transport ProcessTransport, host HostM
 			initializeParams:    func() map[string]any { return claudeACPInitializeParams(host) },
 			failOnSetModeError:  true,
 			env:                 func(session Session) []string { return claudeACPEnv(session, host) },
+			commandResolver:     commandResolver,
 		},
 		transport: transport,
 		host:      host,
@@ -622,12 +645,24 @@ func (a *standardACPAdapter) startInitializedClient(
 	if a == nil || a.transport == nil {
 		return nil, nil, errors.New("ACP process transport is unavailable")
 	}
+	command := append([]string(nil), a.config.command...)
+	env := append(a.config.env(session), session.Env...)
+	if a.config.commandResolver != nil {
+		resolved, err := a.config.commandResolver(ctx, a.config.provider)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(resolved.Command) > 0 {
+			command = append([]string(nil), resolved.Command...)
+		}
+		env = append(env, resolved.Env...)
+	}
 	processStartedAt := time.Now()
 	a.logHermesStartupDiagnostics("process_start.start", map[string]any{
 		"room_id":          session.RoomID,
 		"agent_session_id": session.AgentSessionID,
 		"cwd":              session.CWD,
-		"command":          a.config.command,
+		"command":          command,
 		"direct_start":     a.config.provider == ProviderClaudeCode,
 	})
 	conn, err := a.transport.Start(ctx, ProcessSpec{
@@ -635,8 +670,8 @@ func (a *standardACPAdapter) startInitializedClient(
 		AgentSessionID:       session.AgentSessionID,
 		RoomID:               session.RoomID,
 		CWD:                  session.CWD,
-		Command:              append([]string(nil), a.config.command...),
-		Env:                  append(a.config.env(session), session.Env...),
+		Command:              command,
+		Env:                  env,
 		OpenclawGatewayReady: session.OpenclawGatewayReady,
 		DirectStart:          a.config.provider == ProviderClaudeCode,
 	})
@@ -1219,6 +1254,7 @@ func (a *standardACPAdapter) applySessionConfigOptions(
 	// not abort the whole session. The session stays usable on the agent's
 	// default, and the user can pick a supported value from the live list.
 	if model := strings.TrimSpace(settings.Model); model != "" && a.shouldApplyACPModelConfigOption(model, supported) {
+		model = a.resolveClaudeCodeACPModelValue(session.AgentSessionID, model)
 		if err := a.setSessionConfigOption(ctx, client, session, "model", model); err != nil {
 			a.logStartupConfigOptionRejected(session, "model", model, err)
 		} else {
@@ -1389,6 +1425,7 @@ func (a *standardACPAdapter) ApplySessionSettings(
 		}
 		supported := map[string]bool{"model": true}
 		if advertised || a.shouldApplyACPModelConfigOption(model, supported) {
+			model = a.resolveClaudeCodeACPModelValue(session.AgentSessionID, model)
 			if !a.sessionConfigOptionMatches(session.AgentSessionID, "model", model) {
 				if err := a.setSessionConfigOption(ctx, acpSession.client, session, "model", model); err != nil {
 					return fmt.Errorf("agent session ACP model configuration failed: %w", err)
@@ -1942,6 +1979,22 @@ func (a *standardACPAdapter) sessionConfigOptionAdvertisesValue(agentSessionID s
 		return false
 	}
 	return acpConfigOptionAdvertisesValue(session.acpLiveState, configID, value)
+}
+
+func (a *standardACPAdapter) resolveClaudeCodeACPModelValue(agentSessionID string, model string) string {
+	model = strings.TrimSpace(model)
+	if model == "" || a == nil || a.config.provider != ProviderClaudeCode {
+		return model
+	}
+	if a.sessionConfigOptionAdvertisesValue(agentSessionID, "model", model) {
+		return model
+	}
+	for _, candidate := range claudeCodeLegacyACPModelCandidates(model) {
+		if a.sessionConfigOptionAdvertisesValue(agentSessionID, "model", candidate) {
+			return candidate
+		}
+	}
+	return model
 }
 
 func (a *standardACPAdapter) removeSession(agentSessionID string) {

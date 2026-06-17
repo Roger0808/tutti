@@ -690,7 +690,7 @@ func TestServiceGetsComposerOptionsWithResolvedClaudeDefaultModel(t *testing.T) 
 			Source:   "claude-static",
 			Models: []AgentModelOption{
 				{ID: "sonnet", DisplayName: "sonnet"},
-				{ID: "opus", DisplayName: "opus", IsDefault: true},
+				{ID: "default", DisplayName: "default", IsDefault: true},
 			},
 		},
 	}
@@ -701,8 +701,8 @@ func TestServiceGetsComposerOptionsWithResolvedClaudeDefaultModel(t *testing.T) 
 	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
 	}
-	if options.EffectiveSettings.Model != "opus" {
-		t.Fatalf("effectiveSettings.model = %q, want opus", options.EffectiveSettings.Model)
+	if options.EffectiveSettings.Model != "default" {
+		t.Fatalf("effectiveSettings.model = %q, want default", options.EffectiveSettings.Model)
 	}
 	if options.EffectiveSettings.ReasoningEffort != "high" {
 		t.Fatalf("effectiveSettings.reasoningEffort = %q, want high", options.EffectiveSettings.ReasoningEffort)
