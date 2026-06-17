@@ -1,4 +1,4 @@
-import { type CSSProperties, type JSX } from "react";
+import { type JSX } from "react";
 import { useComposedInputValue } from "@tutti-os/ui-react-hooks";
 import {
   Badge,
@@ -342,30 +342,26 @@ function IssueManagerSidebarItem({
         </p>
       </div>
       {subtaskProgress ? (
-        <div className="mt-3 flex items-center">
+        <div
+          aria-label={`${copy.t("labels.taskCount", {
+            count: subtaskProgress.total
+          })}, ${subtaskProgress.completed}/${subtaskProgress.total}`}
+          className="mt-3 flex min-w-0 items-center gap-2 text-[11px] font-semibold leading-none text-[var(--text-secondary)]"
+        >
+          <span className="shrink-0">
+            {copy.t("labels.taskCount", { count: subtaskProgress.total })}
+          </span>
           <span
-            aria-label={`${copy.t("labels.taskCount", {
-              count: subtaskProgress.total
-            })}, ${subtaskProgress.completed}/${subtaskProgress.total}`}
-            className="inline-flex h-8 items-center gap-2 rounded-full border border-[var(--border-1)] bg-[var(--background-fronted)] px-2.5 text-[13px] font-semibold leading-none text-[var(--text-primary)]"
+            aria-hidden="true"
+            className="h-0.5 w-14 shrink-0 overflow-hidden rounded-full bg-[var(--transparency-block)]"
           >
             <span
-              aria-hidden="true"
-              className="relative h-5 w-5 shrink-0 rounded-full bg-[conic-gradient(var(--status-running)_var(--issue-manager-subtask-progress),var(--transparency-block)_0)]"
-              style={
-                {
-                  "--issue-manager-subtask-progress": `${Math.max(
-                    subtaskProgress.percent,
-                    1.5
-                  )}%`
-                } as CSSProperties
-              }
-            >
-              <span className="absolute inset-[3px] rounded-full bg-[var(--background-fronted)]" />
-            </span>
-            <span>
-              {subtaskProgress.completed}/{subtaskProgress.total}
-            </span>
+              className="block h-full rounded-full bg-[var(--status-running)]"
+              style={{ width: `${subtaskProgress.percent}%` }}
+            />
+          </span>
+          <span className="shrink-0 text-[var(--text-primary)]">
+            {subtaskProgress.completed}/{subtaskProgress.total}
           </span>
         </div>
       ) : null}
