@@ -97,6 +97,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		PermissionModeID: strings.TrimSpace(input.Settings.PermissionModeID),
 		PlanMode:         input.Settings.PlanMode,
 		BrowserUse:       input.Settings.BrowserUse,
+		ComputerUse:      input.Settings.ComputerUse,
 		ReasoningEffort:  strings.TrimSpace(input.Settings.ReasoningEffort),
 		Speed:            strings.TrimSpace(input.Settings.Speed),
 	})
