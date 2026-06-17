@@ -741,6 +741,8 @@ export const zhCN = {
       slashPaletteSkillsGroup: "技能",
       browserUseCapabilityLabel: "浏览器",
       browserUseCapabilityDescription: "让 Agent 使用浏览器。",
+      computerUseCapabilityLabel: "电脑控制",
+      computerUseCapabilityDescription: "让 Agent 控制 macOS 桌面。",
       fileMentionPalette: "工作区文件",
       fileMentionLoading: "正在搜索工作区...",
       fileMentionEmpty: "根据你输入的内容搜索工作区文件",

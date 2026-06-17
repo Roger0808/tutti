@@ -961,6 +961,12 @@ export const AgentGUINode = memo(function AgentGUINode({
       browserUseCapabilityDescription: t(
         "agentHost.agentGui.browserUseCapabilityDescription"
       ),
+      computerUseCapabilityLabel: t(
+        "agentHost.agentGui.computerUseCapabilityLabel"
+      ),
+      computerUseCapabilityDescription: t(
+        "agentHost.agentGui.computerUseCapabilityDescription"
+      ),
       fileMentionPalette: t("agentHost.agentGui.fileMentionPalette"),
       fileMentionLoading: t("agentHost.agentGui.fileMentionLoading"),
       fileMentionEmpty: t("agentHost.agentGui.fileMentionEmpty"),

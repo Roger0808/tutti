@@ -2250,6 +2250,8 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     planUnavailable: "计划不可用",
     browserUseCapabilityLabel: "浏览器",
     browserUseCapabilityDescription: "让 Agent 使用浏览器。",
+    computerUseCapabilityLabel: "电脑控制",
+    computerUseCapabilityDescription: "让 Agent 控制 macOS 桌面。",
     queuedLabel: "排队",
     sendQueuedPromptNext: "下一条发送",
     editQueuedPrompt: "编辑",

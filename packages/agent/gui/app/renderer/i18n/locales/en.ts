@@ -804,6 +804,9 @@ export const en = {
       slashPaletteSkillsGroup: "Skills",
       browserUseCapabilityLabel: "Browser",
       browserUseCapabilityDescription: "Let the agent use a browser.",
+      computerUseCapabilityLabel: "Computer",
+      computerUseCapabilityDescription:
+        "Let the agent control the macOS desktop.",
       fileMentionPalette: "Files",
       fileMentionLoading: "Searching...",
       fileMentionEmpty: "Search workspace files based on your input",

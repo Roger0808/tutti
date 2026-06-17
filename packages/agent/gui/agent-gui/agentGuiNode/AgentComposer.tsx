@@ -200,6 +200,8 @@ export interface AgentComposerProps {
     planUnavailable: string;
     browserUseCapabilityLabel: string;
     browserUseCapabilityDescription: string;
+    computerUseCapabilityLabel: string;
+    computerUseCapabilityDescription: string;
     queuedLabel: string;
     sendQueuedPromptNext: string;
     editQueuedPrompt: string;
@@ -283,6 +285,7 @@ export interface AgentComposerProps {
     speed?: string | null;
     planMode?: boolean;
     browserUse?: boolean;
+    computerUse?: boolean;
     permissionModeId?: string | null;
   }) => void;
   onSubmit: (content: AgentPromptContentBlock[]) => void;
@@ -1018,12 +1021,14 @@ export function AgentComposer({
         commands: availableCommands,
         hasCompactableContext,
         compactSupported,
-        browserSupported: Boolean(composerSettings.supportsBrowser)
+        browserSupported: Boolean(composerSettings.supportsBrowser),
+        computerSupported: Boolean(composerSettings.supportsComputerUse)
       }),
     [
       availableCommands,
       compactSupported,
       composerSettings.supportsBrowser,
+      composerSettings.supportsComputerUse,
       hasCompactableContext,
       provider
     ]
@@ -1046,29 +1051,50 @@ export function AgentComposer({
           }),
     [availableSkills, skillQueryMatch]
   );
-  const availableCapabilities = useMemo<AgentCapabilityTokenOption[]>(
-    () =>
-      composerSettings.supportsBrowser
-        ? [
-            {
-              capability: "browserUse",
-              label: labels.browserUseCapabilityLabel,
-              name: "browser",
-              trigger: "/browser"
-            }
-          ]
-        : [],
-    [composerSettings.supportsBrowser, labels.browserUseCapabilityLabel]
-  );
+  const availableCapabilities = useMemo<AgentCapabilityTokenOption[]>(() => {
+    const entries: AgentCapabilityTokenOption[] = [];
+    if (composerSettings.supportsBrowser) {
+      entries.push({
+        capability: "browserUse",
+        label: labels.browserUseCapabilityLabel,
+        name: "browser",
+        trigger: "/browser"
+      });
+    }
+    if (composerSettings.supportsComputerUse) {
+      entries.push({
+        capability: "computerUse",
+        label: labels.computerUseCapabilityLabel,
+        name: "computer",
+        trigger: "/computer"
+      });
+    }
+    return entries;
+  }, [
+    composerSettings.supportsBrowser,
+    composerSettings.supportsComputerUse,
+    labels.browserUseCapabilityLabel,
+    labels.computerUseCapabilityLabel
+  ]);
   const slashPaletteEntries = useMemo<AgentSlashPaletteEntry[]>(() => {
     const commandEntries: AgentSlashPaletteEntry[] = filteredCommands.map(
       (command) => {
         if (isSlashCommandCapability(command)) {
+          const [capLabel, capDescription] =
+            command.capability === "computerUse"
+              ? [
+                  labels.computerUseCapabilityLabel,
+                  labels.computerUseCapabilityDescription
+                ]
+              : [
+                  labels.browserUseCapabilityLabel,
+                  labels.browserUseCapabilityDescription
+                ];
           return {
             type: "capability",
             key: `capability:${command.capability}`,
-            label: labels.browserUseCapabilityLabel,
-            description: labels.browserUseCapabilityDescription,
+            label: capLabel,
+            description: capDescription,
             capability: command
           };
         }
@@ -1101,6 +1127,8 @@ export function AgentComposer({
     filteredSkills,
     labels.browserUseCapabilityDescription,
     labels.browserUseCapabilityLabel,
+    labels.computerUseCapabilityDescription,
+    labels.computerUseCapabilityLabel,
     skillQueryMatch?.prefix
   ]);
   const showFileMentionPalette =
@@ -1279,6 +1307,17 @@ export function AgentComposer({
         setIsPaletteOpen(false);
         if (!settingsControlsDisabled) {
           onSettingsChange({ browserUse: true });
+        }
+        return;
+      }
+      if (effect.kind === "enableComputerUse") {
+        const nextDraft = effect.draft;
+        draftPromptRef.current = nextDraft;
+        setPaletteDraftPrompt(nextDraft);
+        onDraftContentChange({ ...draftContent, prompt: nextDraft });
+        setIsPaletteOpen(false);
+        if (!settingsControlsDisabled) {
+          onSettingsChange({ computerUse: true });
         }
         return;
       }

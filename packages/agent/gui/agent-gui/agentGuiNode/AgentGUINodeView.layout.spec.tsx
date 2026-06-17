@@ -1436,6 +1436,8 @@ function createLabels(): AgentGUIViewLabels {
     slashPaletteSkillsGroup: "slashPaletteSkillsGroup",
     browserUseCapabilityLabel: "browserUseCapabilityLabel",
     browserUseCapabilityDescription: "browserUseCapabilityDescription",
+    computerUseCapabilityLabel: "computerUseCapabilityLabel",
+    computerUseCapabilityDescription: "computerUseCapabilityDescription",
     slashStatusTitle: "slashStatusTitle",
     slashStatusSession: "slashStatusSession",
     slashStatusBaseUrl: "slashStatusBaseUrl",
