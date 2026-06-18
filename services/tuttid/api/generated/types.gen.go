@@ -1434,6 +1434,9 @@ type AppFileReference struct {
 	MimeType    *string              `json:"mimeType"`
 	MtimeMs     *int64               `json:"mtimeMs"`
 
+	// ParentGroupLabel Optional label of the group/project this file belongs to, surfaced as the result's context subtitle in cross-source search. Apps should set it on search results so users can tell which project a file is in; when omitted, Tutti falls back to the app display name.
+	ParentGroupLabel *string `json:"parentGroupLabel,omitempty"`
+
 	// Path Absolute filesystem path resolved by tuttid from the app runtime reference location. Workspace app runtimes do not provide this public API field directly.
 	Path      string   `json:"path"`
 	Score     *float32 `json:"score"`
@@ -1501,6 +1504,27 @@ type AppReferenceListResponse struct {
 type AppReferenceListTimeRange struct {
 	FromMs *int64 `json:"fromMs,omitempty"`
 	ToMs   *int64 `json:"toMs,omitempty"`
+}
+
+// AppReferenceSearchRequest defines model for AppReferenceSearchRequest.
+type AppReferenceSearchRequest struct {
+	Cursor *string             `json:"cursor,omitempty"`
+	Kinds  *[]AppReferenceKind `json:"kinds,omitempty"`
+	Limit  *int                `json:"limit,omitempty"`
+	Query  string              `json:"query"`
+
+	// TimeRange Inclusive timestamp range for references. For file references, runtimes should filter by the file mtimeMs when available.
+	TimeRange *AppReferenceListTimeRange `json:"timeRange,omitempty"`
+}
+
+// AppReferenceSearchResponse defines model for AppReferenceSearchResponse.
+type AppReferenceSearchResponse struct {
+	AppId string `json:"appId"`
+
+	// Items Flat, relevance-ordered list of file references. Search never returns group items.
+	Items       []AppReferenceListReferenceItem `json:"items"`
+	NextCursor  *string                         `json:"nextCursor"`
+	WorkspaceId string                          `json:"workspaceId"`
 }
 
 // CheckUserProjectPathRequest defines model for CheckUserProjectPathRequest.
@@ -2654,7 +2678,8 @@ type WorkspaceAppMinimizeBehavior string
 
 // WorkspaceAppReferencesState defines model for WorkspaceAppReferencesState.
 type WorkspaceAppReferencesState struct {
-	ListSupported bool `json:"listSupported"`
+	ListSupported   bool `json:"listSupported"`
+	SearchSupported bool `json:"searchSupported"`
 }
 
 // WorkspaceAppResponse defines model for WorkspaceAppResponse.
@@ -2934,6 +2959,9 @@ type WorkspaceFilePrefetchBudgetMs = int
 // WorkspaceFilePrefetchDepth defines model for WorkspaceFilePrefetchDepth.
 type WorkspaceFilePrefetchDepth = int
 
+// WorkspaceFileRecentLimit defines model for WorkspaceFileRecentLimit.
+type WorkspaceFileRecentLimit = int
+
 // WorkspaceFileSearchKinds defines model for WorkspaceFileSearchKinds.
 type WorkspaceFileSearchKinds = []WorkspaceFileFilterKind
 
@@ -3025,6 +3053,11 @@ type ListWorkspaceFileDirectoryParams struct {
 type ReadWorkspaceFilePreviewParams struct {
 	// Path Omit to resolve the current workspace file root.
 	Path *WorkspaceFilePath `form:"path,omitempty" json:"path,omitempty"`
+}
+
+// ListWorkspaceRecentFilesParams defines parameters for ListWorkspaceRecentFiles.
+type ListWorkspaceRecentFilesParams struct {
+	Limit *WorkspaceFileRecentLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // SearchWorkspaceFilesParams defines parameters for SearchWorkspaceFiles.
@@ -3139,6 +3172,9 @@ type InstallWorkspaceAppJSONRequestBody = InstallWorkspaceAppRequest
 
 // ListWorkspaceAppReferencesJSONRequestBody defines body for ListWorkspaceAppReferences for application/json ContentType.
 type ListWorkspaceAppReferencesJSONRequestBody = AppReferenceListRequest
+
+// SearchWorkspaceAppReferencesJSONRequestBody defines body for SearchWorkspaceAppReferences for application/json ContentType.
+type SearchWorkspaceAppReferencesJSONRequestBody = AppReferenceSearchRequest
 
 // RollbackWorkspaceAppJSONRequestBody defines body for RollbackWorkspaceApp for application/json ContentType.
 type RollbackWorkspaceAppJSONRequestBody = RollbackWorkspaceAppRequest

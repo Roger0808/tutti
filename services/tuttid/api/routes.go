@@ -293,6 +293,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ListWorkspaceAppReferences(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/references/search", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.SearchWorkspaceAppReferences(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/uninstall", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)
@@ -722,6 +730,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 			return
 		}
 		wrapper.GetWorkspaceFileTreeSnapshot(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/files/recent", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ListWorkspaceRecentFiles(w, r)
 	})
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/files/search", func(w http.ResponseWriter, r *http.Request) {

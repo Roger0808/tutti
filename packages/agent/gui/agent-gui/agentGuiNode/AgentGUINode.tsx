@@ -7,6 +7,7 @@ import type {
   WorkspaceFileReference,
   WorkspaceFileReferenceCopy
 } from "@tutti-os/workspace-file-reference/contracts";
+import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type {
   AgentHostManagedAgentsState,
   AgentUsageQuota
@@ -31,7 +32,11 @@ import type {
   AgentGUIOpenSessionRequest,
   AgentGUIPrefillPromptRequest
 } from "./controller/useAgentGUINodeController";
-import { AgentGUINodeView, type AgentGUIViewLabels } from "./AgentGUINodeView";
+import {
+  AgentGUINodeView,
+  type AgentGUIViewLabels,
+  type AgentMentionReferenceTargetResolver
+} from "./AgentGUINodeView";
 import {
   normalizeAgentGUIProviderIdentity,
   resolveAgentGUIDockConversationTitle,
@@ -107,6 +112,8 @@ export interface AgentGUINodeProps {
   workspacePath: string;
   workspaceFileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
+  referenceSourceAggregator?: ReferenceSourceAggregator | null;
+  resolveMentionReferenceTarget?: AgentMentionReferenceTargetResolver | null;
   agentSettings: Pick<AgentSettings, "avoidGroupingEdits">;
   title: string;
   state: AgentGUINodeData;
@@ -406,6 +413,9 @@ function areAgentGUINodePropsEqual(
     previous.workspacePath === next.workspacePath &&
     previous.workspaceFileReferenceAdapter ===
       next.workspaceFileReferenceAdapter &&
+    previous.referenceSourceAggregator === next.referenceSourceAggregator &&
+    previous.resolveMentionReferenceTarget ===
+      next.resolveMentionReferenceTarget &&
     previous.onWorkspaceFileReferencesAdded ===
       next.onWorkspaceFileReferencesAdded &&
     previous.agentSettings.avoidGroupingEdits ===
@@ -456,6 +466,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   workspacePath,
   workspaceFileReferenceAdapter = null,
   onRequestGitBranches = null,
+  referenceSourceAggregator = null,
+  resolveMentionReferenceTarget = null,
   agentSettings,
   title,
   state,
@@ -1246,6 +1258,8 @@ export const AgentGUINode = memo(function AgentGUINode({
             workspaceUserProjectI18n={workspaceUserProjectI18n}
             workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
             onRequestGitBranches={onRequestGitBranches}
+            referenceSourceAggregator={referenceSourceAggregator}
+            resolveMentionReferenceTarget={resolveMentionReferenceTarget}
             workspaceFileReferenceCopy={workspaceFileReferenceCopy}
             contextMentionProviders={contextMentionProviders}
             workspaceAppIcons={workspaceAppIcons}

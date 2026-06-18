@@ -306,6 +306,7 @@ export type WorkspaceAppCliState = {
 
 export type WorkspaceAppReferencesState = {
   listSupported: boolean;
+  searchSupported: boolean;
 };
 
 export type AppReferenceKind = "file";
@@ -339,6 +340,25 @@ export type AppReferenceListResponse = {
   workspaceId: string;
   appId: string;
   items: Array<AppReferenceListItem>;
+  nextCursor: string | null;
+};
+
+export type AppReferenceSearchRequest = {
+  query: string;
+  limit?: number;
+  cursor?: string | null;
+  kinds?: Array<AppReferenceKind>;
+  timeRange?: AppReferenceListTimeRange;
+};
+
+export type AppReferenceSearchResponse = {
+  workspaceId: string;
+  appId: string;
+  /**
+   * Flat, relevance-ordered list of file references. Search never returns group items.
+   *
+   */
+  items: Array<AppReferenceListReferenceItem>;
   nextCursor: string | null;
 };
 
@@ -380,6 +400,11 @@ export type AppFileReference = {
   mtimeMs: number | null;
   mimeType: string | null;
   score: number | null;
+  /**
+   * Optional label of the group/project this file belongs to, surfaced as the result's context subtitle in cross-source search. Apps should set it on search results so users can tell which project a file is in; when omitted, Tutti falls back to the app display name.
+   *
+   */
+  parentGroupLabel?: string | null;
 };
 
 export type WorkspaceAppLocalization = {
@@ -1581,6 +1606,8 @@ export type WorkspaceFileSearchQuery = string;
 
 export type WorkspaceFileSearchLimit = number;
 
+export type WorkspaceFileRecentLimit = number;
+
 export type WorkspaceFileSearchKinds = Array<WorkspaceFileFilterKind>;
 
 export type TerminalId = string;
@@ -2757,6 +2784,56 @@ export type ListWorkspaceAppReferencesResponses = {
 
 export type ListWorkspaceAppReferencesResponse =
   ListWorkspaceAppReferencesResponses[keyof ListWorkspaceAppReferencesResponses];
+
+export type SearchWorkspaceAppReferencesData = {
+  body: AppReferenceSearchRequest;
+  path: {
+    workspaceID: string;
+    appID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/apps/{appID}/references/search";
+};
+
+export type SearchWorkspaceAppReferencesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace app was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SearchWorkspaceAppReferencesError =
+  SearchWorkspaceAppReferencesErrors[keyof SearchWorkspaceAppReferencesErrors];
+
+export type SearchWorkspaceAppReferencesResponses = {
+  /**
+   * Workspace app reference search results
+   */
+  200: AppReferenceSearchResponse;
+};
+
+export type SearchWorkspaceAppReferencesResponse =
+  SearchWorkspaceAppReferencesResponses[keyof SearchWorkspaceAppReferencesResponses];
 
 export type ExportWorkspaceAppData = {
   body: ExportWorkspaceAppRequest;
@@ -4946,6 +5023,57 @@ export type CreateWorkspaceFileDirectoryResponses = {
 
 export type CreateWorkspaceFileDirectoryResponse =
   CreateWorkspaceFileDirectoryResponses[keyof CreateWorkspaceFileDirectoryResponses];
+
+export type ListWorkspaceRecentFilesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: {
+    limit?: number;
+  };
+  url: "/v1/workspaces/{workspaceID}/files/recent";
+};
+
+export type ListWorkspaceRecentFilesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace file entry was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListWorkspaceRecentFilesError =
+  ListWorkspaceRecentFilesErrors[keyof ListWorkspaceRecentFilesErrors];
+
+export type ListWorkspaceRecentFilesResponses = {
+  /**
+   * Workspace recent files listing
+   */
+  200: WorkspaceFileDirectoryResponse;
+};
+
+export type ListWorkspaceRecentFilesResponse =
+  ListWorkspaceRecentFilesResponses[keyof ListWorkspaceRecentFilesResponses];
 
 export type GetWorkspaceFileTreeSnapshotData = {
   body?: never;
