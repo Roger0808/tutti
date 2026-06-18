@@ -70,6 +70,9 @@ func (s *AppCenterService) StartEnabled(ctx context.Context, workspaceID string)
 	if _, err := s.workspaceSummary(ctx, workspaceID); err != nil {
 		return nil, err
 	}
+	if err := s.refreshBuiltinCatalogForStartEnabled(ctx, workspaceID); err != nil {
+		return nil, err
+	}
 	installations, err := s.Store.ListWorkspaceAppInstallations(ctx, workspaceID)
 	if err != nil {
 		return nil, err
@@ -149,6 +152,24 @@ func (s *AppCenterService) StartEnabled(ctx context.Context, workspaceID string)
 		return nil, err
 	}
 	return apps, nil
+}
+
+func (s *AppCenterService) refreshBuiltinCatalogForStartEnabled(ctx context.Context, workspaceID string) error {
+	if s.BuiltinCatalog != nil {
+		return nil
+	}
+	snapshot, err := builtinapps.RefreshRemoteCatalogAndWait(ctx)
+	if err != nil {
+		return err
+	}
+	if snapshot.RemoteCatalog.Status == builtinapps.RemoteCatalogLoadStatusFailed {
+		slog.Warn(
+			"workspace app start enabled remote catalog refresh failed",
+			"workspaceId", workspaceID,
+			"error", snapshot.RemoteCatalog.LastError,
+		)
+	}
+	return nil
 }
 
 func (s *AppCenterService) StopAll(ctx context.Context, workspaceID string) ([]workspacebiz.WorkspaceApp, error) {

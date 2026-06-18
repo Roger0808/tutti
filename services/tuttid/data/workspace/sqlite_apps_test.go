@@ -331,6 +331,60 @@ func TestSQLiteStorePutAppPackageVersionDoesNotActivateVersion(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreDeleteAppPackageVersionRemovesOnlyInactiveVersion(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	manifest := workspacebiz.AppManifest{
+		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+		AppID:         "remote-app",
+		Version:       "1.0.0",
+		Name:          "Remote App v1",
+		Description:   "Remote app",
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap:       "start.sh",
+			HealthcheckPath: "/ready",
+		},
+	}
+	if err := store.PutAppPackage(ctx, workspacebiz.AppPackage{
+		AppID:      manifest.AppID,
+		Version:    manifest.Version,
+		PackageDir: "/tmp/remote-app-1.0.0",
+		Manifest:   manifest,
+		Source:     workspacebiz.AppPackageSourceBuiltin,
+	}); err != nil {
+		t.Fatalf("PutAppPackage() error = %v", err)
+	}
+	manifest.Version = "1.1.0"
+	if err := store.PutAppPackageVersion(ctx, workspacebiz.AppPackage{
+		AppID:      manifest.AppID,
+		Version:    manifest.Version,
+		PackageDir: "/tmp/remote-app-1.1.0",
+		Manifest:   manifest,
+		Source:     workspacebiz.AppPackageSourceBuiltin,
+	}); err != nil {
+		t.Fatalf("PutAppPackageVersion() error = %v", err)
+	}
+
+	if err := store.DeleteAppPackageVersion(ctx, "remote-app", "1.0.0"); err == nil {
+		t.Fatal("DeleteAppPackageVersion(active) error = nil, want active delete error")
+	}
+	if err := store.DeleteAppPackageVersion(ctx, "remote-app", "1.1.0"); err != nil {
+		t.Fatalf("DeleteAppPackageVersion(inactive) error = %v", err)
+	}
+	if _, err := store.GetAppPackageVersion(ctx, "remote-app", "1.1.0"); !errors.Is(err, ErrWorkspaceAppNotFound) {
+		t.Fatalf("GetAppPackageVersion(deleted) error = %v, want ErrWorkspaceAppNotFound", err)
+	}
+	active, err := store.GetAppPackage(ctx, "remote-app")
+	if err != nil {
+		t.Fatalf("GetAppPackage(active) error = %v", err)
+	}
+	if active.Version != "1.0.0" {
+		t.Fatalf("active version = %q, want 1.0.0", active.Version)
+	}
+}
+
 func TestSQLiteStorePutAppPackageVersionCreatesInitialCatalogEntry(t *testing.T) {
 	t.Parallel()
 

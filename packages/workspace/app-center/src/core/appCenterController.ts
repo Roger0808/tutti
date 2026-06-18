@@ -488,9 +488,6 @@ export class WorkspaceAppCenterController extends WorkspaceAppCenterControllerSt
         restartRunning ? { restartRunning: true } : undefined
       );
       this.applySnapshot(input.workspaceId, snapshot);
-      if (restartRunning) {
-        this.closeWorkspaceAppViews(input.workspaceId, [input.appId]);
-      }
       this.dependencies.hooks?.onAppUpdated?.({
         app,
         trigger: input.trigger

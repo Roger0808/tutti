@@ -52,7 +52,7 @@ export const appCenterEn = {
     uninstallAppTitle: 'Uninstall "{{name}}"?',
     updateAppTitle: 'Update "{{name}}"?',
     updateRunningAppDescription:
-      "Updating will restart the app to apply changes.",
+      "The app will restart after the update finishes to apply changes.",
     uninstallAndDeleteAppDescription:
       "This uninstalls the app, deletes its app data, and removes it from your local apps.",
     uninstallAndDeleteAppTitle: 'Uninstall and delete "{{name}}"?'
@@ -335,7 +335,7 @@ export const appCenterZhCN = {
       "这会从当前工作区卸载该应用，并删除此工作区中的应用数据。",
     uninstallAppTitle: "卸载“{{name}}”？",
     updateAppTitle: "更新“{{name}}”？",
-    updateRunningAppDescription: "更新将重启应用后生效。",
+    updateRunningAppDescription: "更新完成后会重启应用以应用更改。",
     uninstallAndDeleteAppDescription:
       "这会卸载该应用、删除应用数据，并从本地应用列表移除。",
     uninstallAndDeleteAppTitle: "卸载并删除“{{name}}”？"

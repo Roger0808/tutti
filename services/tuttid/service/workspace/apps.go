@@ -159,7 +159,7 @@ func (s *AppCenterService) RefreshCatalog(ctx context.Context, workspaceID strin
 		return nil, err
 	}
 	if s.BuiltinCatalog == nil {
-		if _, err := builtinapps.RefreshRemoteCatalog(); err != nil {
+		if _, err := builtinapps.RefreshRemoteCatalogAndWait(ctx); err != nil {
 			return nil, err
 		}
 	}
@@ -214,6 +214,15 @@ func (s *AppCenterService) installPackage(ctx context.Context, workspaceID strin
 	}
 	if err := s.Store.SetActiveAppPackageVersion(ctx, appPackage.AppID, appPackage.Version); err != nil {
 		return workspacebiz.WorkspaceApp{}, err
+	}
+	if err := s.pruneInactiveAppPackageVersions(ctx, appPackage); err != nil {
+		slog.Warn(
+			"workspace app inactive package version prune failed",
+			"workspaceId", workspaceID,
+			"appId", appPackage.AppID,
+			"activeVersion", appPackage.Version,
+			"error", err,
+		)
 	}
 
 	app := workspacebiz.WorkspaceApp{

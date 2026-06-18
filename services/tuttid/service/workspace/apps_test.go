@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -251,6 +252,24 @@ func (s *appStoreStub) DeleteAppPackage(_ context.Context, appID string) error {
 	return nil
 }
 
+func (s *appStoreStub) DeleteAppPackageVersion(_ context.Context, appID string, version string) error {
+	versionPackages, ok := s.packageVersions[appID]
+	if !ok {
+		return workspacedata.ErrWorkspaceAppNotFound
+	}
+	if active, ok := s.packages[appID]; ok && active.Version == version {
+		return errors.New("active workspace app package version cannot be deleted")
+	}
+	if _, ok := versionPackages[version]; !ok {
+		return workspacedata.ErrWorkspaceAppNotFound
+	}
+	delete(versionPackages, version)
+	if len(versionPackages) == 0 {
+		delete(s.packageVersions, appID)
+	}
+	return nil
+}
+
 func (s *appStoreStub) GetAppPackage(_ context.Context, appID string) (workspacebiz.AppPackage, error) {
 	appPackage, ok := s.packages[appID]
 	if !ok {
@@ -280,6 +299,12 @@ func (s *appStoreStub) ListAppPackageVersions(_ context.Context, appID string) (
 	for _, appPackage := range versionPackages {
 		result = append(result, appPackage)
 	}
+	sort.SliceStable(result, func(i int, j int) bool {
+		if result[i].CreatedAtUnixMs != result[j].CreatedAtUnixMs {
+			return result[i].CreatedAtUnixMs > result[j].CreatedAtUnixMs
+		}
+		return result[i].Version > result[j].Version
+	})
 	return result, nil
 }
 
@@ -1062,6 +1087,156 @@ func TestAppCenterServiceStartEnabledDoesNotBlockOnRemoteBuiltinUpdate(t *testin
 	}
 }
 
+func TestAppCenterServiceStartEnabledWaitsForRemoteCatalogRefresh(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("TUTTI_APP_CATALOG_FILE", "")
+	oldDir := createWorkspaceAppPackageForTest(t, t.TempDir(), workspacebiz.AppManifest{
+		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+		AppID:         "large-builtin",
+		Version:       "1.0.0",
+		Name:          "Large Builtin",
+		Description:   "Old large app",
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap:       "bootstrap.sh",
+			HealthcheckPath: "/",
+		},
+	})
+
+	store := newAppStoreStub()
+	if err := store.PutAppPackage(ctx, workspacebiz.AppPackage{
+		AppID:      "large-builtin",
+		Version:    "1.0.0",
+		PackageDir: oldDir,
+		Manifest:   mustReadManifestForTest(t, oldDir),
+		Source:     workspacebiz.AppPackageSourceBuiltin,
+	}); err != nil {
+		t.Fatalf("PutAppPackage() error = %v", err)
+	}
+	if err := store.PutWorkspaceAppInstallation(ctx, workspacebiz.AppInstallation{
+		WorkspaceID: "ws-1",
+		AppID:       "large-builtin",
+		Enabled:     true,
+	}); err != nil {
+		t.Fatalf("PutWorkspaceAppInstallation() error = %v", err)
+	}
+
+	releaseCatalog := make(chan struct{})
+	releaseCatalogOnce := sync.Once{}
+	releaseCatalogResponse := func() {
+		releaseCatalogOnce.Do(func() {
+			close(releaseCatalog)
+		})
+	}
+	t.Cleanup(releaseCatalogResponse)
+	catalogRequested := make(chan struct{})
+	var catalogRequestedOnce sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		catalogRequestedOnce.Do(func() {
+			close(catalogRequested)
+		})
+		<-releaseCatalog
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+			"schemaVersion": "tutti.app.catalog.v1",
+			"apps": [
+				{
+					"manifest": {
+						"schemaVersion": "tutti.app.manifest.v1",
+						"appId": "large-builtin",
+						"version": "1.1.0",
+						"name": "Large Builtin",
+						"description": "New large app",
+						"icon": {"type": "asset", "src": "icon.png"},
+						"runtime": {"bootstrap": "bootstrap.sh", "healthcheckPath": "/"}
+					},
+					"distribution": {
+						"kind": "remote",
+						"artifactUrl": "https://cdn.example.test/large-builtin.zip",
+						"artifactSha256": "sha256",
+						"iconUrl": "https://cdn.example.test/large-builtin.png"
+					}
+				}
+			]
+		}`))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("TUTTI_APP_CATALOG_URL", server.URL+"/catalog.json")
+
+	fetcher := newBlockingArtifactFetcher()
+	releaseFetchOnce := sync.Once{}
+	releaseFetch := func() {
+		releaseFetchOnce.Do(func() {
+			close(fetcher.release)
+		})
+	}
+	t.Cleanup(releaseFetch)
+	runner := &AppRunner{RuntimeResolver: &preloadThenFailRuntimeResolver{called: make(chan struct{}), startErr: errors.New("skip runtime")}}
+	service := AppCenterService{
+		Store:           store,
+		WorkspaceStore:  &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+		Runner:          runner,
+		StateDir:        t.TempDir(),
+		ArtifactFetcher: fetcher,
+	}
+
+	resultCh := make(chan struct {
+		apps []workspacebiz.WorkspaceApp
+		err  error
+	}, 1)
+	go func() {
+		apps, err := service.StartEnabled(ctx, "ws-1")
+		resultCh <- struct {
+			apps []workspacebiz.WorkspaceApp
+			err  error
+		}{apps: apps, err: err}
+	}()
+
+	select {
+	case <-catalogRequested:
+	case result := <-resultCh:
+		t.Fatalf("StartEnabled() returned before catalog request completed: %#v", result)
+	case <-time.After(time.Second):
+		t.Fatal("remote catalog was not requested")
+	}
+	select {
+	case result := <-resultCh:
+		t.Fatalf("StartEnabled() returned before catalog refresh result: %#v", result)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	releaseCatalogResponse()
+	var result struct {
+		apps []workspacebiz.WorkspaceApp
+		err  error
+	}
+	select {
+	case result = <-resultCh:
+		if result.err != nil {
+			t.Fatalf("StartEnabled() error = %v", result.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("StartEnabled() did not return after catalog refresh completed")
+	}
+	app := findWorkspaceAppForTest(result.apps, "large-builtin")
+	if app == nil || app.Installation == nil || app.Package.Version != "1.0.0" || !app.UpdateAvailable || app.AvailableVersion == nil || *app.AvailableVersion != "1.1.0" {
+		t.Fatalf("StartEnabled() app = %#v", app)
+	}
+	if state := runner.State("ws-1", "large-builtin"); state.Status != workspacebiz.AppRuntimeStatusIdle {
+		t.Fatalf("runner status = %q, want idle", state.Status)
+	}
+	select {
+	case <-fetcher.started:
+	case <-time.After(time.Second):
+		t.Fatal("background remote builtin update did not start")
+	}
+	releaseFetch()
+	select {
+	case <-fetcher.done:
+	case <-time.After(time.Second):
+		t.Fatal("background remote builtin update did not finish")
+	}
+}
+
 func TestAppCenterServiceStartEnabledUpdatesRemoteBuiltinBeforeStartingIt(t *testing.T) {
 	t.Parallel()
 
@@ -1159,6 +1334,82 @@ func TestAppCenterServiceStartEnabledUpdatesRemoteBuiltinBeforeStartingIt(t *tes
 		t.Fatalf("active package version = %q, want 1.1.0", active.Version)
 	}
 	waitForRunnerStatus(t, runner, "ws-1", "large-builtin", workspacebiz.AppRuntimeStatusFailed)
+}
+
+func TestAppCenterServiceInstallPackagePrunesOldInactiveVersions(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	createVersion := func(version string, createdAt int64) workspacebiz.AppPackage {
+		dir := createWorkspaceAppPackageForTest(t, t.TempDir(), workspacebiz.AppManifest{
+			SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+			AppID:         "large-builtin",
+			Version:       version,
+			Name:          "Large Builtin",
+			Description:   "Large app",
+			Runtime: workspacebiz.AppManifestRuntime{
+				Bootstrap:       "bootstrap.sh",
+				HealthcheckPath: "/",
+			},
+		})
+		return workspacebiz.AppPackage{
+			AppID:           "large-builtin",
+			Version:         version,
+			PackageDir:      dir,
+			Manifest:        mustReadManifestForTest(t, dir),
+			Source:          workspacebiz.AppPackageSourceBuiltin,
+			CreatedAtUnixMs: createdAt,
+		}
+	}
+	oldPackage := createVersion("1.0.0", 1000)
+	previousPackage := createVersion("1.1.0", 2000)
+	activePackage := createVersion("1.2.0", 3000)
+
+	store := newAppStoreStub()
+	if err := store.PutAppPackage(ctx, oldPackage); err != nil {
+		t.Fatalf("PutAppPackage(old) error = %v", err)
+	}
+	if err := store.PutAppPackageVersion(ctx, previousPackage); err != nil {
+		t.Fatalf("PutAppPackageVersion(previous) error = %v", err)
+	}
+	if err := store.SetActiveAppPackageVersion(ctx, "large-builtin", "1.1.0"); err != nil {
+		t.Fatalf("SetActiveAppPackageVersion(previous) error = %v", err)
+	}
+	if err := store.PutAppPackageVersion(ctx, activePackage); err != nil {
+		t.Fatalf("PutAppPackageVersion(active) error = %v", err)
+	}
+	runner := &AppRunner{RuntimeResolver: &appRuntimeResolverStub{called: make(chan struct{}), err: errors.New("skip runtime")}}
+	service := AppCenterService{
+		Store:          store,
+		WorkspaceStore: &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+		Runner:         runner,
+		StateDir:       t.TempDir(),
+	}
+
+	if _, err := service.installPackage(ctx, "ws-1", activePackage, InstallOptions{}); err != nil {
+		t.Fatalf("installPackage() error = %v", err)
+	}
+	waitForRunnerStatus(t, runner, "ws-1", "large-builtin", workspacebiz.AppRuntimeStatusFailed)
+
+	if _, err := store.GetAppPackageVersion(ctx, "large-builtin", "1.0.0"); !errors.Is(err, workspacedata.ErrWorkspaceAppNotFound) {
+		t.Fatalf("old package version error = %v, want ErrWorkspaceAppNotFound", err)
+	}
+	if _, err := os.Stat(oldPackage.PackageDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("old package dir stat error = %v, want not exist", err)
+	}
+	if _, err := store.GetAppPackageVersion(ctx, "large-builtin", "1.1.0"); err != nil {
+		t.Fatalf("previous package version error = %v", err)
+	}
+	if _, err := os.Stat(previousPackage.PackageDir); err != nil {
+		t.Fatalf("previous package dir stat error = %v", err)
+	}
+	active, err := store.GetAppPackage(ctx, "large-builtin")
+	if err != nil {
+		t.Fatalf("GetAppPackage(active) error = %v", err)
+	}
+	if active.Version != "1.2.0" {
+		t.Fatalf("active version = %q, want 1.2.0", active.Version)
+	}
 }
 
 func TestAppCenterServiceStartEnabledRepairsMissingRemoteBuiltinCacheBeforeStarting(t *testing.T) {

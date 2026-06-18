@@ -105,11 +105,38 @@ func RefreshRemoteCatalog() (CatalogSnapshot, error) {
 	return snapshot(true)
 }
 
+func RefreshRemoteCatalogAndWait(ctx context.Context) (CatalogSnapshot, error) {
+	return snapshotAndWait(ctx)
+}
+
 func snapshot(refreshRemote bool) (CatalogSnapshot, error) {
 	apps := []App{}
 
 	source := currentRemoteCatalogSource()
 	remote, err := remoteCatalogSnapshot(source, refreshRemote)
+	if err != nil {
+		return CatalogSnapshot{}, err
+	}
+	if remote.state.Status == RemoteCatalogLoadStatusDisabled {
+		return CatalogSnapshot{Apps: apps, RemoteCatalog: remote.state}, nil
+	}
+
+	mergedApps, err := mergeCatalogs(apps, remote.apps)
+	if err != nil {
+		if source.kind == remoteCatalogSourceFile {
+			return CatalogSnapshot{}, err
+		}
+		failedState := failedRemoteCatalogLoadState(err)
+		return CatalogSnapshot{Apps: apps, RemoteCatalog: failedState}, nil
+	}
+	return CatalogSnapshot{Apps: mergedApps, RemoteCatalog: remote.state}, nil
+}
+
+func snapshotAndWait(ctx context.Context) (CatalogSnapshot, error) {
+	apps := []App{}
+
+	source := currentRemoteCatalogSource()
+	remote, err := remoteCatalogSnapshotAndWait(ctx, source)
 	if err != nil {
 		return CatalogSnapshot{}, err
 	}
@@ -214,6 +241,7 @@ type asyncRemoteCatalogLoader struct {
 	mu      sync.Mutex
 	source  string
 	loading bool
+	done    chan struct{}
 	apps    []App
 	state   RemoteCatalogLoadState
 }
@@ -238,6 +266,26 @@ func remoteCatalogSnapshot(source remoteCatalogSource, refresh bool) (remoteCata
 			return defaultRemoteCatalogLoader.refresh(source.value), nil
 		}
 		return defaultRemoteCatalogLoader.snapshot(source.value), nil
+	}
+}
+
+func remoteCatalogSnapshotAndWait(ctx context.Context, source remoteCatalogSource) (remoteCatalogResult, error) {
+	switch source.kind {
+	case remoteCatalogSourceNone:
+		return remoteCatalogResult{
+			state: RemoteCatalogLoadState{Status: RemoteCatalogLoadStatusDisabled},
+		}, nil
+	case remoteCatalogSourceFile:
+		apps, err := loadRemoteCatalogFromFile(source.value)
+		if err != nil {
+			return remoteCatalogResult{}, err
+		}
+		return remoteCatalogResult{
+			apps:  apps,
+			state: readyRemoteCatalogLoadState(),
+		}, nil
+	default:
+		return defaultRemoteCatalogLoader.refreshAndWait(ctx, source.value)
 	}
 }
 
@@ -277,8 +325,7 @@ func (l *asyncRemoteCatalogLoader) snapshot(catalogURL string) remoteCatalogResu
 		l.state = RemoteCatalogLoadState{Status: RemoteCatalogLoadStatusLoading}
 	}
 	if l.state.Status == RemoteCatalogLoadStatusLoading && !l.loading {
-		l.loading = true
-		go l.load(catalogURL)
+		l.startLoadLocked(catalogURL)
 	}
 
 	return remoteCatalogResult{
@@ -298,8 +345,7 @@ func (l *asyncRemoteCatalogLoader) refresh(catalogURL string) remoteCatalogResul
 	}
 	l.state = RemoteCatalogLoadState{Status: RemoteCatalogLoadStatusLoading}
 	if !l.loading {
-		l.loading = true
-		go l.load(catalogURL)
+		l.startLoadLocked(catalogURL)
 	}
 
 	return remoteCatalogResult{
@@ -308,12 +354,63 @@ func (l *asyncRemoteCatalogLoader) refresh(catalogURL string) remoteCatalogResul
 	}
 }
 
-func (l *asyncRemoteCatalogLoader) load(catalogURL string) {
+func (l *asyncRemoteCatalogLoader) refreshAndWait(ctx context.Context, catalogURL string) (remoteCatalogResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	l.mu.Lock()
+	if l.source != catalogURL {
+		l.source = catalogURL
+		l.loading = false
+		l.apps = nil
+	}
+	l.state = RemoteCatalogLoadState{Status: RemoteCatalogLoadStatusLoading}
+	if !l.loading {
+		l.startLoadLocked(catalogURL)
+	}
+	done := l.done
+	for l.loading {
+		l.mu.Unlock()
+		select {
+		case <-done:
+		case <-ctx.Done():
+			l.mu.Lock()
+			result := remoteCatalogResult{
+				apps:  append([]App(nil), l.apps...),
+				state: l.state,
+			}
+			l.mu.Unlock()
+			return result, ctx.Err()
+		}
+		l.mu.Lock()
+		done = l.done
+	}
+	result := remoteCatalogResult{
+		apps:  append([]App(nil), l.apps...),
+		state: l.state,
+	}
+	l.mu.Unlock()
+	return result, nil
+}
+
+func (l *asyncRemoteCatalogLoader) startLoadLocked(catalogURL string) {
+	l.loading = true
+	done := make(chan struct{})
+	l.done = done
+	go l.load(catalogURL, done)
+}
+
+func (l *asyncRemoteCatalogLoader) load(catalogURL string, done chan struct{}) {
 	slog.Info("remote app catalog fetch started", "url", catalogURL)
 	apps, err := fetchRemoteCatalogWithRetries(catalogURL)
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	defer close(done)
+	if l.done == done {
+		l.done = nil
+	}
 	if l.source != catalogURL {
 		return
 	}

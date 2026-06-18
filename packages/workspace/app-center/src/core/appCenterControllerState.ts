@@ -163,15 +163,15 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
       });
       return;
     }
-    const appIdsToClose =
-      currentApp?.installed === true && !nextApp.installed
-        ? [nextApp.appId]
-        : [];
     const mergedApp = this.mergeActiveInstallAppState(
       workspaceId,
       nextApp,
       currentApp
     );
+    const appIdsToClose =
+      currentApp?.installed === true && !mergedApp.installed
+        ? [nextApp.appId]
+        : [];
 
     const nextApps = sortWorkspaceAppCenterApps([
       ...this.store.apps.filter(
