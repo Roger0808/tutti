@@ -4,6 +4,38 @@ import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-me
 import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import { createDesktopWorkspaceAppMentionProvider } from "./desktopWorkspaceAppMentionProvider.ts";
 
+test("workspace app mention provider lists installed App Center apps without CLI capabilities", async () => {
+  const provider = createDesktopWorkspaceAppMentionProvider({
+    apps: [
+      createWorkspaceApp({
+        appId: "vibe-design",
+        description: "Design prototypes in Tutti.",
+        name: "Vibe Design"
+      }),
+      createWorkspaceApp({
+        appId: "group-chat",
+        description: "Workspace group chat.",
+        enabled: false,
+        name: "Group Chat"
+      })
+    ],
+    baseProvider: createBaseWorkspaceAppProvider([]),
+    locale: "en",
+    workspaceId: "workspace-1"
+  });
+
+  const items = await provider.query({
+    context: {},
+    trigger: "@",
+    keyword: "",
+    maxResults: 10
+  });
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.appId, "vibe-design");
+  assert.equal(provider.getItemLabel(items[0]!), "Vibe Design");
+});
+
 test("workspace app mention provider uses localized Chinese app text", async () => {
   const provider = createDesktopWorkspaceAppMentionProvider({
     apps: [

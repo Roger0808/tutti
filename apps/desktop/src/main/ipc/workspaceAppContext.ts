@@ -11,7 +11,8 @@ import {
   type DesktopWorkspaceAppExternalRendererRequest,
   type DesktopWorkspaceAppExternalRendererResponse,
   type DesktopWorkspaceAppExternalRendererResult,
-  type DesktopWorkspaceAppContext
+  type DesktopWorkspaceAppContext,
+  type DesktopWorkspaceAppOpenFileRequest
 } from "../../shared/contracts/ipc";
 import {
   normalizeTuttiExternalAtQueryInput,
@@ -23,6 +24,7 @@ import {
 } from "@tutti-os/workspace-external-core/core";
 import type {
   TuttiExternalAtQueryResult,
+  TuttiExternalFileOpenInput,
   TuttiExternalFileSelectResult,
   TuttiExternalManagedAiModel,
   TuttiExternalManagedAiModelProviderId,
@@ -47,6 +49,7 @@ import {
   WorkspaceAppFrontendLogWriter,
   WorkspaceAppGuestLogRateLimiter
 } from "./workspaceAppFrontendLogging.ts";
+import { resolveWorkspaceAppOpenFilePayload } from "../host/workspaceAppFileOpen.ts";
 
 const workspaceAppGuestWebContents = new Set<WebContents>();
 const workspaceAppGuestContexts = new Map<number, WorkspaceAppGuestContext>();
@@ -153,13 +156,16 @@ export function registerWorkspaceAppContextIpc(
     async (event, payload) => {
       const context = requireWorkspaceAppGuestContext(event.sender);
       const input = normalizeTuttiExternalFileOpenInput(payload);
-      return requestWorkspaceAppExternalRenderer<void>(context, {
+      const request = toWorkspaceAppOpenFileRequest(input, payload);
+      const resolved = await resolveWorkspaceAppOpenFilePayload({
         appId: context.appID,
-        input,
-        operation: "files.open",
-        requestId: randomUUID(),
+        request,
         workspaceId: context.workspaceID
       });
+      context.ownerWindow.webContents.send(
+        desktopIpcChannels.appContext.openFileRequested,
+        resolved
+      );
     }
   );
   registerDesktopIpcHandler(
@@ -490,6 +496,7 @@ function createWorkspaceAppContext(
   const installationId = `${context.workspaceID}:${context.appID}`;
   return {
     appId: context.appID,
+    capabilities: ["files.open@1"],
     contextToken: createWorkspaceAppContextToken(endpoint, context, {
       installationId,
       issuer
@@ -606,4 +613,38 @@ function broadcastWorkspaceAppContext(payload: { locale: string }): void {
     }
     contents.send(desktopIpcChannels.appContext.changed, payload);
   }
+}
+
+function toWorkspaceAppOpenFileRequest(
+  input: TuttiExternalFileOpenInput,
+  payload: unknown
+): DesktopWorkspaceAppOpenFileRequest {
+  const request: DesktopWorkspaceAppOpenFileRequest = { ...input };
+  if (!isRecord(payload)) {
+    return request;
+  }
+
+  const location = payload.location;
+  if (isRecord(location) && typeof location.path === "string") {
+    const locationType = location.type;
+    if (
+      locationType === "app-data-relative" ||
+      locationType === "app-package-relative" ||
+      locationType === "workspace-relative"
+    ) {
+      request.location = {
+        path: location.path.trim(),
+        type: locationType
+      };
+    }
+  }
+
+  if (
+    typeof payload.packageVersion === "string" ||
+    payload.packageVersion === null
+  ) {
+    request.packageVersion = payload.packageVersion;
+  }
+
+  return request;
 }

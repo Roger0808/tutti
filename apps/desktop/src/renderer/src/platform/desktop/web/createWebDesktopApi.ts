@@ -258,6 +258,9 @@ function createWebHostApi(): DesktopHostApi {
       readLocalFileText() {
         return Promise.reject(electronDebugRequired("readLocalFileText"));
       },
+      readLocalPreviewFile() {
+        return Promise.reject(electronDebugRequired("readLocalPreviewFile"));
+      },
       readPreviewFile() {
         return Promise.reject(electronDebugRequired("readPreviewFile"));
       },
@@ -295,6 +298,9 @@ function createWebHostApi(): DesktopHostApi {
       }
     },
     workspace: {
+      onOpenFileRequest() {
+        return () => {};
+      },
       openWorkspaceAppFolder() {
         return Promise.reject(electronDebugRequired("openWorkspaceAppFolder"));
       },

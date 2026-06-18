@@ -66,7 +66,12 @@ export function createDesktopWorkspaceAppMentionProvider({
       const appMetadataById = new Map(
         apps.map((app) => [app.appId, app] as const)
       );
-      return baseItems
+      const coveredAppIds = new Set(
+        baseItems
+          .map((item) => workspaceAppIdFromProviderItem(baseProvider, item))
+          .filter((appId) => appId.length > 0)
+      );
+      const fromBase = baseItems
         .map((item) =>
           workspaceAppToMentionItem({
             app: appMetadataById.get(
@@ -81,10 +86,20 @@ export function createDesktopWorkspaceAppMentionProvider({
         .filter((item): item is DesktopWorkspaceAppMentionItem => item !== null)
         .filter((item) =>
           matchesWorkspaceAppMentionKeyword(item, normalizedKeyword)
-        )
-        .sort((left, right) =>
-          left.displayName.localeCompare(right.displayName, locale)
         );
+      const fromAppCenter = apps
+        .filter(
+          (app) => app.installed && app.enabled && !coveredAppIds.has(app.appId)
+        )
+        .map((app) =>
+          workspaceAppCenterAppToMentionItem(app, locale, workspaceId)
+        )
+        .filter((item) =>
+          matchesWorkspaceAppMentionKeyword(item, normalizedKeyword)
+        );
+      return [...fromBase, ...fromAppCenter].sort((left, right) =>
+        left.displayName.localeCompare(right.displayName, locale)
+      );
     },
     toInsertResult: (item) => ({
       kind: "mention",
@@ -101,6 +116,51 @@ export function createDesktopWorkspaceAppMentionProvider({
         })
       }
     })
+  };
+}
+
+function workspaceAppCenterAppToMentionItem(
+  app: WorkspaceAppCenterApp,
+  locale: string,
+  workspaceId: string
+): DesktopWorkspaceAppMentionItem {
+  const localization = findWorkspaceAppLocalization(app, locale);
+  const displayName =
+    normalizeText(localization?.name) ?? normalizeText(app.name) ?? app.appId;
+  const description =
+    normalizeText(localization?.description) ??
+    normalizeText(app.description) ??
+    "";
+  const iconUrl =
+    normalizeText(app.iconUrl) ?? normalizeText(app.availableIconUrl) ?? null;
+  const baseInsertResult: AgentContextMentionInsertResult = {
+    kind: "mention",
+    mention: {
+      entityId: app.appId,
+      label: displayName,
+      scope: compactStringRecord({
+        workspaceId
+      }),
+      presentation: compactMentionPresentation({
+        description,
+        iconUrl: iconUrl ?? "",
+        subtitle: description
+      })
+    }
+  };
+  return {
+    appId: app.appId,
+    baseItem: app,
+    baseInsertResult,
+    commandCount: "",
+    commandDescriptions: "",
+    commandPaths: "",
+    commandSummaries: "",
+    description,
+    displayName,
+    iconUrl,
+    scopes: "",
+    workspaceId
   };
 }
 

@@ -48,6 +48,7 @@ export const desktopIpcChannels = {
     changed: "workspace-app-context:changed",
     diagnostic: "workspace-app-context:diagnostic",
     get: "workspace-app-context:get",
+    openFileRequested: "workspace-app-files:open-requested",
     openUrl: "workspace-app:open-url"
   },
   appExternal: {
@@ -125,6 +126,7 @@ export const desktopIpcChannels = {
       revealWorkspaceFile: "host:files:revealWorkspaceFile",
       openTerminalLink: "host:files:openTerminalLink",
       readLocalFileText: "host:files:readLocalFileText",
+      readLocalPreviewFile: "host:files:readLocalPreviewFile",
       readPreviewFile: "host:files:readPreviewFile",
       resolveEntryIcon: "host:files:resolveEntryIcon",
       selectAppArchive: "host:files:selectAppArchive",
@@ -280,6 +282,38 @@ export interface DesktopWorkspaceAppContext {
 }
 
 export type DesktopWorkspaceAppFrontendLogPayload = TuttiExternalLogInput;
+
+export type DesktopWorkspaceAppOpenFileMode = "auto" | "preview" | "reveal";
+
+export type DesktopWorkspaceAppOpenFileLocationType =
+  | "app-data-relative"
+  | "app-package-relative"
+  | "workspace-relative";
+
+export interface DesktopWorkspaceAppOpenFileLocation {
+  path: string;
+  type: DesktopWorkspaceAppOpenFileLocationType;
+}
+
+export interface DesktopWorkspaceAppOpenFileRequest {
+  location?: DesktopWorkspaceAppOpenFileLocation;
+  mode?: DesktopWorkspaceAppOpenFileMode;
+  mtimeMs?: number | null;
+  name?: string;
+  packageVersion?: string | null;
+  path: string;
+  sizeBytes?: number | null;
+}
+
+export interface DesktopWorkspaceAppOpenFileResolvedPayload {
+  absolutePath: string;
+  appId: string;
+  mode: DesktopWorkspaceAppOpenFileMode;
+  mtimeMs: number | null;
+  name: string;
+  sizeBytes: number | null;
+  workspaceId: string;
+}
 
 export interface DesktopBackendConfig {
   accessToken: string;
@@ -570,6 +604,7 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.host.files
     .openTerminalLink]: DesktopTerminalLinkPathPayload;
   [desktopIpcChannels.host.files.readLocalFileText]: string;
+  [desktopIpcChannels.host.files.readLocalPreviewFile]: string;
   [desktopIpcChannels.host.files
     .readPreviewFile]: DesktopWorkspaceFilePathPayload;
   [desktopIpcChannels.host.files
@@ -652,6 +687,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.files.revealWorkspaceFile]: void;
   [desktopIpcChannels.host.files.openTerminalLink]: void;
   [desktopIpcChannels.host.files.readLocalFileText]: DesktopLocalFileTextResult;
+  [desktopIpcChannels.host.files.readLocalPreviewFile]: Uint8Array;
   [desktopIpcChannels.host.files.readPreviewFile]: Uint8Array;
   [desktopIpcChannels.host.files.resolveEntryIcon]: string | null;
   [desktopIpcChannels.host.files.selectAppArchive]: string | null;
