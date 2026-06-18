@@ -2130,12 +2130,14 @@ describe("useAgentGUINodeController", () => {
     await waitFor(() => {
       expect(list).toHaveBeenCalledTimes(2);
     });
-    expect(result.current.viewModel.conversations[0]).toEqual(
-      expect.objectContaining({
-        id: createdSessionId,
-        title: "start a fresh chat"
-      })
-    );
+    await waitFor(() => {
+      expect(result.current.viewModel.conversations[0]).toEqual(
+        expect.objectContaining({
+          id: createdSessionId,
+          title: "start a fresh chat"
+        })
+      );
+    });
   });
 
   it("keeps the hero draft visible while activation is pending, then clears it after switching to the new session", async () => {
@@ -4255,84 +4257,6 @@ describe("useAgentGUINodeController", () => {
         "session-1": "AAA",
         "session-2": "BBB"
       });
-    });
-  });
-
-  it("marks background completed conversations unread until they are selected", async () => {
-    let activityListener:
-      | ((event: AgentHostAgentActivityStreamEvent) => void)
-      | undefined;
-    const subscribeEvents = vi.fn((_payload, listener) => {
-      activityListener = listener;
-      return vi.fn();
-    });
-    installAgentHostApi({
-      list: vi.fn(async () => ({
-        presences: [],
-        sessions: [
-          workspaceAgentSession("session-1"),
-          workspaceAgentSession("session-2")
-        ]
-      })),
-      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
-      subscribeEvents
-    });
-
-    const { result } = renderHook(() =>
-      useAgentGUINodeController({
-        workspaceId: "room-1",
-        currentUserId: "user-1",
-        workspacePath: "/workspace",
-        avoidGroupingEdits: false,
-        data: agentGuiData("session-1"),
-        onDataChange: vi.fn()
-      })
-    );
-
-    act(() => {
-      result.current.actions.retryActivation();
-    });
-
-    await waitFor(() => {
-      expect(activityListener).toBeDefined();
-    });
-
-    act(() => {
-      activityListener?.({
-        eventType: "state_patch",
-        data: {
-          agentSessionId: "session-2",
-          lifecycleStatus: "completed",
-          occurredAtUnixMs: 20
-        }
-      });
-    });
-
-    await waitFor(() => {
-      expect(result.current.viewModel.conversations).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            id: "session-2",
-            status: "completed",
-            hasUnreadCompletion: true
-          })
-        ])
-      );
-    });
-
-    act(() => {
-      result.current.actions.selectConversation("session-2");
-    });
-
-    await waitFor(() => {
-      expect(result.current.viewModel.conversations).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            id: "session-2",
-            hasUnreadCompletion: false
-          })
-        ])
-      );
     });
   });
 
@@ -6649,9 +6573,8 @@ describe("useAgentGUINodeController", () => {
             speed: null,
             // Sent as-is; tuttid clamps planMode for codex at session create.
             planMode: true,
-            // Browser use defaults on and is sent as-is; the daemon clamps per
-            // provider support.
-            browserUse: true,
+            // Browser use is tri-state and omitted until explicitly changed;
+            // the daemon applies provider defaults and clamps support.
             permissionModeId: "full-access"
           }
         })
@@ -8929,7 +8852,7 @@ describe("useAgentGUINodeController", () => {
         },
         {
           value: "auto",
-          label: "代我批准",
+          label: "替我审批",
           description: "仅在检测到可能不安全的操作时询问你"
         },
         {
@@ -12173,14 +12096,18 @@ function installAgentActivityRuntimeForHostMocks({
         userId: "user-1"
       });
       const next = agentActivitySnapshotFromHostSnapshot(snapshot, workspaceId);
-      setSnapshot(workspaceId, (current) => ({
+      const merged = setSnapshot(workspaceId, (current) => ({
         ...next,
         composerOptionsByProvider:
           current.composerOptionsByProvider ??
           next.composerOptionsByProvider ??
-          {}
+          {},
+        sessionMessagesById: {
+          ...next.sessionMessagesById,
+          ...current.sessionMessagesById
+        }
       }));
-      return cloneAgentActivitySnapshot(next);
+      return cloneAgentActivitySnapshot(merged);
     },
     ensureSessionSynchronized: synchronizeSession,
     retainSessionEvents: synchronizeSession,

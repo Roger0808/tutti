@@ -75,6 +75,7 @@ type stubAgentSessionService struct {
 	listGitBranchesFn        func(context.Context, string, string) (agentservice.GitBranches, error)
 	listGitBranchesForPathFn func(context.Context, string, string) (agentservice.GitBranches, error)
 	updatePinFn              func(context.Context, string, string, bool) (agentservice.Session, error)
+	updateVisibleFn          func(context.Context, string, string, bool) (agentservice.Session, error)
 	updateSettingsFn         func(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
 }
 
@@ -254,6 +255,13 @@ func (s stubAgentSessionService) UpdatePin(ctx context.Context, workspaceID stri
 		return agentservice.Session{}, nil
 	}
 	return s.updatePinFn(ctx, workspaceID, agentSessionID, pinned)
+}
+
+func (s stubAgentSessionService) UpdateVisible(ctx context.Context, workspaceID string, agentSessionID string, visible bool) (agentservice.Session, error) {
+	if s.updateVisibleFn == nil {
+		return agentservice.Session{}, nil
+	}
+	return s.updateVisibleFn(ctx, workspaceID, agentSessionID, visible)
 }
 
 func (s stubAgentSessionService) UpdateSettings(ctx context.Context, workspaceID string, agentSessionID string, settings agentservice.ComposerSettingsPatch) (agentservice.Session, error) {
@@ -803,6 +811,50 @@ func TestDaemonAPIGeneratedRoutesUpdateAgentSessionPin(t *testing.T) {
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesUpdateAgentSessionVisibility(t *testing.T) {
+	createdAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			updateVisibleFn: func(_ context.Context, workspaceID string, agentSessionID string, visible bool) (agentservice.Session, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if agentSessionID != "session-1" {
+					t.Fatalf("agentSessionID = %q, want session-1", agentSessionID)
+				}
+				if !visible {
+					t.Fatal("visible = false, want true")
+				}
+				return agentservice.Session{
+					ID:        agentSessionID,
+					Provider:  "claude-code",
+					Status:    "created",
+					Visible:   visible,
+					CreatedAt: createdAt,
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/agent-sessions/session-1/visibility",
+		map[string]any{"visible": true},
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceAgentSessionResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if !response.Session.Visible {
+		t.Fatal("response visible = false, want true")
+	}
+}
+
 func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
@@ -837,7 +889,7 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 						DefaultValue: "auto",
 						Modes: []agentservice.PermissionModeOption{{
 							ID:          "auto",
-							Label:       "代我批准",
+							Label:       "替我审批",
 							Description: "仅在检测到可能不安全的操作时询问你",
 							Semantic:    agentservice.PermissionModeSemanticAuto,
 						}},
@@ -899,7 +951,7 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 	if response.ModelConfig.CurrentValue == nil || *response.ModelConfig.CurrentValue != "gpt-5" {
 		t.Fatalf("modelConfig = %#v", response.ModelConfig)
 	}
-	if response.PermissionConfig.DefaultValue == nil || *response.PermissionConfig.DefaultValue != "auto" || response.PermissionConfig.Modes[0].Label != "代我批准" {
+	if response.PermissionConfig.DefaultValue == nil || *response.PermissionConfig.DefaultValue != "auto" || response.PermissionConfig.Modes[0].Label != "替我审批" {
 		t.Fatalf("permissionConfig = %#v", response.PermissionConfig)
 	}
 	if response.ReasoningConfig.Options[0].Label != "高" {

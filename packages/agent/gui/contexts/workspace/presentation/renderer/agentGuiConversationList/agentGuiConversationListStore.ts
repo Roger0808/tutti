@@ -64,6 +64,14 @@ type RefreshReason =
   | "local-create"
   | "local-delete"
   | "workspace-agent-update";
+type ConversationListUpdateReason =
+  | RefreshReason
+  | "active-conversation"
+  | "completion-observed"
+  | "external-update"
+  | "local-created"
+  | "pin-changed"
+  | "submit-pending";
 
 const EMPTY_SNAPSHOT: AgentGUIConversationListStoreSnapshot = {
   statesByQueryKey: {}
@@ -724,7 +732,21 @@ async function refreshAgentGUIConversationListQuery(
       queryKey,
       localCreatedConversationIds
     );
+    const currentConversations = getQueryState(query)?.conversations ?? [];
+    const currentConversationById = new Map(
+      currentConversations.map((conversation) => [
+        conversation.id,
+        conversation
+      ])
+    );
     const retainedSessionIds = new Set(retainedSnapshotSessionIds);
+    if (reason === "workspace-agent-update") {
+      for (const conversation of currentConversations) {
+        if (!nextDeletedConversationIds.has(conversation.id)) {
+          retainedSessionIds.add(conversation.id);
+        }
+      }
+    }
     if (retainedSnapshotSessionIds.size > 0) {
       for (const agentSessionId of localCreatedConversationIds) {
         if (!nextDeletedConversationIds.has(agentSessionId)) {
@@ -733,7 +755,6 @@ async function refreshAgentGUIConversationListQuery(
       }
     }
 
-    const currentConversations = getQueryState(query)?.conversations ?? [];
     const nextConversations = sortConversationsByRecency(
       mergeLoadedConversations(
         currentConversations,
@@ -744,6 +765,7 @@ async function refreshAgentGUIConversationListQuery(
       ),
       createConversationOrderIndex(currentConversations)
     ).map((conversation) => {
+      const currentConversation = currentConversationById.get(conversation.id);
       const sessionViewData = sessionViewDataById[conversation.id];
       const mergedMessages =
         sessionMessagesByIdForSummaries[conversation.id] ??
@@ -761,6 +783,13 @@ async function refreshAgentGUIConversationListQuery(
         ...(title
           ? { title: title.title, titleFallback: title.titleFallback }
           : {}),
+        hasUnreadCompletion:
+          conversation.status === "completed"
+            ? currentConversation?.status !== "completed" &&
+              !hasActiveConversationOwner(queryKey, conversation.id)
+              ? true
+              : (conversation.hasUnreadCompletion ?? false)
+            : false,
         status: conversation.status,
         updatedAtUnixMs: conversation.updatedAtUnixMs,
         pinnedAtUnixMs: conversation.pinnedAtUnixMs
@@ -912,6 +941,24 @@ export function ensureAgentGUIConversationListQuery(
   ensureQueryState(query);
 }
 
+export function isAgentGUIConversationListRefreshing(
+  query: AgentGUIConversationListQuery | null
+): boolean {
+  if (!query) return false;
+  const key = createAgentGUIConversationListQueryKey(query);
+  return key !== null && inflightRefreshByQueryKey.has(key);
+}
+
+export function getDeletedAgentGUIConversationIds(
+  query: AgentGUIConversationListQuery | null
+): ReadonlySet<string> {
+  if (!query) return new Set();
+  const key = createAgentGUIConversationListQueryKey(query);
+  return key !== null
+    ? (deletedConversationIdsByQueryKey.get(key) ?? new Set())
+    : new Set();
+}
+
 export function scheduleAgentGUIConversationListProjection(
   query: AgentGUIConversationListQuery,
   reason: RefreshReason
@@ -923,7 +970,8 @@ export function updateAgentGUIConversationListConversations(
   query: AgentGUIConversationListQuery,
   updater: (
     current: AgentGUIConversationSummary[]
-  ) => AgentGUIConversationSummary[]
+  ) => AgentGUIConversationSummary[],
+  _reason: ConversationListUpdateReason = "external-update"
 ): void {
   updateQueryState(query, (current) => {
     const nextConversations = updater(current.conversations);
@@ -996,23 +1044,27 @@ export function clearAgentGUIConversationUnreadCompletion(input: {
   if (!conversationId) {
     return;
   }
-  updateAgentGUIConversationListConversations(input.query, (current) => {
-    let changed = false;
-    const next = current.map((conversation) => {
-      if (
-        conversation.id !== conversationId ||
-        conversation.hasUnreadCompletion !== true
-      ) {
-        return conversation;
-      }
-      changed = true;
-      return {
-        ...conversation,
-        hasUnreadCompletion: false
-      };
-    });
-    return changed ? next : current;
-  });
+  updateAgentGUIConversationListConversations(
+    input.query,
+    (current) => {
+      let changed = false;
+      const next = current.map((conversation) => {
+        if (
+          conversation.id !== conversationId ||
+          conversation.hasUnreadCompletion !== true
+        ) {
+          return conversation;
+        }
+        changed = true;
+        return {
+          ...conversation,
+          hasUnreadCompletion: false
+        };
+      });
+      return changed ? next : current;
+    },
+    "active-conversation"
+  );
 }
 
 export function markAgentGUIConversationCompletionObserved(input: {
@@ -1031,25 +1083,29 @@ export function markAgentGUIConversationCompletionObserved(input: {
     queryState.queryKey,
     conversationId
   );
-  updateAgentGUIConversationListConversations(input.query, (current) => {
-    let changed = false;
-    const next = current.map((conversation) => {
-      if (conversation.id !== conversationId) {
-        return conversation;
-      }
-      const hasUnreadCompletion =
-        conversation.status === "completed" && shouldMarkUnread;
-      if (conversation.hasUnreadCompletion === hasUnreadCompletion) {
-        return conversation;
-      }
-      changed = true;
-      return {
-        ...conversation,
-        hasUnreadCompletion
-      };
-    });
-    return changed ? next : current;
-  });
+  updateAgentGUIConversationListConversations(
+    input.query,
+    (current) => {
+      let changed = false;
+      const next = current.map((conversation) => {
+        if (conversation.id !== conversationId) {
+          return conversation;
+        }
+        const hasUnreadCompletion =
+          conversation.status === "completed" && shouldMarkUnread;
+        if (conversation.hasUnreadCompletion === hasUnreadCompletion) {
+          return conversation;
+        }
+        changed = true;
+        return {
+          ...conversation,
+          hasUnreadCompletion
+        };
+      });
+      return changed ? next : current;
+    },
+    "completion-observed"
+  );
 }
 
 export function upsertLocalCreatedAgentGUIConversation(input: {
@@ -1071,8 +1127,10 @@ export function upsertLocalCreatedAgentGUIConversation(input: {
     queryState.queryKey,
     localCreatedIds
   );
-  updateAgentGUIConversationListConversations(input.query, (current) =>
-    upsertConversationOverlay(current, input.conversation)
+  updateAgentGUIConversationListConversations(
+    input.query,
+    (current) => upsertConversationOverlay(current, input.conversation),
+    "local-created"
   );
 }
 
@@ -1085,21 +1143,24 @@ export function setAgentGUIConversationPinned(input: {
   if (!conversationId) {
     return;
   }
-  updateAgentGUIConversationListConversations(input.query, (current) =>
-    current.some((conversation) => conversation.id === conversationId)
-      ? current.map((conversation) => {
-          if (conversation.id !== conversationId) {
-            return conversation;
-          }
-          const pinnedAtUnixMs = Math.max(0, input.pinnedAtUnixMs);
-          return (conversation.pinnedAtUnixMs ?? 0) === pinnedAtUnixMs
-            ? conversation
-            : {
-                ...conversation,
-                pinnedAtUnixMs
-              };
-        })
-      : current
+  updateAgentGUIConversationListConversations(
+    input.query,
+    (current) =>
+      current.some((conversation) => conversation.id === conversationId)
+        ? current.map((conversation) => {
+            if (conversation.id !== conversationId) {
+              return conversation;
+            }
+            const pinnedAtUnixMs = Math.max(0, input.pinnedAtUnixMs);
+            return (conversation.pinnedAtUnixMs ?? 0) === pinnedAtUnixMs
+              ? conversation
+              : {
+                  ...conversation,
+                  pinnedAtUnixMs
+                };
+          })
+        : current,
+    "pin-changed"
   );
 }
 
@@ -1155,16 +1216,19 @@ export function markAgentGUIConversationSubmitPending(input: {
       conversationId: input.conversationId
     })
   ) {
-    updateAgentGUIConversationListConversations(input.query, (current) =>
-      current.map((conversation) =>
-        conversation.id === input.conversationId.trim()
-          ? {
-              ...conversation,
-              status: "working",
-              updatedAtUnixMs: Date.now()
-            }
-          : conversation
-      )
+    updateAgentGUIConversationListConversations(
+      input.query,
+      (current) =>
+        current.map((conversation) =>
+          conversation.id === input.conversationId.trim()
+            ? {
+                ...conversation,
+                status: "working",
+                updatedAtUnixMs: Date.now()
+              }
+            : conversation
+        ),
+      "submit-pending"
     );
     emitChange();
   }
@@ -1215,8 +1279,13 @@ export function markLocalDeletedAgentGUIConversation(input: {
     queryState.queryKey,
     localCreatedIds
   );
-  updateAgentGUIConversationListConversations(input.query, (current) =>
-    current.filter((conversation) => conversation.id !== input.agentSessionId)
+  updateAgentGUIConversationListConversations(
+    input.query,
+    (current) =>
+      current.filter(
+        (conversation) => conversation.id !== input.agentSessionId
+      ),
+    "local-delete"
   );
 }
 

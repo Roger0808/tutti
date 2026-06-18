@@ -2628,6 +2628,8 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     send: "发送",
     modelLabel: "模型",
     modelSelectionLabel: "模型选择",
+    modelContextWindowSuffix: "上下文窗口",
+    modelTooltipVersionLabel: "版本",
     defaultModel: "默认模型",
     inheritedUnavailable: "不可用",
     loadingConversation: "加载会话中",
@@ -2644,7 +2646,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     speedOptionFast: "Fast",
     permissionLabel: "运行权限",
     permissionModeReadOnly: "请求批准",
-    permissionModeAuto: "代我批准",
+    permissionModeAuto: "替我审批",
     permissionModeFullAccess: "完全访问权限",
     modelDescriptions: {
       frontierComplexCoding: "复杂编码模型说明",

@@ -4,6 +4,7 @@ import {
   type AgentContextMentionProvider
 } from "@tutti-os/agent-gui/context-mention-provider";
 import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
+import { appCenterI18nResources } from "@tutti-os/workspace-app-center/i18n";
 
 export interface DesktopWorkspaceAppMentionItem {
   readonly appId: string;
@@ -19,6 +20,19 @@ export interface DesktopWorkspaceAppMentionItem {
   readonly referencesListSupported: boolean;
   readonly scopes: string;
   readonly workspaceId: string;
+}
+
+interface BuiltInWorkspaceAppMetadata {
+  readonly description: string;
+  readonly name: string;
+}
+
+interface BuiltInWorkspaceAppResource {
+  readonly appCenter: {
+    readonly catalogApps: {
+      readonly issueManager: BuiltInWorkspaceAppMetadata;
+    };
+  };
 }
 
 export interface CreateDesktopWorkspaceAppMentionProviderInput {
@@ -53,7 +67,12 @@ export function createDesktopWorkspaceAppMentionProvider({
       const appMetadataById = new Map(
         apps.map((app) => [app.appId, app] as const)
       );
-      return baseItems
+      const coveredAppIds = new Set(
+        baseItems
+          .map((item) => workspaceAppIdFromProviderItem(baseProvider, item))
+          .filter((appId) => appId.length > 0)
+      );
+      const fromBase = baseItems
         .map((item) =>
           workspaceAppToMentionItem({
             app: appMetadataById.get(
@@ -68,10 +87,20 @@ export function createDesktopWorkspaceAppMentionProvider({
         .filter((item): item is DesktopWorkspaceAppMentionItem => item !== null)
         .filter((item) =>
           matchesWorkspaceAppMentionKeyword(item, normalizedKeyword)
-        )
-        .sort((left, right) =>
-          left.displayName.localeCompare(right.displayName, locale)
         );
+      const fromAppCenter = apps
+        .filter(
+          (app) => app.installed && app.enabled && !coveredAppIds.has(app.appId)
+        )
+        .map((app) =>
+          workspaceAppCenterAppToMentionItem(app, locale, workspaceId)
+        )
+        .filter((item) =>
+          matchesWorkspaceAppMentionKeyword(item, normalizedKeyword)
+        );
+      return [...fromBase, ...fromAppCenter].sort((left, right) =>
+        left.displayName.localeCompare(right.displayName, locale)
+      );
     },
     toInsertResult: (item) => ({
       kind: "mention",
@@ -89,6 +118,51 @@ export function createDesktopWorkspaceAppMentionProvider({
         })
       }
     })
+  };
+}
+
+function workspaceAppCenterAppToMentionItem(
+  app: WorkspaceAppCenterApp,
+  locale: string,
+  workspaceId: string
+): DesktopWorkspaceAppMentionItem {
+  const localization = findWorkspaceAppLocalization(app, locale);
+  const displayName =
+    normalizeText(localization?.name) ?? normalizeText(app.name) ?? app.appId;
+  const description =
+    normalizeText(localization?.description) ??
+    normalizeText(app.description) ??
+    "";
+  const iconUrl =
+    normalizeText(app.iconUrl) ?? normalizeText(app.availableIconUrl) ?? null;
+  const baseInsertResult: AgentContextMentionInsertResult = {
+    kind: "mention",
+    mention: {
+      entityId: app.appId,
+      label: displayName,
+      scope: compactStringRecord({
+        workspaceId
+      }),
+      presentation: compactMentionPresentation({
+        description,
+        iconUrl: iconUrl ?? "",
+        subtitle: description
+      })
+    }
+  };
+  return {
+    appId: app.appId,
+    baseItem: app,
+    baseInsertResult,
+    commandCount: "",
+    commandDescriptions: "",
+    commandPaths: "",
+    commandSummaries: "",
+    description,
+    displayName,
+    iconUrl,
+    scopes: "",
+    workspaceId
   };
 }
 
@@ -123,6 +197,7 @@ function workspaceAppToMentionItem(input: {
   const localization = input.app
     ? findWorkspaceAppLocalization(input.app, input.locale)
     : null;
+  const builtInMetadata = findBuiltInWorkspaceAppMetadata(appId, input.locale);
   return {
     appId,
     baseItem: input.baseItem,
@@ -137,6 +212,7 @@ function workspaceAppToMentionItem(input: {
     description:
       normalizeText(localization?.description) ??
       normalizeText(input.app?.description) ??
+      normalizeText(builtInMetadata?.description) ??
       baseDescription ??
       basePresentationSubtitle ??
       baseSubtitle ??
@@ -144,6 +220,7 @@ function workspaceAppToMentionItem(input: {
     displayName:
       normalizeText(localization?.name) ??
       normalizeText(input.app?.name) ??
+      normalizeText(builtInMetadata?.name) ??
       baseLabel ??
       appId,
     iconUrl:
@@ -155,6 +232,29 @@ function workspaceAppToMentionItem(input: {
     scopes: readBaseItemStringList(baseObject, "scopes"),
     workspaceId: input.workspaceId
   };
+}
+
+function findBuiltInWorkspaceAppMetadata(
+  appId: string,
+  locale: string
+): BuiltInWorkspaceAppMetadata | null {
+  if (appId !== "issue-manager") {
+    return null;
+  }
+  const normalizedLocale = normalizeLocale(locale);
+  if (normalizedLocale?.split("-")[0] === "zh") {
+    return builtInWorkspaceAppMetadataFromResource(
+      appCenterI18nResources["zh-CN"]
+    );
+  }
+  return builtInWorkspaceAppMetadataFromResource(appCenterI18nResources.en);
+}
+
+function builtInWorkspaceAppMetadataFromResource(
+  resource: unknown
+): BuiltInWorkspaceAppMetadata {
+  return (resource as BuiltInWorkspaceAppResource).appCenter.catalogApps
+    .issueManager;
 }
 
 function findWorkspaceAppLocalization(

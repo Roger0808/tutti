@@ -1602,6 +1602,8 @@ type CliCommandOutput struct {
 
 // CliInvokeContext Client-supplied invocation context. These fields are hints for routing and audit only; authorization and workspace validation remain daemon-owned.
 type CliInvokeContext struct {
+	// AgentSessionId Caller agent session id hint. This is not an authorization boundary.
+	AgentSessionId  *string `json:"agentSessionId,omitempty"`
 	ParentCommandId *string `json:"parentCommandId,omitempty"`
 
 	// Source Client source label such as cli. This is not an authorization boundary.
@@ -2381,6 +2383,11 @@ type UpdateIssueManagerTopicRequest struct {
 // UpdateWorkspaceAgentSessionPinRequest defines model for UpdateWorkspaceAgentSessionPinRequest.
 type UpdateWorkspaceAgentSessionPinRequest struct {
 	Pinned bool `json:"pinned"`
+}
+
+// UpdateWorkspaceAgentSessionVisibilityRequest defines model for UpdateWorkspaceAgentSessionVisibilityRequest.
+type UpdateWorkspaceAgentSessionVisibilityRequest struct {
+	Visible bool `json:"visible"`
 }
 
 // UpdateWorkspaceRequest defines model for UpdateWorkspaceRequest.
@@ -3200,6 +3207,9 @@ type UpdateWorkspaceAgentSessionPinJSONRequestBody = UpdateWorkspaceAgentSession
 
 // UpdateWorkspaceAgentSessionSettingsJSONRequestBody defines body for UpdateWorkspaceAgentSessionSettings for application/json ContentType.
 type UpdateWorkspaceAgentSessionSettingsJSONRequestBody = AgentSessionComposerSettings
+
+// UpdateWorkspaceAgentSessionVisibilityJSONRequestBody defines body for UpdateWorkspaceAgentSessionVisibility for application/json ContentType.
+type UpdateWorkspaceAgentSessionVisibilityJSONRequestBody = UpdateWorkspaceAgentSessionVisibilityRequest
 
 // CreateWorkspaceAppFactoryJobJSONRequestBody defines body for CreateWorkspaceAppFactoryJob for application/json ContentType.
 type CreateWorkspaceAppFactoryJobJSONRequestBody = CreateWorkspaceAppFactoryJobRequest

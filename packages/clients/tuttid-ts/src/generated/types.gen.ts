@@ -116,6 +116,10 @@ export type CliInvokeContext = {
   source: string;
   workspaceID?: string | null;
   parentCommandId?: string | null;
+  /**
+   * Caller agent session id hint. This is not an authorization boundary.
+   */
+  agentSessionId?: string | null;
 };
 
 export type CliInvokeRequest = {
@@ -959,6 +963,10 @@ export type DeleteWorkspaceAgentSessionResponse = {
 
 export type UpdateWorkspaceAgentSessionPinRequest = {
   pinned: boolean;
+};
+
+export type UpdateWorkspaceAgentSessionVisibilityRequest = {
+  visible: boolean;
 };
 
 export type CreateWorkspaceAgentSessionRequest = {
@@ -4528,6 +4536,56 @@ export type UpdateWorkspaceAgentSessionSettingsResponses = {
 
 export type UpdateWorkspaceAgentSessionSettingsResponse =
   UpdateWorkspaceAgentSessionSettingsResponses[keyof UpdateWorkspaceAgentSessionSettingsResponses];
+
+export type UpdateWorkspaceAgentSessionVisibilityData = {
+  body: UpdateWorkspaceAgentSessionVisibilityRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility";
+};
+
+export type UpdateWorkspaceAgentSessionVisibilityErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateWorkspaceAgentSessionVisibilityError =
+  UpdateWorkspaceAgentSessionVisibilityErrors[keyof UpdateWorkspaceAgentSessionVisibilityErrors];
+
+export type UpdateWorkspaceAgentSessionVisibilityResponses = {
+  /**
+   * Workspace agent session visibility updated
+   */
+  200: WorkspaceAgentSessionResponse;
+};
+
+export type UpdateWorkspaceAgentSessionVisibilityResponse =
+  UpdateWorkspaceAgentSessionVisibilityResponses[keyof UpdateWorkspaceAgentSessionVisibilityResponses];
 
 export type UpdateWorkspaceAgentSessionPinData = {
   body: UpdateWorkspaceAgentSessionPinRequest;

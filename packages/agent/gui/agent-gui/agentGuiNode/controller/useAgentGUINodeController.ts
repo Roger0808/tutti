@@ -46,7 +46,6 @@ import { AGENT_PROVIDER_LABEL } from "../../../contexts/settings/domain/agentSet
 import type { AgentGUINodeData } from "../../../types";
 import {
   AGENT_GUI_RUNTIME_SESSION_ORIGIN,
-  buildAgentGUIConversationSummaries,
   buildAgentGUIConversationDetail,
   buildAgentGUIConversationVM,
   conversationSummaryFromAgentSession,
@@ -106,7 +105,8 @@ import {
   setAgentSessionViewControlStateLoading,
   setAgentSessionViewOverlayMessages,
   setAgentSessionViewMessagesLoading,
-  updateAgentSessionViewControlState
+  updateAgentSessionViewControlState,
+  type AgentSessionViewRef
 } from "../../../contexts/workspace/presentation/renderer/agentSessions/agentSessionViewStore";
 import {
   useAgentSessionDurableRefresh,
@@ -131,6 +131,7 @@ import {
   subscribeAgentGUIConversationListStore,
   upsertLocalCreatedAgentGUIConversation,
   updateAgentGUIConversationListConversations,
+  isAgentGUIConversationListRefreshing,
   type AgentGUIConversationListQuery
 } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore";
 import { useAgentGuiConversationList } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
@@ -635,6 +636,12 @@ export function resolveConversationUpdatedAtUnixMsFromSessionState(input: {
   return Math.max(input.currentUpdatedAtUnixMs, updatedAtUnixMs);
 }
 
+type ConversationIntent =
+  | { tag: "home" }
+  | { tag: "requested"; id: string }
+  | { tag: "resolving"; id: string }
+  | { tag: "active"; id: string };
+
 function resolveConversationSummaryById(
   conversations: readonly AgentGUIConversationSummary[],
   conversationId: string | null | undefined,
@@ -684,7 +691,8 @@ function stableConversationSummaryList(
 
 function mergeConversationTitleUpdateFields(
   current: AgentGUIConversationSummary,
-  incomingTitle: string
+  incomingTitle: string,
+  provider?: AgentProviderId
 ): Pick<AgentGUIConversationSummary, "title" | "titleFallback"> {
   const title = incomingTitle.trim();
   if (!title) {
@@ -700,10 +708,59 @@ function mergeConversationTitleUpdateFields(
       titleFallback: current.titleFallback
     };
   }
+  if (
+    provider &&
+    shouldPreserveExistingConversationTitle(current, title, provider)
+  ) {
+    return {
+      title: current.title,
+      titleFallback: current.titleFallback
+    };
+  }
   return {
     title,
     titleFallback: null
   };
+}
+
+function shouldPreserveExistingConversationTitle(
+  current: AgentGUIConversationSummary,
+  incomingTitle: string,
+  provider: AgentProviderId
+): boolean {
+  const normalizedIncoming = incomingTitle.trim();
+  if (!normalizedIncoming || !current.title.trim()) {
+    return false;
+  }
+  if (isWorkspaceAgentUntitledTask(normalizedIncoming)) {
+    return true;
+  }
+  const providerLabel =
+    AGENT_PROVIDER_LABEL[provider as keyof typeof AGENT_PROVIDER_LABEL] ??
+    provider;
+  return (
+    normalizedIncoming === provider || normalizedIncoming === providerLabel
+  );
+}
+
+function sessionHasRenderableMessages(input: {
+  agentSessionId: string;
+  sessionViewRef: (agentSessionId: string | null) => AgentSessionViewRef;
+  snapshotMessagesById: Record<string, WorkspaceAgentActivityMessage[]>;
+}): boolean {
+  const normalizedAgentSessionId = input.agentSessionId.trim();
+  if (!normalizedAgentSessionId) {
+    return false;
+  }
+  const sessionView = getAgentSessionView(
+    input.sessionViewRef(normalizedAgentSessionId)
+  );
+  if ((sessionView?.overlayMessages?.length ?? 0) > 0) {
+    return true;
+  }
+  return (
+    (input.snapshotMessagesById[normalizedAgentSessionId]?.length ?? 0) > 0
+  );
 }
 
 function hasPromptConversationTitle(
@@ -1079,6 +1136,14 @@ function recordValue(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function draftAgentSessionIdFromComposerOptions(
+  options: AgentActivityComposerOptions | null | undefined
+): string | null {
+  return normalizeConfigOptionValue(
+    options?.runtimeContext?.draftAgentSessionId
+  );
+}
+
 function composerSettingOptionsFromActivity(
   options: readonly AgentActivityComposerOptions["models"][number][]
 ): AgentGUIComposerSettingOption[] {
@@ -1424,6 +1489,21 @@ function conversationBusyStatusFromAgentActivityDisplayStatus(
     return status;
   }
   return null;
+}
+
+function reuseAgentActivityDisplayStatusesIfUnchanged(
+  previous: ReadonlyMap<string, AgentActivityDisplayStatus> | null,
+  next: Map<string, AgentActivityDisplayStatus>
+): Map<string, AgentActivityDisplayStatus> {
+  if (!previous || previous.size !== next.size) {
+    return next;
+  }
+  for (const [sessionId, status] of next) {
+    if (previous.get(sessionId) !== status) {
+      return next;
+    }
+  }
+  return previous as Map<string, AgentActivityDisplayStatus>;
 }
 
 function permissionModeOptions(
@@ -1930,10 +2010,19 @@ export function useAgentGUINodeController({
   const agentActivityRuntime = useAgentActivityRuntime();
   const agentHostApi = useAgentHostApi();
   const agentActivitySnapshot = useAgentActivitySnapshot(workspaceId);
-  const agentActivityDisplayStatuses = useMemo(
-    () => selectSessionDisplayStatuses(agentActivitySnapshot),
-    [agentActivitySnapshot]
-  );
+  const agentActivityDisplayStatusesRef = useRef<Map<
+    string,
+    AgentActivityDisplayStatus
+  > | null>(null);
+  const agentActivityDisplayStatuses = useMemo(() => {
+    const next = selectSessionDisplayStatuses(agentActivitySnapshot);
+    const stable = reuseAgentActivityDisplayStatusesIfUnchanged(
+      agentActivityDisplayStatusesRef.current,
+      next
+    );
+    agentActivityDisplayStatusesRef.current = stable;
+    return stable;
+  }, [agentActivitySnapshot]);
   const generatedControllerOwnerKey = useId();
   const conversationListQuery =
     useMemo<AgentGUIConversationListQuery | null>(() => {
@@ -1973,6 +2062,11 @@ export function useAgentGUINodeController({
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(data.lastActiveAgentSessionId);
+  const [intent, setIntent] = useState<ConversationIntent>(() =>
+    data.lastActiveAgentSessionId
+      ? { tag: "requested", id: data.lastActiveAgentSessionId }
+      : { tag: "home" }
+  );
   const [selectedProjectPath, setSelectedProjectPath] = useState<string | null>(
     null
   );
@@ -2392,12 +2486,6 @@ export function useAgentGUINodeController({
   const onDataChangeRef = useRef(onDataChange);
   const onShowMessageRef = useRef(onShowMessage);
   const handledPrefillPromptSequenceRef = useRef<number | null>(null);
-  const persistedActiveConversationIdRef = useRef(
-    data.lastActiveAgentSessionId
-  );
-  const pendingLocalActiveConversationIdRef = useRef<string | null>(null);
-  const externalConversationReloadAttemptRef = useRef<string | null>(null);
-  const suppressedHomeConversationIdRef = useRef<string | null>(null);
   const [transientConversation, setTransientConversationState] =
     useState<AgentGUIConversationSummary | null>(null);
   const transientConversationRef = useRef<AgentGUIConversationSummary | null>(
@@ -2551,121 +2639,6 @@ export function useAgentGUINodeController({
     };
   }, [agentHostApi.userProjects, previewMode, setUserProjectsSnapshot]);
 
-  useEffect(() => {
-    if (previewMode) {
-      return;
-    }
-    if (!conversationListQuery || agentActivitySnapshot.sessions.length === 0) {
-      return;
-    }
-    const snapshotConversations = buildAgentGUIConversationSummaries({
-      isNoProjectPath,
-      snapshot: agentActivitySnapshot,
-      provider: data.provider,
-      sessionMessagesById: agentActivitySnapshot.sessionMessagesById,
-      userProjects
-    });
-    if (snapshotConversations.length === 0) {
-      return;
-    }
-    const completedConversationIds = new Set<string>();
-    updateConversationList((current) => {
-      const currentById = new Map(
-        current.map((conversation) => [conversation.id, conversation])
-      );
-      const snapshotIds = new Set(
-        snapshotConversations.map((conversation) => conversation.id)
-      );
-      const merged: AgentGUIConversationSummary[] = snapshotConversations.map(
-        (conversation) => {
-          const existing = currentById.get(conversation.id);
-          if (!existing) {
-            return {
-              ...conversation,
-              hasUnreadCompletion: conversation.hasUnreadCompletion ?? false
-            };
-          }
-          const titleFields =
-            hasPromptConversationTitle(existing) &&
-            isWorkspaceAgentUntitledTask(conversation.title)
-              ? {
-                  title: existing.title,
-                  titleFallback: existing.titleFallback
-                }
-              : mergeConversationTitleUpdateFields(
-                  existing,
-                  conversation.title
-                );
-          const incomingWouldSettleBusyStatus =
-            conversationBusyStatus(existing.status) &&
-            !conversationBusyStatus(conversation.status);
-          const shouldKeepExistingStatus =
-            existing.updatedAtUnixMs > conversation.updatedAtUnixMs &&
-            incomingWouldSettleBusyStatus;
-          const status = shouldKeepExistingStatus
-            ? existing.status
-            : conversation.status;
-          if (status === "completed" && existing.status !== "completed") {
-            completedConversationIds.add(conversation.id);
-          }
-          const syncState =
-            conversation.syncState &&
-            shouldApplySyncState(existing.syncState, conversation.syncState) &&
-            !syncStateRenderFieldsEqual(
-              existing.syncState,
-              conversation.syncState
-            )
-              ? conversation.syncState
-              : existing.syncState;
-          const hasUnreadCompletion =
-            conversation.status === "completed"
-              ? (existing.hasUnreadCompletion ??
-                conversation.hasUnreadCompletion ??
-                false)
-              : false;
-          return {
-            ...existing,
-            ...conversation,
-            ...titleFields,
-            status,
-            syncState,
-            updatedAtUnixMs: shouldKeepExistingStatus
-              ? existing.updatedAtUnixMs
-              : titleFields.title === existing.title &&
-                  titleFields.titleFallback === existing.titleFallback &&
-                  status === existing.status &&
-                  syncState === existing.syncState
-                ? existing.updatedAtUnixMs
-                : conversation.updatedAtUnixMs,
-            hasUnreadCompletion
-          };
-        }
-      );
-      for (const conversation of current) {
-        if (!snapshotIds.has(conversation.id)) {
-          merged.push(conversation);
-        }
-      }
-      return applyAgentGUIConversationProjects(merged, userProjects, {
-        isNoProjectPath
-      });
-    });
-    for (const conversationId of completedConversationIds) {
-      markAgentGUIConversationCompletionObserved({
-        query: conversationListQuery,
-        conversationId
-      });
-    }
-  }, [
-    agentActivitySnapshot,
-    conversationListQuery,
-    data.provider,
-    isNoProjectPath,
-    previewMode,
-    updateConversationList,
-    userProjects
-  ]);
-
   const setTransientConversation = useCallback(
     (
       value:
@@ -2710,6 +2683,7 @@ export function useAgentGUINodeController({
     );
   }, [
     isNoProjectPath,
+    conversations,
     previewMode,
     setTransientConversation,
     updateConversationList,
@@ -2768,14 +2742,32 @@ export function useAgentGUINodeController({
 
   useEffect(() => {
     dataRef.current = data;
-    persistedActiveConversationIdRef.current = data.lastActiveAgentSessionId;
-    if (
-      pendingLocalActiveConversationIdRef.current ===
-      data.lastActiveAgentSessionId
-    ) {
-      pendingLocalActiveConversationIdRef.current = null;
-    }
   }, [data]);
+
+  // Respond to external data changes (e.g. workbench switching to a different
+  // session from outside the controller). Skips no-op updates and self-echos.
+  useEffect(() => {
+    const externalId = data.lastActiveAgentSessionId?.trim() ?? "";
+    // If our activeConversationIdRef already reflects this id, this is either
+    // our own write echoing back or we're already here — no work needed.
+    if (externalId === (activeConversationIdRef.current ?? "")) return;
+    setIntent((current) => {
+      if (!externalId) {
+        return current.tag !== "home" ? { tag: "home" } : current;
+      }
+      if (
+        (current.tag === "active" || current.tag === "requested") &&
+        current.id === externalId
+      ) {
+        return current; // already routing to this id
+      }
+      if (current.tag === "requested" || current.tag === "resolving") {
+        return current; // mid-routing: local intent wins
+      }
+      return { tag: "requested", id: externalId };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.lastActiveAgentSessionId]);
 
   useEffect(() => {
     isComposerHomeRef.current = isComposerHome;
@@ -2928,11 +2920,6 @@ export function useAgentGUINodeController({
   }, [conversationListQuery, conversations, previewMode]);
   const persistActiveConversation = useCallback(
     (agentSessionId: string | null) => {
-      if (persistedActiveConversationIdRef.current === agentSessionId) {
-        return;
-      }
-      pendingLocalActiveConversationIdRef.current = agentSessionId;
-      persistedActiveConversationIdRef.current = agentSessionId;
       onDataChangeRef.current((current) =>
         current.lastActiveAgentSessionId === agentSessionId
           ? current
@@ -3078,18 +3065,27 @@ export function useAgentGUINodeController({
         void activation.unactivate(previous);
       }
       if (previous !== normalized) {
-        markSelectedConversationDetailPending(normalized);
+        const hasCachedMessages = sessionHasRenderableMessages({
+          agentSessionId: normalized,
+          sessionViewRef,
+          snapshotMessagesById:
+            agentActivitySnapshotRef.current.sessionMessagesById
+        });
+        if (hasCachedMessages) {
+          clearSelectedConversationNotFoundRetry();
+          setIsLoadingMessages(false);
+        } else {
+          markSelectedConversationDetailPending(normalized);
+        }
       }
       if (pendingNewConversationId && pendingNewConversationId !== normalized) {
         activatedConversationIdsRef.current.delete(pendingNewConversationId);
         void activation.unactivate(pendingNewConversationId);
       }
-      if (suppressedHomeConversationIdRef.current === normalized) {
-        suppressedHomeConversationIdRef.current = null;
-      }
       const shouldReloadConversations =
         options?.reloadConversations !== false &&
         conversationIdsRef.current.has(normalized);
+      setIntent({ tag: "active", id: normalized });
       activeConversationIdRef.current = normalized;
       setActiveConversationId(normalized);
       setDetailError(null);
@@ -3121,6 +3117,7 @@ export function useAgentGUINodeController({
     },
     [
       activation,
+      clearSelectedConversationNotFoundRetry,
       conversationListQuery,
       markSelectedConversationDetailPending,
       persistActiveConversation
@@ -3208,6 +3205,7 @@ export function useAgentGUINodeController({
   );
 
   useEffect(() => {
+    // Track open session request sequence (unchanged logic)
     const normalizedOpenSessionRequest =
       normalizeAgentGUIOpenSessionRequest(openSessionRequest);
     if (
@@ -3221,130 +3219,109 @@ export function useAgentGUINodeController({
       pendingOpenSessionRequestRef.current = normalizedOpenSessionRequest;
     }
     const pendingOpenSessionRequest = pendingOpenSessionRequestRef.current;
-    const requestedConversationId = data.lastActiveAgentSessionId?.trim() ?? "";
-    const explicitRequestedConversationId =
-      pendingOpenSessionRequest?.agentSessionId.trim() ?? "";
-    const effectiveRequestedConversationId =
-      explicitRequestedConversationId || requestedConversationId;
-    const hasExplicitOpenSessionRequest =
-      explicitRequestedConversationId !== "";
-    const requestedConversationExists =
-      effectiveRequestedConversationId !== ""
-        ? resolveConversationSummaryById(
-            conversations,
-            effectiveRequestedConversationId,
-            transientConversationRef.current
-          ) !== null
-        : false;
-    if (!effectiveRequestedConversationId) {
-      externalConversationReloadAttemptRef.current = null;
-      suppressedHomeConversationIdRef.current = null;
-      return;
-    }
-    if (
-      effectiveRequestedConversationId === activeConversationIdRef.current &&
-      (!hasLoadedConversations || requestedConversationExists)
-    ) {
-      externalConversationReloadAttemptRef.current = null;
-      if (hasExplicitOpenSessionRequest) {
-        pendingOpenSessionRequestRef.current = null;
-      }
-      return;
-    }
-    if (
-      !hasExplicitOpenSessionRequest &&
-      (isComposerHomeRef.current ||
-        suppressedHomeConversationIdRef.current ===
-          effectiveRequestedConversationId)
-    ) {
-      return;
-    }
-    if (
-      !hasExplicitOpenSessionRequest &&
-      pendingLocalActiveConversationIdRef.current !== null &&
-      effectiveRequestedConversationId !==
-        pendingLocalActiveConversationIdRef.current &&
-      externalConversationReloadAttemptRef.current !==
-        effectiveRequestedConversationId
-    ) {
-      return;
-    }
-    if (hasExplicitOpenSessionRequest) {
-      pendingLocalActiveConversationIdRef.current = null;
-    }
+    const hasExplicitOpenSessionRequest = Boolean(
+      pendingOpenSessionRequest?.agentSessionId?.trim()
+    );
 
-    if (!requestedConversationExists) {
-      if (
-        effectiveRequestedConversationId === activeConversationIdRef.current &&
-        hasLoadedConversations &&
-        conversations.length > 0
-      ) {
-        externalConversationReloadAttemptRef.current = null;
-        if (hasExplicitOpenSessionRequest) {
-          pendingOpenSessionRequestRef.current = null;
-        }
-        const fallbackConversationId = selectAgentGUIConversationId(
+    const resolveId = (id: string) =>
+      resolveConversationSummaryById(
+        conversations,
+        id,
+        transientConversationRef.current
+      ) !== null;
+
+    const inSnapshot = (id: string) =>
+      agentActivitySnapshotRef.current.sessions.some(
+        (s) => s.agentSessionId.trim() === id && s.visible !== false
+      );
+
+    // Open session request takes highest priority
+    if (hasExplicitOpenSessionRequest) {
+      const requestedId = pendingOpenSessionRequest!.agentSessionId.trim();
+      if (resolveId(requestedId)) {
+        pendingOpenSessionRequestRef.current = null;
+        selectConversation(requestedId, { reloadConversations: false });
+        return;
+      }
+      if (!hasLoadedConversations) return;
+      if (inSnapshot(requestedId)) return;
+      if (intent.tag !== "resolving" || intent.id !== requestedId) {
+        setIntent({ tag: "resolving", id: requestedId });
+        void syncConversationListProjection(requestedId);
+        return;
+      }
+      if (!isAgentGUIConversationListRefreshing(conversationListQuery)) {
+        pendingOpenSessionRequestRef.current = null;
+        const fallback = selectAgentGUIConversationId(
           conversations,
           activeConversationIdRef.current
         );
-        if (fallbackConversationId) {
-          selectConversation(fallbackConversationId, {
-            reloadConversations: false
-          });
-        }
-        return;
-      }
-      if (
-        hasLoadedConversations &&
-        externalConversationReloadAttemptRef.current !==
-          effectiveRequestedConversationId
-      ) {
-        externalConversationReloadAttemptRef.current =
-          effectiveRequestedConversationId;
-        void syncConversationListProjection(effectiveRequestedConversationId);
-        return;
-      }
-      if (
-        hasLoadedConversations &&
-        !isLoadingConversations &&
-        externalConversationReloadAttemptRef.current ===
-          effectiveRequestedConversationId
-      ) {
-        externalConversationReloadAttemptRef.current = null;
-        if (hasExplicitOpenSessionRequest) {
-          pendingOpenSessionRequestRef.current = null;
-        }
-        const fallbackConversationId =
-          isComposerHomeRef.current && !effectiveRequestedConversationId
-            ? null
-            : selectAgentGUIConversationId(
-                conversations,
-                activeConversationIdRef.current
-              );
-        if (fallbackConversationId) {
-          selectConversation(fallbackConversationId, {
-            reloadConversations: false
-          });
+        if (fallback) {
+          selectConversation(fallback, { reloadConversations: false });
+        } else {
+          setIntent({ tag: "home" });
         }
       }
       return;
     }
 
-    externalConversationReloadAttemptRef.current = null;
-    if (hasExplicitOpenSessionRequest) {
-      pendingOpenSessionRequestRef.current = null;
+    // Intent-based routing (replaces 4-ref guard chain)
+    switch (intent.tag) {
+      case "home":
+        return;
+
+      case "active":
+        // Only demote when list is fully loaded, to avoid races during reload.
+        if (resolveId(intent.id) || !hasLoadedConversations) return;
+        // Session was removed from list after load — re-check
+        setIntent({ tag: "requested", id: intent.id });
+        return;
+
+      case "requested": {
+        if (!hasLoadedConversations) return;
+        if (resolveId(intent.id)) {
+          if (activeConversationIdRef.current === intent.id) {
+            // Already active (e.g. restored from data on mount) — skip selectConversation
+            // to avoid a double loadSessionState; the activeConversationId effect handles it.
+            setIntent({ tag: "active", id: intent.id });
+            return;
+          }
+          selectConversation(intent.id, { reloadConversations: false });
+          return;
+        }
+        if (inSnapshot(intent.id)) return;
+        setIntent({ tag: "resolving", id: intent.id });
+        void syncConversationListProjection(intent.id);
+        return;
+      }
+
+      case "resolving": {
+        if (resolveId(intent.id)) {
+          selectConversation(intent.id, { reloadConversations: false });
+          return;
+        }
+        if (isAgentGUIConversationListRefreshing(conversationListQuery)) return;
+        const fallback = selectAgentGUIConversationId(
+          conversations,
+          activeConversationIdRef.current
+        );
+        if (fallback) {
+          selectConversation(fallback, { reloadConversations: false });
+        } else {
+          setIntent({ tag: "home" });
+        }
+        return;
+      }
     }
-    selectConversation(effectiveRequestedConversationId, {
-      reloadConversations: false
-    });
   }, [
+    intent,
     conversations,
-    data.lastActiveAgentSessionId,
     hasLoadedConversations,
-    isLoadingConversations,
     openSessionRequest,
+    previewMode,
     syncConversationListProjection,
     selectConversation,
+    conversationListQuery,
     transientConversation
   ]);
 
@@ -3742,7 +3719,7 @@ export function useAgentGUINodeController({
             );
           }
           deleteAgentSessionView(sessionViewRef(agentSessionId));
-          suppressedHomeConversationIdRef.current = agentSessionId;
+          setIntent({ tag: "home" });
           isComposerHomeRef.current = true;
           setIsComposerHome(true);
           activeConversationIdRef.current = null;
@@ -4019,7 +3996,11 @@ export function useAgentGUINodeController({
     if (previewMode) {
       return;
     }
-    loadDraftComposerOptions();
+    loadDraftComposerOptions(
+      data.provider === "claude-code" && isComposerHome
+        ? { force: true }
+        : undefined
+    );
   }, [
     activeConversationId,
     data.provider,
@@ -4613,7 +4594,15 @@ export function useAgentGUINodeController({
         const initialSettings = resolveEffectiveComposerSettings({
           settings: initialNodeSettings
         });
-        const agentSessionId = createAgentGUIConversationId();
+        const snapshotComposerOptions =
+          agentActivityRuntime.getSnapshot(workspaceId)
+            .composerOptionsByProvider?.[provider] ?? null;
+        const draftAgentSessionId =
+          normalizedInitialContent.length > 0 && provider === "claude-code"
+            ? draftAgentSessionIdFromComposerOptions(snapshotComposerOptions)
+            : null;
+        const agentSessionId =
+          draftAgentSessionId ?? createAgentGUIConversationId();
         pendingCreateAgentSessionId = agentSessionId;
         const createdAtUnixMs = Date.now();
         const optimisticConversation: AgentGUIConversationSummary = {
@@ -4865,8 +4854,7 @@ export function useAgentGUINodeController({
       if (previous) {
         void activation.unactivate(previous);
       }
-      suppressedHomeConversationIdRef.current =
-        previous ?? dataRef.current.lastActiveAgentSessionId;
+      setIntent({ tag: "home" });
       isComposerHomeRef.current = true;
       setIsComposerHome(true);
       activeConversationIdRef.current = null;
@@ -4905,8 +4893,7 @@ export function useAgentGUINodeController({
     if (previous) {
       void activation.unactivate(previous);
     }
-    suppressedHomeConversationIdRef.current =
-      previous ?? dataRef.current.lastActiveAgentSessionId;
+    setIntent({ tag: "home" });
     isComposerHomeRef.current = true;
     setIsComposerHome(true);
     activeConversationIdRef.current = null;
@@ -4958,8 +4945,7 @@ export function useAgentGUINodeController({
     if (previous) {
       void activation.unactivate(previous);
     }
-    suppressedHomeConversationIdRef.current =
-      previous ?? dataRef.current.lastActiveAgentSessionId;
+    setIntent({ tag: "home" });
     isComposerHomeRef.current = true;
     setIsComposerHome(true);
     activeConversationIdRef.current = null;
@@ -5854,7 +5840,11 @@ export function useAgentGUINodeController({
           previousSettings,
           nextSettings: merged
         });
-        loadDraftComposerOptions();
+        loadDraftComposerOptions(
+          dataRef.current.provider === "claude-code"
+            ? { force: true }
+            : undefined
+        );
         return;
       }
       const activeSessionState =
@@ -6623,9 +6613,11 @@ export function useAgentGUINodeController({
             null;
           if (nextActive) {
             markSelectedConversationDetailPending(nextActive);
+            setIntent({ tag: "active", id: nextActive });
           } else {
             clearSelectedConversationNotFoundRetry();
             setIsLoadingMessages(false);
+            setIntent({ tag: "home" });
           }
           activeConversationIdRef.current = nextActive;
           setActiveConversationId(nextActive);
@@ -6775,9 +6767,11 @@ export function useAgentGUINodeController({
             const nextActive = nextConversations[0]?.id ?? null;
             if (nextActive) {
               markSelectedConversationDetailPending(nextActive);
+              setIntent({ tag: "active", id: nextActive });
             } else {
               clearSelectedConversationNotFoundRetry();
               setIsLoadingMessages(false);
+              setIntent({ tag: "home" });
             }
             activeConversationIdRef.current = nextActive;
             setActiveConversationId(nextActive);
@@ -7555,6 +7549,19 @@ export function useAgentGUINodeController({
     draftSpeed
   ]);
   const stableComposerSettings = useStableComposerSettingsVM(composerSettings);
+  const prevSettingsLoadingRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    const nextLoading = stableComposerSettings.isSettingsLoading;
+    if (prevSettingsLoadingRef.current === nextLoading) {
+      return;
+    }
+    prevSettingsLoadingRef.current = nextLoading;
+  }, [
+    activeConversationId,
+    data.provider,
+    stableComposerSettings.availableModels.length,
+    stableComposerSettings.isSettingsLoading
+  ]);
 
   const stableCreateConversation =
     useStableControllerEventCallback(createConversation);
