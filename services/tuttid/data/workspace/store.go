@@ -60,6 +60,7 @@ type UserProjectStore interface {
 
 type AppStore interface {
 	DeleteAppPackage(context.Context, string) error
+	DeleteAppPackageVersion(context.Context, string, string) error
 	DeleteWorkspaceAppInstallation(context.Context, string, string) error
 	GetAppPackage(context.Context, string) (workspacebiz.AppPackage, error)
 	GetAppPackageVersion(context.Context, string, string) (workspacebiz.AppPackage, error)

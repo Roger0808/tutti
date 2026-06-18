@@ -1,11 +1,13 @@
 package builtinapps
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -164,6 +166,100 @@ func TestCatalogRetriesRemoteURLFetch(t *testing.T) {
 	}
 	if app := findCatalogAppForTest(snapshot.Apps, "retry-tool"); app == nil {
 		t.Fatalf("retry-loaded remote app missing from catalog: %#v", snapshot.Apps)
+	}
+}
+
+func TestRefreshRemoteCatalogAndWaitReturnsReadyCatalog(t *testing.T) {
+	t.Setenv(remoteCatalogFileEnv, "")
+	releaseResponse := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() {
+		releaseOnce.Do(func() {
+			close(releaseResponse)
+		})
+	}
+	t.Cleanup(release)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		<-releaseResponse
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+			"schemaVersion": "tutti.app.catalog.v1",
+			"apps": [
+				{
+					"manifest": {
+						"schemaVersion": "tutti.app.manifest.v1",
+						"appId": "wait-tool",
+						"version": "1.2.3",
+						"name": "Wait Tool",
+						"description": "Wait tool",
+							"icon": {"type": "asset", "src": "icon.png"},
+							"runtime": {"bootstrap": "bootstrap.sh", "healthcheckPath": "/"}
+					},
+					"distribution": {
+						"kind": "remote",
+						"artifactUrl": "https://cdn.example.test/apps/wait-tool/wait-tool.zip",
+						"artifactSha256": "def456",
+						"iconUrl": "https://cdn.example.test/apps/wait-tool/icon.png"
+					}
+				}
+			]
+		}`))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv(remoteCatalogURLEnv, server.URL+"/catalog.json")
+
+	resultCh := make(chan struct {
+		snapshot CatalogSnapshot
+		err      error
+	}, 1)
+	go func() {
+		snapshot, err := RefreshRemoteCatalogAndWait(context.Background())
+		resultCh <- struct {
+			snapshot CatalogSnapshot
+			err      error
+		}{snapshot: snapshot, err: err}
+	}()
+
+	select {
+	case result := <-resultCh:
+		t.Fatalf("RefreshRemoteCatalogAndWait() returned before response: %#v", result)
+	case <-time.After(50 * time.Millisecond):
+	}
+	release()
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("RefreshRemoteCatalogAndWait() error = %v", result.err)
+		}
+		if result.snapshot.RemoteCatalog.Status != RemoteCatalogLoadStatusReady {
+			t.Fatalf("remote catalog status = %q, want ready", result.snapshot.RemoteCatalog.Status)
+		}
+		if app := findCatalogAppForTest(result.snapshot.Apps, "wait-tool"); app == nil {
+			t.Fatalf("remote app missing from waited snapshot: %#v", result.snapshot.Apps)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("RefreshRemoteCatalogAndWait() did not return after response")
+	}
+}
+
+func TestRefreshRemoteCatalogAndWaitReturnsFailedCatalog(t *testing.T) {
+	disableRemoteCatalogRetrySleepForTest(t)
+	t.Setenv(remoteCatalogFileEnv, "")
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		http.Error(writer, "unavailable", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv(remoteCatalogURLEnv, server.URL+"/catalog.json")
+
+	snapshot, err := RefreshRemoteCatalogAndWait(context.Background())
+	if err != nil {
+		t.Fatalf("RefreshRemoteCatalogAndWait() error = %v", err)
+	}
+	if snapshot.RemoteCatalog.Status != RemoteCatalogLoadStatusFailed {
+		t.Fatalf("remote catalog status = %q, want failed", snapshot.RemoteCatalog.Status)
+	}
+	if snapshot.RemoteCatalog.LastError == "" {
+		t.Fatal("remote catalog last error is empty, want failure details")
 	}
 }
 

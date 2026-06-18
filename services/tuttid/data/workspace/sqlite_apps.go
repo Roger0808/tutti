@@ -448,6 +448,45 @@ WHERE app_id = ?
 	return nil
 }
 
+func (s *SQLiteStore) DeleteAppPackageVersion(ctx context.Context, appID string, version string) error {
+	if s == nil || s.db == nil {
+		return errors.New("workspace database is not initialized")
+	}
+
+	appID = strings.TrimSpace(appID)
+	version = strings.TrimSpace(version)
+	if appID == "" || version == "" {
+		return errors.New("workspace app id and version are required")
+	}
+
+	result, err := s.db.ExecContext(ctx, `
+DELETE FROM app_packages
+WHERE app_id = ? AND version = ?
+  AND NOT EXISTS (
+    SELECT 1
+    FROM app_catalog_entries
+    WHERE app_catalog_entries.app_id = app_packages.app_id
+      AND app_catalog_entries.active_version = app_packages.version
+  )
+`, appID, version)
+	if err != nil {
+		return fmt.Errorf("delete workspace app package version: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete workspace app package version rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		if _, err := s.GetAppPackageVersion(ctx, appID, version); err == nil {
+			return errors.New("active workspace app package version cannot be deleted")
+		} else if !errors.Is(err, ErrWorkspaceAppNotFound) {
+			return err
+		}
+		return ErrWorkspaceAppNotFound
+	}
+	return nil
+}
+
 func (s *SQLiteStore) PutWorkspaceAppInstallation(ctx context.Context, installation workspacebiz.AppInstallation) error {
 	if s == nil || s.db == nil {
 		return errors.New("workspace database is not initialized")

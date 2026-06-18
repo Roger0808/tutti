@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
@@ -14,6 +15,8 @@ import (
 
 var ErrAppPackageAlreadyExists = errors.New("workspace app package already exists")
 var ErrAppPackageDeleteForbidden = errors.New("workspace app package cannot be deleted")
+
+const retainedInactiveAppPackageVersions = 1
 
 type AppPackageArchiveResult struct {
 	AppID              string
@@ -221,6 +224,45 @@ func (s *AppCenterService) deleteRemoteBuiltinPackageFilesAndRecord(ctx context.
 		}
 	}
 	return s.Store.DeleteAppPackage(ctx, appPackage.AppID)
+}
+
+func (s *AppCenterService) pruneInactiveAppPackageVersions(ctx context.Context, activePackage workspacebiz.AppPackage) error {
+	versions, err := s.Store.ListAppPackageVersions(ctx, activePackage.AppID)
+	if err != nil {
+		return err
+	}
+	inactive := make([]workspacebiz.AppPackage, 0, len(versions))
+	for _, versionPackage := range versions {
+		if versionPackage.Version == activePackage.Version {
+			continue
+		}
+		inactive = append(inactive, versionPackage)
+	}
+	sort.SliceStable(inactive, func(i int, j int) bool {
+		left := inactive[i]
+		right := inactive[j]
+		if left.CreatedAtUnixMs != right.CreatedAtUnixMs {
+			return left.CreatedAtUnixMs > right.CreatedAtUnixMs
+		}
+		return left.Version > right.Version
+	})
+	for index, versionPackage := range inactive {
+		if index < retainedInactiveAppPackageVersions {
+			continue
+		}
+		if err := s.Store.DeleteAppPackageVersion(ctx, versionPackage.AppID, versionPackage.Version); err != nil {
+			return err
+		}
+		if dir := strings.TrimSpace(versionPackage.PackageDir); dir != "" {
+			if err := os.RemoveAll(dir); err != nil {
+				return fmt.Errorf("delete inactive workspace app package dir: %w", err)
+			}
+			if err := s.pruneEmptyPackageCacheParents(dir); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (s *AppCenterService) removeFactoryJobFilesForPackage(ctx context.Context, workspaceID string, appPackage workspacebiz.AppPackage) error {

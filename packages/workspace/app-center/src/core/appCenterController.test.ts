@@ -298,7 +298,7 @@ test("WorkspaceAppCenterController ignores retry for non-failed apps", async () 
   assert.equal(controller.store.apps[0]?.runtimeStatus, "idle");
 });
 
-test("WorkspaceAppCenterController requests restart when updating a running installed app", async () => {
+test("WorkspaceAppCenterController requests restart without closing views when updating a running installed app", async () => {
   const installInputs: Array<{ restartRunning?: boolean } | undefined> = [];
   const closeRequests: Array<{
     appIds: readonly string[];
@@ -351,9 +351,7 @@ test("WorkspaceAppCenterController requests restart when updating a running inst
   });
 
   assert.deepEqual(installInputs, [{ restartRunning: true }]);
-  assert.deepEqual(closeRequests, [
-    { appIds: ["app-1"], workspaceId: "workspace-1" }
-  ]);
+  assert.deepEqual(closeRequests, []);
   controller.applyAppUpdate({
     app: createApp({
       appId: "app-1",
@@ -365,6 +363,7 @@ test("WorkspaceAppCenterController requests restart when updating a running inst
     }),
     workspaceId: "workspace-1"
   });
+  assert.deepEqual(closeRequests, []);
 });
 
 test("WorkspaceAppCenterController preserves install progress during pending install app updates", async () => {
