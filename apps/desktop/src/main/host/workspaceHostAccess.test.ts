@@ -35,6 +35,9 @@ function createTransportClient(
     async listWorkspaceAppReferences() {
       throw new Error("not used");
     },
+    async searchWorkspaceAppReferences() {
+      throw new Error("not used");
+    },
     async installWorkspaceApp() {
       throw new Error("not used");
     },
@@ -203,6 +206,9 @@ function createTransportClient(
     async listWorkspaceFileDirectory() {
       throw new Error("not used");
     },
+    async listWorkspaceRecentFiles() {
+      throw new Error("not used");
+    },
     async listWorkspaceAgentSessionMessages() {
       throw new Error("not used");
     },
@@ -231,6 +237,12 @@ function createTransportClient(
       throw new Error("not used");
     },
     async listWorkspaceAgentSessions() {
+      throw new Error("not used");
+    },
+    async scanWorkspaceExternalAgentSessionImports() {
+      throw new Error("not used");
+    },
+    async importWorkspaceExternalAgentSessions() {
       throw new Error("not used");
     },
     async openWorkspace() {

@@ -205,6 +205,13 @@ export function createDesktopTuttidClient(
         request
       );
     },
+    async searchWorkspaceAppReferences(workspaceID, appID, request) {
+      return (await resolveClient()).searchWorkspaceAppReferences(
+        workspaceID,
+        appID,
+        request
+      );
+    },
     async refreshWorkspaceAppCatalog(workspaceID) {
       return (await resolveClient()).refreshWorkspaceAppCatalog(workspaceID);
     },
@@ -369,6 +376,13 @@ export function createDesktopTuttidClient(
         request
       );
     },
+    async listWorkspaceRecentFiles(workspaceID, request, requestOptions) {
+      return (await resolveClient()).listWorkspaceRecentFiles(
+        workspaceID,
+        request,
+        requestOptions
+      );
+    },
     async getWorkspaceFileTreeSnapshot(workspaceID, request) {
       return (await resolveClient()).getWorkspaceFileTreeSnapshot(
         workspaceID,
@@ -383,6 +397,18 @@ export function createDesktopTuttidClient(
     },
     async listWorkspaceAgentSessions(workspaceID, request) {
       return (await resolveClient()).listWorkspaceAgentSessions(
+        workspaceID,
+        request
+      );
+    },
+    async scanWorkspaceExternalAgentSessionImports(workspaceID, request) {
+      return (await resolveClient()).scanWorkspaceExternalAgentSessionImports(
+        workspaceID,
+        request
+      );
+    },
+    async importWorkspaceExternalAgentSessions(workspaceID, request) {
+      return (await resolveClient()).importWorkspaceExternalAgentSessions(
         workspaceID,
         request
       );

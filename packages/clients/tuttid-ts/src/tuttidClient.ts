@@ -1,5 +1,3 @@
-/* eslint-disable max-lines -- flat client registry that mirrors the generated
-   tuttid API surface; it grows one thin wrapper per endpoint. */
 import {
   addWorkspaceIssueContextRefs,
   addWorkspaceIssueTaskContextRefs,
@@ -37,6 +35,7 @@ import {
   getWorkspaceTerminal,
   getWorkspaceTerminalSnapshot,
   getWorkspaceWorkbench,
+  importWorkspaceExternalAgentSessions,
   listCliCapabilities,
   listUserProjects,
   listWorkspaceAgentSessionMessages,
@@ -48,6 +47,7 @@ import {
   listWorkspaceAgentSessions,
   listWorkspaceTerminals,
   listWorkspaceFileDirectory,
+  listWorkspaceRecentFiles,
   listWorkspaces,
   copyWorkspaceFileEntry,
   moveWorkspaceFileEntry,
@@ -64,6 +64,7 @@ import {
   removeWorkspaceIssueContextRef,
   removeWorkspaceIssueTaskContextRef,
   resizeWorkspaceTerminal,
+  scanWorkspaceExternalAgentSessionImports,
   searchWorkspaceFiles,
   sendWorkspaceAgentSessionInput,
   submitWorkspaceAgentInteractive,
@@ -505,6 +506,28 @@ export function createTuttidClient(
       });
       return unwrapData(response, "Workspace agent sessions request failed.");
     },
+    async scanWorkspaceExternalAgentSessionImports(workspaceID, request) {
+      const response = await scanWorkspaceExternalAgentSessionImports({
+        client,
+        body: request,
+        path: { workspaceID }
+      });
+      return unwrapData(
+        response,
+        "Workspace external agent import scan request failed."
+      );
+    },
+    async importWorkspaceExternalAgentSessions(workspaceID, request) {
+      const response = await importWorkspaceExternalAgentSessions({
+        client,
+        body: request,
+        path: { workspaceID }
+      });
+      return unwrapData(
+        response,
+        "Workspace external agent import request failed."
+      );
+    },
     async listWorkspaceAgentSessionMessages(
       workspaceID,
       agentSessionID,
@@ -527,6 +550,15 @@ export function createTuttidClient(
         query: request
       });
       return unwrapData(response, "Workspace file directory request failed.");
+    },
+    async listWorkspaceRecentFiles(workspaceID, request, requestOptions) {
+      const response = await listWorkspaceRecentFiles({
+        client,
+        path: { workspaceID },
+        query: request,
+        ...requestOptions
+      });
+      return unwrapData(response, "Workspace recent files request failed.");
     },
     async getWorkspaceFileTreeSnapshot(workspaceID, request) {
       const response = await getWorkspaceFileTreeSnapshot({

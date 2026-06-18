@@ -14,11 +14,16 @@ import {
 import { useSnapshot } from "valtio";
 import { ChevronRight, Info, X } from "lucide-react";
 import type {
+  ReferenceLocateTarget,
   WorkspaceFileReference,
   WorkspaceFileReferenceAdapter,
   WorkspaceFileReferenceCopy
 } from "@tutti-os/workspace-file-reference/contracts";
-import { WorkspaceFileReferencePicker } from "@tutti-os/workspace-file-reference/ui";
+import {
+  ReferenceSourcePicker,
+  WorkspaceFileReferencePicker
+} from "@tutti-os/workspace-file-reference/ui";
+import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import {
   Tooltip,
   TooltipContent,
@@ -108,7 +113,16 @@ import {
   groupConversations
 } from "./agentGuiNodeViewConversation";
 import styles from "./AgentGUINode.styles";
-import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
+import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
+import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
+
+/**
+ * 把 @ 面板里的事项/应用 mention 解析为引用 picker 的定位目标(sourceId + 语义 params)。
+ * 由宿主(desktop)注入 —— 源 id 与 params 形态是宿主侧 reference source 的知识。
+ */
+export type AgentMentionReferenceTargetResolver = (
+  item: AgentContextMentionItem
+) => ReferenceLocateTarget | null;
 
 const AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX = 24;
 
@@ -289,6 +303,18 @@ export interface AgentGUIViewLabels {
   slashPaletteSkillsGroup: string;
   browserUseCapabilityLabel: string;
   browserUseCapabilityDescription: string;
+  browserUseCapabilityDescriptionAutoConnect: string;
+  browserUseCapabilityDescriptionIsolated: string;
+  browserUseCapabilitySettingsLabel: string;
+  browserUseCapabilitySettingsDescription: string;
+  capabilityInlineSettingsLabel: string;
+  computerUseCapabilityLabel: string;
+  computerUseCapabilityDescription: string;
+  computerUseCapabilitySetupRequiredDescription: string;
+  computerUseCapabilityAuthorizationRequiredDescription: string;
+  computerUseCapabilityAuthorizationUnknownDescription: string;
+  computerUseCapabilitySettingsLabel: string;
+  computerUseCapabilitySettingsDescription: string;
   slashStatusTitle: string;
   slashStatusSession: string;
   slashStatusBaseUrl: string;
@@ -346,6 +372,8 @@ export interface AgentGUIViewLabels {
 interface AgentGUINodeViewProps {
   viewModel: AgentGUINodeViewModel;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
+  capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
+  onCapabilitySettingsRequest?: AgentComposerProps["onCapabilitySettingsRequest"];
   isActive?: boolean;
   composerFocusRequestSequence?: number | null;
   isAgentProviderReady: boolean;
@@ -405,7 +433,9 @@ interface AgentGUINodeViewProps {
   workspaceFileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   workspaceFileReferenceCopy?: WorkspaceFileReferenceCopy | null;
-  richTextAtProviders?: readonly AgentRichTextAtProvider[];
+  contextMentionProviders?: readonly AgentContextMentionProvider[];
+  referenceSourceAggregator?: ReferenceSourceAggregator | null;
+  resolveMentionReferenceTarget?: AgentMentionReferenceTargetResolver | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
 }
 
@@ -749,6 +779,8 @@ function conversationPlainTitle(
 export function AgentGUINodeView({
   viewModel,
   onLinkAction,
+  capabilityMenuState,
+  onCapabilitySettingsRequest,
   isActive = true,
   composerFocusRequestSequence = null,
   isAgentProviderReady,
@@ -771,18 +803,28 @@ export function AgentGUINodeView({
   workspaceFileReferenceAdapter = null,
   workspaceFileReferenceCopy = null,
   onRequestGitBranches = null,
-  richTextAtProviders,
+  contextMentionProviders,
+  referenceSourceAggregator = null,
+  resolveMentionReferenceTarget = null,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUINodeViewProps): React.JSX.Element {
   "use memo";
+  const layoutElementRef = useRef<HTMLDivElement | null>(null);
   const railResizeInteractionRef = useRef<{
+    lastWidthPx: number;
     pointerId: number;
     startClientX: number;
     startWidthPx: number;
   } | null>(null);
   const [isRailResizing, setIsRailResizing] = useState(false);
+  const [railResizeWidthPx, setRailResizeWidthPx] = useState<number | null>(
+    null
+  );
   const [workspaceReferencePickerOpen, setWorkspaceReferencePickerOpen] =
     useState(false);
+  // 打开引用 picker 时的定位目标(点事项/应用行的产物图标时设置;「+」按钮则为 null)。
+  const [workspaceReferencePickerTarget, setWorkspaceReferencePickerTarget] =
+    useState<ReferenceLocateTarget | null>(null);
   const [
     localComposerFocusRequestSequence,
     setLocalComposerFocusRequestSequence
@@ -790,28 +832,48 @@ export function AgentGUINodeView({
   const workspaceReferencePickerResolverRef = useRef<
     ((refs: WorkspaceFileReference[]) => void) | null
   >(null);
-  const requestWorkspaceReferences = useCallback(async () => {
-    if (previewMode) {
-      return [];
-    }
-    if (!workspaceFileReferenceAdapter || !workspaceFileReferenceCopy) {
-      return [];
-    }
-    setWorkspaceReferencePickerOpen(true);
-    return await new Promise<WorkspaceFileReference[]>((resolve) => {
-      workspaceReferencePickerResolverRef.current = resolve;
-    });
-  }, [previewMode, workspaceFileReferenceAdapter, workspaceFileReferenceCopy]);
+  const requestWorkspaceReferences = useCallback(
+    async (entity?: AgentContextMentionItem | null) => {
+      if (previewMode) {
+        return [];
+      }
+      if (
+        (!workspaceFileReferenceAdapter && !referenceSourceAggregator) ||
+        !workspaceFileReferenceCopy
+      ) {
+        return [];
+      }
+      // 仅多源 picker(referenceSourceAggregator)支持定位;本地 picker 不支持。
+      const target =
+        entity && referenceSourceAggregator
+          ? (resolveMentionReferenceTarget?.(entity) ?? null)
+          : null;
+      setWorkspaceReferencePickerTarget(target);
+      setWorkspaceReferencePickerOpen(true);
+      return await new Promise<WorkspaceFileReference[]>((resolve) => {
+        workspaceReferencePickerResolverRef.current = resolve;
+      });
+    },
+    [
+      previewMode,
+      referenceSourceAggregator,
+      resolveMentionReferenceTarget,
+      workspaceFileReferenceAdapter,
+      workspaceFileReferenceCopy
+    ]
+  );
   const closeWorkspaceReferencePicker = useCallback(() => {
     workspaceReferencePickerResolverRef.current?.([]);
     workspaceReferencePickerResolverRef.current = null;
     setWorkspaceReferencePickerOpen(false);
+    setWorkspaceReferencePickerTarget(null);
   }, []);
   const confirmWorkspaceReferencePicker = useCallback(
     (refs: WorkspaceFileReference[]) => {
       workspaceReferencePickerResolverRef.current?.(refs);
       workspaceReferencePickerResolverRef.current = null;
       setWorkspaceReferencePickerOpen(false);
+      setWorkspaceReferencePickerTarget(null);
       if (refs.length > 0) {
         void onWorkspaceFileReferencesAdded?.(refs);
       }
@@ -876,10 +938,12 @@ export function AgentGUINodeView({
       event.preventDefault();
       event.currentTarget.setPointerCapture?.(event.pointerId);
       railResizeInteractionRef.current = {
+        lastWidthPx: conversationRailWidthPx,
         pointerId: event.pointerId,
         startClientX: event.clientX,
         startWidthPx: conversationRailWidthPx
       };
+      setRailResizeWidthPx(conversationRailWidthPx);
       setIsRailResizing(true);
     },
     [conversationRailCollapsed, conversationRailWidthPx, previewMode]
@@ -898,25 +962,57 @@ export function AgentGUINodeView({
       const nextWidthPx = clampConversationRailWidth(
         resizeState.startWidthPx + event.clientX - resizeState.startClientX
       );
-      onConversationRailWidthChanged(nextWidthPx);
+      if (resizeState.lastWidthPx !== nextWidthPx) {
+        resizeState.lastWidthPx = nextWidthPx;
+        layoutElementRef.current?.style.setProperty(
+          "--agent-gui-conversation-rail-width",
+          `${nextWidthPx}px`
+        );
+        event.currentTarget.setAttribute("aria-valuenow", String(nextWidthPx));
+      }
     },
-    [clampConversationRailWidth, onConversationRailWidthChanged, previewMode]
+    [clampConversationRailWidth, previewMode]
   );
 
   const endConversationRailResize = useCallback(
     (event?: PointerEvent<HTMLDivElement>): void => {
+      const resizeState = railResizeInteractionRef.current;
       if (
         event &&
-        railResizeInteractionRef.current?.pointerId === event.pointerId &&
+        resizeState?.pointerId === event.pointerId &&
         event.currentTarget.hasPointerCapture?.(event.pointerId)
       ) {
         event.currentTarget.releasePointerCapture?.(event.pointerId);
       }
       railResizeInteractionRef.current = null;
+      if (resizeState) {
+        const nextWidthPx = resizeState.lastWidthPx;
+        setRailResizeWidthPx(nextWidthPx);
+        onConversationRailWidthChanged(nextWidthPx);
+      } else {
+        setRailResizeWidthPx(null);
+      }
       setIsRailResizing(false);
     },
-    []
+    [onConversationRailWidthChanged]
   );
+
+  useEffect(() => {
+    if (isRailResizing || railResizeWidthPx === null) {
+      return;
+    }
+    if (
+      conversationRailCollapsed ||
+      conversationRailWidthPx === railResizeWidthPx
+    ) {
+      setRailResizeWidthPx(null);
+    }
+  }, [
+    conversationRailCollapsed,
+    conversationRailWidthPx,
+    isRailResizing,
+    railResizeWidthPx
+  ]);
 
   const handleConversationRailResizeKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>): void => {
@@ -948,8 +1044,12 @@ export function AgentGUINodeView({
     ]
   );
 
+  const visualConversationRailWidthPx = isRailResizing
+    ? (railResizeInteractionRef.current?.lastWidthPx ?? conversationRailWidthPx)
+    : (railResizeWidthPx ?? conversationRailWidthPx);
+
   const layoutStyle = {
-    "--agent-gui-conversation-rail-width": `${conversationRailWidthPx}px`,
+    "--agent-gui-conversation-rail-width": `${visualConversationRailWidthPx}px`,
     "--agent-gui-detail-min-width": `${detailMinWidthPx}px`,
     gridTemplateColumns: conversationRailCollapsed
       ? "0 minmax(var(--agent-gui-detail-min-width), 1fr)"
@@ -959,8 +1059,10 @@ export function AgentGUINodeView({
   return (
     <TooltipProvider>
       <div
+        ref={layoutElementRef}
         className={styles.layout}
         data-agent-gui-preview={previewMode ? "true" : undefined}
+        data-rail-resizing={isRailResizing ? "true" : undefined}
         inert={previewMode ? true : undefined}
         style={layoutStyle}
       >
@@ -1018,7 +1120,9 @@ export function AgentGUINodeView({
           aria-valuemin={conversationRailMinWidthPx}
           aria-valuemax={conversationRailMaxWidthPx}
           aria-valuenow={
-            conversationRailCollapsed ? undefined : conversationRailWidthPx
+            conversationRailCollapsed
+              ? undefined
+              : visualConversationRailWidthPx
           }
           data-resizing={isRailResizing ? "true" : undefined}
           data-testid="agent-gui-conversation-rail-resize-handle"
@@ -1045,24 +1149,43 @@ export function AgentGUINodeView({
             slashStatusLimitsLoading={slashStatusLimitsLoading}
             showProjectSelector={showProjectSelector}
             onLinkAction={onLinkAction}
+            capabilityMenuState={capabilityMenuState}
+            onCapabilitySettingsRequest={onCapabilitySettingsRequest}
             onAgentProviderLogin={onAgentProviderLogin}
             onRequestWorkspaceReferences={requestWorkspaceReferences}
             onRequestGitBranches={onRequestGitBranches}
-            richTextAtProviders={richTextAtProviders}
+            contextMentionProviders={contextMentionProviders}
             workspaceAppIcons={effectiveWorkspaceAppIcons}
             workspaceUserProjectI18n={workspaceUserProjectI18n}
           />
         </section>
       </div>
-      <WorkspaceFileReferencePicker
-        copy={workspaceFileReferenceCopy ?? fallbackWorkspaceFileReferenceCopy}
-        fileAdapter={workspaceFileReferenceAdapter ?? undefined}
-        initialPath={viewModel.composerSettings.selectedProjectPath}
-        open={workspaceReferencePickerOpen}
-        workspaceId={viewModel.workspaceId}
-        onClose={closeWorkspaceReferencePicker}
-        onConfirm={confirmWorkspaceReferencePicker}
-      />
+      {referenceSourceAggregator ? (
+        <ReferenceSourcePicker
+          aggregator={referenceSourceAggregator}
+          copy={
+            workspaceFileReferenceCopy ?? fallbackWorkspaceFileReferenceCopy
+          }
+          initialTarget={workspaceReferencePickerTarget}
+          open={workspaceReferencePickerOpen}
+          workspaceId={viewModel.workspaceId}
+          onClose={closeWorkspaceReferencePicker}
+          onConfirm={confirmWorkspaceReferencePicker}
+        />
+      ) : (
+        <WorkspaceFileReferencePicker
+          copy={
+            workspaceFileReferenceCopy ?? fallbackWorkspaceFileReferenceCopy
+          }
+          fileAdapter={workspaceFileReferenceAdapter ?? undefined}
+          initialPath={viewModel.composerSettings.selectedProjectPath}
+          open={workspaceReferencePickerOpen}
+          scoped
+          workspaceId={viewModel.workspaceId}
+          onClose={closeWorkspaceReferencePicker}
+          onConfirm={confirmWorkspaceReferencePicker}
+        />
+      )}
     </TooltipProvider>
   );
 }
@@ -1080,12 +1203,16 @@ interface AgentGUIDetailPaneProps {
   slashStatusLimitsLoading: boolean;
   showProjectSelector: boolean;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
+  capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
+  onCapabilitySettingsRequest?: AgentComposerProps["onCapabilitySettingsRequest"];
   onAgentProviderLogin?: (provider?: string | null) => void;
   onRequestWorkspaceReferences?:
-    | (() => Promise<WorkspaceFileReference[]>)
+    | ((
+        entity?: AgentContextMentionItem | null
+      ) => Promise<WorkspaceFileReference[]>)
     | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
-  richTextAtProviders?: readonly AgentRichTextAtProvider[];
+  contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
 }
 
@@ -1168,10 +1295,12 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   slashStatusLimitsLoading,
   showProjectSelector,
   onLinkAction,
+  capabilityMenuState,
+  onCapabilitySettingsRequest,
   onAgentProviderLogin,
   onRequestWorkspaceReferences,
   onRequestGitBranches,
-  richTextAtProviders,
+  contextMentionProviders,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUIDetailPaneProps): React.JSX.Element {
   "use memo";
@@ -1491,6 +1620,27 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       slashPaletteSkillsGroup: labels.slashPaletteSkillsGroup,
       browserUseCapabilityLabel: labels.browserUseCapabilityLabel,
       browserUseCapabilityDescription: labels.browserUseCapabilityDescription,
+      browserUseCapabilityDescriptionAutoConnect:
+        labels.browserUseCapabilityDescriptionAutoConnect,
+      browserUseCapabilityDescriptionIsolated:
+        labels.browserUseCapabilityDescriptionIsolated,
+      browserUseCapabilitySettingsLabel:
+        labels.browserUseCapabilitySettingsLabel,
+      browserUseCapabilitySettingsDescription:
+        labels.browserUseCapabilitySettingsDescription,
+      capabilityInlineSettingsLabel: labels.capabilityInlineSettingsLabel,
+      computerUseCapabilityLabel: labels.computerUseCapabilityLabel,
+      computerUseCapabilityDescription: labels.computerUseCapabilityDescription,
+      computerUseCapabilitySetupRequiredDescription:
+        labels.computerUseCapabilitySetupRequiredDescription,
+      computerUseCapabilityAuthorizationRequiredDescription:
+        labels.computerUseCapabilityAuthorizationRequiredDescription,
+      computerUseCapabilityAuthorizationUnknownDescription:
+        labels.computerUseCapabilityAuthorizationUnknownDescription,
+      computerUseCapabilitySettingsLabel:
+        labels.computerUseCapabilitySettingsLabel,
+      computerUseCapabilitySettingsDescription:
+        labels.computerUseCapabilitySettingsDescription,
       slashStatusTitle: labels.slashStatusTitle,
       slashStatusSession: labels.slashStatusSession,
       slashStatusBaseUrl: labels.slashStatusBaseUrl,
@@ -1563,7 +1713,19 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.sendQueuedPromptNext,
       labels.slashCommandPalette,
       labels.browserUseCapabilityDescription,
+      labels.browserUseCapabilityDescriptionAutoConnect,
+      labels.browserUseCapabilityDescriptionIsolated,
       labels.browserUseCapabilityLabel,
+      labels.browserUseCapabilitySettingsDescription,
+      labels.browserUseCapabilitySettingsLabel,
+      labels.capabilityInlineSettingsLabel,
+      labels.computerUseCapabilityDescription,
+      labels.computerUseCapabilityAuthorizationRequiredDescription,
+      labels.computerUseCapabilityAuthorizationUnknownDescription,
+      labels.computerUseCapabilitySetupRequiredDescription,
+      labels.computerUseCapabilityLabel,
+      labels.computerUseCapabilitySettingsDescription,
+      labels.computerUseCapabilitySettingsLabel,
       labels.slashPaletteCapabilitiesGroup,
       labels.slashPaletteCommandsGroup,
       labels.slashPaletteSkillsGroup,
@@ -1669,6 +1831,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       isSubmittingPrompt: viewModel.isRespondingApproval,
       labels: composerLabels,
       workspaceUserProjectI18n,
+      capabilityMenuState,
       onDraftContentChange: updateDraftContent,
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
@@ -1679,13 +1842,15 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onEditQueuedPrompt: editQueuedPrompt,
       onInterruptCurrentTurn: handleInterruptCurrentTurn,
       onSubmitInteractivePrompt: submitInteractivePrompt,
+      onCapabilitySettingsRequest,
       onLinkAction: stableLinkAction,
       onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
       onRequestGitBranches: stableRequestGitBranches,
-      richTextAtProviders
+      contextMentionProviders
     }),
     [
       canQueueWhileBusy,
+      capabilityMenuState,
       composerDisabled,
       composerDisabledReason,
       composerFocusRequestSequence,
@@ -1698,7 +1863,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.promptTips,
       composerActivePrompt,
       editQueuedPrompt,
-      richTextAtProviders,
+      onCapabilitySettingsRequest,
+      contextMentionProviders,
       removeQueuedPrompt,
       sendQueuedPromptNext,
       showPromptImagesUnsupported,
@@ -1973,6 +2139,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               isSubmittingPrompt: viewModel.isRespondingApproval,
               labels: composerLabels,
               workspaceUserProjectI18n,
+              capabilityMenuState,
               onDraftContentChange: updateDraftContent,
               onProjectPathChange: updateSelectedProjectPath,
               onSettingsChange: updateComposerSettings,
@@ -1983,10 +2150,11 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               onEditQueuedPrompt: editQueuedPrompt,
               onInterruptCurrentTurn: handleInterruptCurrentTurn,
               onSubmitInteractivePrompt: submitInteractivePrompt,
+              onCapabilitySettingsRequest,
               onLinkAction: stableLinkAction,
               onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
               onRequestGitBranches: stableRequestGitBranches,
-              richTextAtProviders
+              contextMentionProviders
             }}
           />
         ) : (
@@ -2084,6 +2252,13 @@ const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
   }
 
   const runPath = activeConversation.cwd.trim();
+  const showConversationStatus = activeConversationStatus !== "ready";
+  let statusTitle: string | undefined;
+  if (showConversationStatus) {
+    statusTitle = statusGroupTitle;
+  } else if (showSyncIndicator) {
+    statusTitle = syncLabel;
+  }
 
   return (
     <div className={styles.detailHeader}>
@@ -2095,7 +2270,7 @@ const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
       </span>
       <span
         className="inline-flex flex-none items-center gap-2 whitespace-nowrap"
-        title={statusGroupTitle}
+        title={statusTitle}
       >
         {usage && usage.percentUsed !== null ? (
           <AgentUsageChip
@@ -2115,16 +2290,20 @@ const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
             onSubmitCompact={onSubmitCompact}
           />
         ) : null}
-        <StatusDot
-          tone={conversationStatusTone(activeConversationStatus)}
-          pulse={conversationStatusPulse(activeConversationStatus)}
-          size="sm"
-          ariaLabel={activeConversationStatusLabel}
-          title={activeConversationStatusLabel}
-        />
-        <span className={styles.detailHeaderStatus}>
-          {activeConversationStatusLabel}
-        </span>
+        {showConversationStatus ? (
+          <>
+            <StatusDot
+              tone={conversationStatusTone(activeConversationStatus)}
+              pulse={conversationStatusPulse(activeConversationStatus)}
+              size="sm"
+              ariaLabel={activeConversationStatusLabel}
+              title={activeConversationStatusLabel}
+            />
+            <span className={styles.detailHeaderStatus}>
+              {activeConversationStatusLabel}
+            </span>
+          </>
+        ) : null}
         {showSyncIndicator ? (
           <StatusDot
             tone={syncStateTone(syncStatus)}

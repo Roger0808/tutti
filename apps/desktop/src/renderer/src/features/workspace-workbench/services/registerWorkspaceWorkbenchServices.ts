@@ -5,12 +5,12 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import type {
   DesktopBrowserApi,
+  DesktopComputerUseApi,
   DesktopDeveloperApi,
   DesktopDockPreviewCacheApi,
   DesktopHostFilesApi,
   DesktopHostNotificationsApi,
   DesktopHostWindowApi,
-  DesktopHostWorkspaceApi,
   DesktopPlatformApi,
   DesktopRuntimeApi,
   DesktopWallpaperApi
@@ -24,13 +24,13 @@ import { IWorkspaceSettingsService } from "./workspaceSettingsService.interface"
 
 export interface WorkspaceWorkbenchServiceRegistrationInput {
   browserApi?: DesktopBrowserApi;
+  computerUseApi: DesktopComputerUseApi;
   developerApi: DesktopDeveloperApi;
   dockPreviewCacheApi: DesktopDockPreviewCacheApi;
   eventStreamClient?: TuttidEventStreamClient;
   hostFilesApi: DesktopHostFilesApi;
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWindowApi: DesktopHostWindowApi;
-  hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenSettingsRequest">;
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
@@ -50,12 +50,12 @@ export function registerWorkspaceWorkbenchServices(
     new SyncDescriptor(WorkspaceWorkbenchHostService, [
       {
         browserApi: input.browserApi,
+        computerUseApi: input.computerUseApi,
         dockPreviewCacheApi: input.dockPreviewCacheApi,
         eventStreamClient: input.eventStreamClient,
         hostFilesApi: input.hostFilesApi,
         hostNotificationsApi: input.hostNotificationsApi,
         hostWindowApi: input.hostWindowApi,
-        hostWorkspaceApi: input.hostWorkspaceApi,
         tuttidClient: input.tuttidClient,
         platformApi: input.platformApi,
         reporterService: input.reporterService,
@@ -69,6 +69,7 @@ export function registerWorkspaceWorkbenchServices(
     new SyncDescriptor(WorkspaceSettingsService, [
       {
         client: createDesktopWorkspaceSettingsClient({
+          computerUseApi: input.computerUseApi,
           developerApi: input.developerApi,
           runtimeApi: input.runtimeApi
         })

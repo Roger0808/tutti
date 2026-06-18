@@ -994,11 +994,11 @@ func claudeCodeMentionRoutingDirective(text string) (string, []string) {
 
 func skillForMentionURI(uri string) string {
 	switch {
-	case strings.HasPrefix(uri, "mention://workspace-issue?"):
+	case strings.HasPrefix(uri, "mention://workspace-issue/"):
 		return "issue-manager"
-	case strings.HasPrefix(uri, "mention://workspace-app?"):
+	case strings.HasPrefix(uri, "mention://workspace-app/"):
 		return "workspace-app"
-	case strings.HasPrefix(uri, "mention://agent-session?"):
+	case strings.HasPrefix(uri, "mention://agent-session/"):
 		return "tutti-cli"
 	default:
 		return ""
@@ -1544,6 +1544,7 @@ func (a *standardACPAdapter) SessionState(session Session) SessionStateSnapshot 
 	}
 	capabilities := standardACPCapabilities(a.config.provider, promptImage, state)
 	capabilities = appendBrowserUseCapability(capabilities, session.Env)
+	capabilities = appendComputerUseCapability(capabilities, session.Env)
 	if len(capabilities) > 0 {
 		snapshot.RuntimeContext["capabilities"] = capabilities
 	}

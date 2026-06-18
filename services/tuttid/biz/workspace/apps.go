@@ -53,7 +53,8 @@ type AppManifestCLI struct {
 }
 
 type AppManifestReferences struct {
-	ListEndpoint string `json:"listEndpoint"`
+	ListEndpoint   string `json:"listEndpoint"`
+	SearchEndpoint string `json:"searchEndpoint,omitempty"`
 }
 
 type AppManifestWindow struct {
@@ -109,6 +110,10 @@ func (p AppPackage) Description() string {
 
 func (p AppPackage) ReferenceListSupported() bool {
 	return p.Manifest.References != nil && strings.TrimSpace(p.Manifest.References.ListEndpoint) != ""
+}
+
+func (p AppPackage) ReferenceSearchSupported() bool {
+	return p.Manifest.References != nil && strings.TrimSpace(p.Manifest.References.SearchEndpoint) != ""
 }
 
 func (p AppPackage) MinimizeBehavior() string {
@@ -291,7 +296,8 @@ type WorkspaceApp struct {
 }
 
 type AppReferencesState struct {
-	ListSupported bool
+	ListSupported   bool
+	SearchSupported bool
 }
 
 type AppReferenceListInput struct {
@@ -301,6 +307,14 @@ type AppReferenceListInput struct {
 	Cursor        string
 	Kinds         []AppReferenceKind
 	TimeRange     *AppReferenceListTimeRange
+}
+
+type AppReferenceSearchInput struct {
+	Query     string
+	Limit     int
+	Cursor    string
+	Kinds     []AppReferenceKind
+	TimeRange *AppReferenceListTimeRange
 }
 
 type AppReferenceListTimeRange struct {
@@ -361,6 +375,9 @@ type AppFileReference struct {
 	MtimeMs     *int64
 	MimeType    string
 	Score       *float64
+	// ParentGroupLabel is the group/project this file belongs to, used as the
+	// search-result context subtitle. Empty when the app does not provide it.
+	ParentGroupLabel string
 }
 
 func (AppFileReference) AppReferenceKind() AppReferenceKind {
@@ -476,7 +493,7 @@ func validateAppManifestReferencesJSON(raw map[string]json.RawMessage) error {
 		return errors.New("app manifest references must be an object when provided")
 	}
 	for key := range references {
-		if key != "listEndpoint" {
+		if key != "listEndpoint" && key != "searchEndpoint" {
 			return fmt.Errorf("app manifest references.%s is unsupported", key)
 		}
 	}
@@ -545,6 +562,11 @@ func ValidateAppManifest(manifest AppManifest) error {
 		}
 		if !isRelativeURLPath(listEndpoint) {
 			return errors.New("app manifest references.listEndpoint must be a relative URL path without query or fragment")
+		}
+		if searchEndpoint := strings.TrimSpace(manifest.References.SearchEndpoint); searchEndpoint != "" {
+			if !isRelativeURLPath(searchEndpoint) {
+				return errors.New("app manifest references.searchEndpoint must be a relative URL path without query or fragment")
+			}
 		}
 	}
 	if manifest.Author != nil && strings.TrimSpace(manifest.Author.Name) == "" {

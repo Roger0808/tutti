@@ -13,16 +13,6 @@ export const zhCN = {
     unreachable: "不可达",
     workspace: "工作区"
   },
-  workspaceApp: {
-    managedCredentials: {
-      allow: "允许",
-      authorizationDetail:
-        "应用会通过 Tutti 获取短期凭证，真实 provider key 仍保存在 Tutti。",
-      authorizationMessage: "允许这个应用使用 {{providers}} 吗？",
-      authorizationTitle: "授权托管模型",
-      configuredProviders: "已配置的 provider"
-    }
-  },
   dashboard: {
     chooseWorkspaceTitle: "选择一个工作区",
     chooseWorkspaceDescription: "选择一个工作区继续",
@@ -99,6 +89,7 @@ export const zhCN = {
       exportServiceLogs: "导出服务日志...",
       file: "文件",
       help: "帮助",
+      openPerfMonitor: "打开 Perf Monitor DevTools",
       upToDateDetail: "Tutti {{version}} 是当前的最新版本。",
       upToDateMessage: "您使用的就是最新版本！",
       view: "显示",
@@ -130,6 +121,16 @@ export const zhCN = {
       openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
       openSessionUnavailableTitle: "会话不可用"
     },
+    referenceSources: {
+      appSourceLabel: "应用",
+      issueSourceLabel: "议题",
+      localSourceLabel: "本地",
+      sidebarDesktop: "桌面",
+      sidebarDocuments: "文稿",
+      sidebarDownloads: "下载",
+      sidebarPersonal: "个人",
+      sidebarRecent: "最近访问"
+    },
     agentMessageCenter: {
       openAria: "打开 Agent 消息",
       promptConstraintHeader: "约束",
@@ -154,6 +155,38 @@ export const zhCN = {
       waitingNotificationTitle: "{{title}} 需要你决策",
       runningCount: "{{count}} 个运行中",
       waitingCount: "{{count}} 个等待"
+    },
+    externalImport: {
+      back: "返回",
+      description: "按项目导入本机 Codex 和 Claude Code 最近 30 天的会话历史。",
+      done: "完成",
+      empty: "未找到本机 Codex 或 Claude Code 的项目历史。",
+      errors: "跳过的项目",
+      import: "导入",
+      importFailed: "暂时无法导入外部 Agent 历史。",
+      importing: "导入中...",
+      chatOptionDescription: "最近 30 天 · {{messages}} 条消息",
+      chatOptionTitle: "聊天会话（{{count}}）",
+      optionDescription: "选择要从扫描结果中导入的内容。",
+      projectOptionDescription: "使用已有项目文件夹。",
+      projectOptionTitle: "项目（{{count}}）",
+      providerDescription: "选择要扫描的本机应用。",
+      promptDescription: "Tutti 可以导入最近的 {{provider}} 项目会话。",
+      promptImport: "导入",
+      promptLater: "稍后",
+      promptTitle: "导入已有 AI 聊天",
+      result:
+        "已从 {{projects}} 个项目导入 {{sessions}} 个会话和 {{messages}} 条消息。",
+      scan: "扫描",
+      scanFailed: "暂时无法扫描外部 Agent 历史。",
+      scanning: "正在扫描本机 Agent 历史...",
+      selectProvider: "选择 {{label}}",
+      selectImportOption: "选择 {{label}}",
+      settingsAction: "导入",
+      settingsDescription:
+        "将本机 Codex 和 Claude Code 最近的会话历史导入这个工作区。",
+      settingsLabel: "导入 AI 聊天",
+      title: "从 AI 应用导入"
     },
     analyticsDebug: {
       clear: "清空",
@@ -252,6 +285,35 @@ export const zhCN = {
           "用于新的 App Factory 任务、Issue 任务，以及读取宿主默认值的工作区应用",
         defaultAgentProviderLabel: "默认 Provider",
         defaultAgentProviderSaveFailed: "暂时无法更新默认 Provider。",
+        computerUseLabel: "电脑控制",
+        computerUseDescription:
+          "让 Agent 控制你的 Mac 桌面——截图、点击、键盘输入等。",
+        computerUseInstallButton: "安装",
+        computerUseInstalling: "正在安装…",
+        computerUseInstallSuccess: "cua-driver 安装成功。",
+        computerUseInstallFailed: "安装失败。",
+        computerUseUninstallButton: "移除",
+        computerUseUninstalling: "正在移除…",
+        computerUseUninstallSuccess: "cua-driver 已移除。",
+        computerUseUninstallFailed: "移除失败。",
+        computerUseProgressAria: "电脑控制设置进度",
+        computerUseManageButton: "管理",
+        computerUseGrantButton: "授权",
+        computerUseAuthorizedButton: "已授权",
+        computerUseGranting: "等待授权…",
+        computerUseGrantSuccess: "已授权。",
+        computerUseGrantFailed: "授权失败。",
+        computerUseAuthorizedTooltip:
+          "CuaDriver 已具备屏幕录制与辅助使用权限。",
+        computerUsePermissionUnknownTooltip:
+          "无法确认授权状态，点击后会由 CuaDriver 检查并引导授权。",
+        computerUsePermissionMissingTooltip: "需要授权：{{permissions}}。",
+        computerUsePermissionAccessibility: "辅助使用",
+        computerUsePermissionScreenRecording: "屏幕录制",
+        computerUsePermissionListSeparator: "、",
+        computerUseStatusInstalled: "已安装",
+        computerUseStatusNotInstalled: "未安装",
+        computerUseStatusCheckAgain: "重新检查",
         browserUseConnectionModeDescription:
           "选择 Agent 执行网页任务时控制哪个浏览器：你电脑上的 Chrome，或由 Tutti 单独启动的浏览器。",
         browserUseConnectionModeLabel: "浏览器连接",

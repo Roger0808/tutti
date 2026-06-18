@@ -154,6 +154,9 @@ import type {
   ImportWorkspaceAppData,
   ImportWorkspaceAppErrors,
   ImportWorkspaceAppResponses,
+  ImportWorkspaceExternalAgentSessionsData,
+  ImportWorkspaceExternalAgentSessionsErrors,
+  ImportWorkspaceExternalAgentSessionsResponses,
   InstallWorkspaceAppData,
   InstallWorkspaceAppErrors,
   InstallWorkspaceAppResponses,
@@ -208,6 +211,9 @@ import type {
   ListWorkspaceIssueTopicsData,
   ListWorkspaceIssueTopicsErrors,
   ListWorkspaceIssueTopicsResponses,
+  ListWorkspaceRecentFilesData,
+  ListWorkspaceRecentFilesErrors,
+  ListWorkspaceRecentFilesResponses,
   ListWorkspacesData,
   ListWorkspacesErrors,
   ListWorkspacesResponses,
@@ -274,6 +280,12 @@ import type {
   RunAgentProviderActionData,
   RunAgentProviderActionErrors,
   RunAgentProviderActionResponses,
+  ScanWorkspaceExternalAgentSessionImportsData,
+  ScanWorkspaceExternalAgentSessionImportsErrors,
+  ScanWorkspaceExternalAgentSessionImportsResponses,
+  SearchWorkspaceAppReferencesData,
+  SearchWorkspaceAppReferencesErrors,
+  SearchWorkspaceAppReferencesResponses,
   SearchWorkspaceFilesData,
   SearchWorkspaceFilesErrors,
   SearchWorkspaceFilesResponses,
@@ -826,6 +838,31 @@ export const listWorkspaceAppReferences = <
   });
 
 /**
+ * Search file references exposed by one running workspace app
+ *
+ * Proxies a recursive reference search request to a running workspace app and returns daemon-resolved file references ordered by relevance. Unlike the list filterText, search spans the whole app reference tree and never returns groups. Workspace app runtimes return scoped locations to the daemon; this public daemon API returns absolute file paths that desktop clients can use as ordinary file links.
+ *
+ */
+export const searchWorkspaceAppReferences = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SearchWorkspaceAppReferencesData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    SearchWorkspaceAppReferencesResponses,
+    SearchWorkspaceAppReferencesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/apps/{appID}/references/search",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
  * Export one workspace app package archive
  */
 export const exportWorkspaceApp = <ThrowOnError extends boolean = false>(
@@ -1148,6 +1185,50 @@ export const createWorkspaceAgentSession = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-sessions",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Scan external local agent session history that can be imported into one workspace
+ */
+export const scanWorkspaceExternalAgentSessionImports = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ScanWorkspaceExternalAgentSessionImportsData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ScanWorkspaceExternalAgentSessionImportsResponses,
+    ScanWorkspaceExternalAgentSessionImportsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/external-imports/scan",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Import selected external local agent session history into one workspace
+ */
+export const importWorkspaceExternalAgentSessions = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ImportWorkspaceExternalAgentSessionsData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ImportWorkspaceExternalAgentSessionsResponses,
+    ImportWorkspaceExternalAgentSessionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/external-imports/import",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -1621,6 +1702,22 @@ export const createWorkspaceFileDirectory = <
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * List the workspace's recently accessed entries, most-recent first
+ */
+export const listWorkspaceRecentFiles = <ThrowOnError extends boolean = false>(
+  options: Options<ListWorkspaceRecentFilesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceRecentFilesResponses,
+    ListWorkspaceRecentFilesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/files/recent",
+    ...options
   });
 
 /**

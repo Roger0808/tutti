@@ -7,6 +7,7 @@ import type {
   WorkspaceFileReference,
   WorkspaceFileReferenceCopy
 } from "@tutti-os/workspace-file-reference/contracts";
+import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type {
   AgentHostManagedAgentsState,
   AgentUsageQuota
@@ -31,7 +32,11 @@ import type {
   AgentGUIOpenSessionRequest,
   AgentGUIPrefillPromptRequest
 } from "./controller/useAgentGUINodeController";
-import { AgentGUINodeView, type AgentGUIViewLabels } from "./AgentGUINodeView";
+import {
+  AgentGUINodeView,
+  type AgentGUIViewLabels,
+  type AgentMentionReferenceTargetResolver
+} from "./AgentGUINodeView";
 import {
   normalizeAgentGUIProviderIdentity,
   resolveAgentGUIDockConversationTitle,
@@ -58,9 +63,11 @@ import {
   resolveAgentGUIConversationRailMaxWidthPx,
   shouldAutoCollapseAgentGUIConversationRail
 } from "./model/agentGuiRailLayout";
-import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
+import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import type {
+  AgentComposerCapabilityMenuState,
+  AgentComposerCapabilitySettingsTarget,
   AgentComposerGitBranchLoader,
   AgentComposerSlashStatusLimit
 } from "./AgentComposer";
@@ -105,6 +112,8 @@ export interface AgentGUINodeProps {
   workspacePath: string;
   workspaceFileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
+  referenceSourceAggregator?: ReferenceSourceAggregator | null;
+  resolveMentionReferenceTarget?: AgentMentionReferenceTargetResolver | null;
   agentSettings: Pick<AgentSettings, "avoidGroupingEdits">;
   title: string;
   state: AgentGUINodeData;
@@ -113,6 +122,10 @@ export interface AgentGUINodeProps {
   height: number;
   desktopSize: DesktopSize;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
+  capabilityMenuState?: AgentComposerCapabilityMenuState;
+  onCapabilitySettingsRequest?: (
+    capability: AgentComposerCapabilitySettingsTarget
+  ) => void;
   onAgentProviderLogin?: (provider: AgentProvider) => void;
   onWorkspaceFileReferencesAdded?: (input: {
     provider: AgentProvider;
@@ -139,7 +152,7 @@ export interface AgentGUINodeProps {
   workspaceAgentProbes?: WorkspaceDesktopAgentProbesState | null;
   onAgentProbeDemandChange?: WorkspaceDesktopAgentProbeDemandChange;
   managedAgentsState?: AgentHostManagedAgentsState | null;
-  richTextAtProviders?: readonly AgentRichTextAtProvider[];
+  contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   embedded?: boolean;
   previewMode?: boolean;
@@ -344,7 +357,6 @@ function agentGuiStateEquals(
     left === right ||
     (left.provider === right.provider &&
       left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
-      left.lastActiveConversationTitle === right.lastActiveConversationTitle &&
       left.conversationRailWidthPx === right.conversationRailWidthPx &&
       left.conversationRailCollapsed === right.conversationRailCollapsed &&
       (left.composerOverrides?.model ?? null) ===
@@ -401,6 +413,9 @@ function areAgentGUINodePropsEqual(
     previous.workspacePath === next.workspacePath &&
     previous.workspaceFileReferenceAdapter ===
       next.workspaceFileReferenceAdapter &&
+    previous.referenceSourceAggregator === next.referenceSourceAggregator &&
+    previous.resolveMentionReferenceTarget ===
+      next.resolveMentionReferenceTarget &&
     previous.onWorkspaceFileReferencesAdded ===
       next.onWorkspaceFileReferencesAdded &&
     previous.agentSettings.avoidGroupingEdits ===
@@ -414,6 +429,7 @@ function areAgentGUINodePropsEqual(
     previous.desktopSize.width === next.desktopSize.width &&
     previous.desktopSize.height === next.desktopSize.height &&
     previous.onLinkAction === next.onLinkAction &&
+    previous.onCapabilitySettingsRequest === next.onCapabilitySettingsRequest &&
     previous.onAgentProviderLogin === next.onAgentProviderLogin &&
     previous.onClose === next.onClose &&
     previous.onResize === next.onResize &&
@@ -430,7 +446,7 @@ function areAgentGUINodePropsEqual(
     ) &&
     previous.onAgentProbeDemandChange === next.onAgentProbeDemandChange &&
     previous.managedAgentsState === next.managedAgentsState &&
-    previous.richTextAtProviders === next.richTextAtProviders &&
+    previous.contextMentionProviders === next.contextMentionProviders &&
     previous.workspaceAppIcons === next.workspaceAppIcons &&
     previous.embedded === next.embedded &&
     previous.previewMode === next.previewMode &&
@@ -450,6 +466,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   workspacePath,
   workspaceFileReferenceAdapter = null,
   onRequestGitBranches = null,
+  referenceSourceAggregator = null,
+  resolveMentionReferenceTarget = null,
   agentSettings,
   title,
   state,
@@ -458,6 +476,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   height,
   desktopSize,
   onLinkAction,
+  capabilityMenuState,
+  onCapabilitySettingsRequest,
   onAgentProviderLogin,
   onWorkspaceFileReferencesAdded,
   onClose,
@@ -476,7 +496,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   workspaceAgentProbes,
   onAgentProbeDemandChange,
   managedAgentsState,
-  richTextAtProviders,
+  contextMentionProviders,
   workspaceAppIcons,
   embedded = false,
   previewMode = false
@@ -967,6 +987,42 @@ export const AgentGUINode = memo(function AgentGUINode({
       browserUseCapabilityDescription: t(
         "agentHost.agentGui.browserUseCapabilityDescription"
       ),
+      browserUseCapabilityDescriptionAutoConnect: t(
+        "agentHost.agentGui.browserUseCapabilityDescriptionAutoConnect"
+      ),
+      browserUseCapabilityDescriptionIsolated: t(
+        "agentHost.agentGui.browserUseCapabilityDescriptionIsolated"
+      ),
+      browserUseCapabilitySettingsLabel: t(
+        "agentHost.agentGui.browserUseCapabilitySettingsLabel"
+      ),
+      browserUseCapabilitySettingsDescription: t(
+        "agentHost.agentGui.browserUseCapabilitySettingsDescription"
+      ),
+      capabilityInlineSettingsLabel: t(
+        "agentHost.agentGui.capabilityInlineSettingsLabel"
+      ),
+      computerUseCapabilityLabel: t(
+        "agentHost.agentGui.computerUseCapabilityLabel"
+      ),
+      computerUseCapabilityDescription: t(
+        "agentHost.agentGui.computerUseCapabilityDescription"
+      ),
+      computerUseCapabilitySetupRequiredDescription: t(
+        "agentHost.agentGui.computerUseCapabilitySetupRequiredDescription"
+      ),
+      computerUseCapabilityAuthorizationRequiredDescription: t(
+        "agentHost.agentGui.computerUseCapabilityAuthorizationRequiredDescription"
+      ),
+      computerUseCapabilityAuthorizationUnknownDescription: t(
+        "agentHost.agentGui.computerUseCapabilityAuthorizationUnknownDescription"
+      ),
+      computerUseCapabilitySettingsLabel: t(
+        "agentHost.agentGui.computerUseCapabilitySettingsLabel"
+      ),
+      computerUseCapabilitySettingsDescription: t(
+        "agentHost.agentGui.computerUseCapabilitySettingsDescription"
+      ),
       fileMentionPalette: t("agentHost.agentGui.fileMentionPalette"),
       fileMentionLoading: t("agentHost.agentGui.fileMentionLoading"),
       fileMentionEmpty: t("agentHost.agentGui.fileMentionEmpty"),
@@ -989,6 +1045,9 @@ export const AgentGUINode = memo(function AgentGUINode({
   );
   const windowTitle = windowAgentTitle || title;
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     if (!viewModel.activeConversation) {
       return;
     }
@@ -1016,6 +1075,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   }, [
     activeConversationDockTitle,
     onUpdateNode,
+    previewMode,
     state.lastActiveAgentSessionId,
     state.lastActiveConversationTitle,
     viewModel.activeConversation
@@ -1176,6 +1236,8 @@ export const AgentGUINode = memo(function AgentGUINode({
             previewMode={previewMode}
             showProjectSelector={showProjectSelector}
             onLinkAction={handleLinkAction}
+            capabilityMenuState={capabilityMenuState}
+            onCapabilitySettingsRequest={onCapabilitySettingsRequest}
             onAgentProviderLogin={
               onAgentProviderLogin ? handleAgentProviderLogin : undefined
             }
@@ -1202,8 +1264,10 @@ export const AgentGUINode = memo(function AgentGUINode({
             workspaceUserProjectI18n={workspaceUserProjectI18n}
             workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
             onRequestGitBranches={onRequestGitBranches}
+            referenceSourceAggregator={referenceSourceAggregator}
+            resolveMentionReferenceTarget={resolveMentionReferenceTarget}
             workspaceFileReferenceCopy={workspaceFileReferenceCopy}
-            richTextAtProviders={richTextAtProviders}
+            contextMentionProviders={contextMentionProviders}
             workspaceAppIcons={workspaceAppIcons}
           />
         );

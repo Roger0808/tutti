@@ -4,6 +4,8 @@ import type {
 } from "@tutti-os/agent-gui";
 import type {
   DesktopBackendConfig,
+  DesktopComputerUseActionResult,
+  DesktopComputerUseStatus,
   DesktopCreateUserDocumentsProjectDirectoryResult,
   DesktopCustomWallpaperImage,
   DesktopLocalFileTextResult,
@@ -21,13 +23,12 @@ import type {
   ExportDeveloperLogsResult,
   ConfigureAppUpdatesInput,
   DesktopWorkspaceAppFolderKind,
-  DesktopManagedModelGrantRequest,
-  DesktopManagedModelGrantResult,
   DesktopHostWindowCapturePreviewInput,
   DesktopRendererDiagnosticPayload,
   DesktopTerminalDiagnosticPayload,
   DesktopTerminalStreamUrlRequest,
-  DesktopWorkspaceOpenSettingsRequest
+  DesktopWorkspaceAppExternalRendererRequest,
+  DesktopWorkspaceAppExternalRendererResult
 } from "../shared/contracts/ipc";
 import type { BrowserNodeHostApi } from "@tutti-os/browser-node";
 
@@ -62,9 +63,6 @@ export interface DesktopPlatformApi {
 }
 
 export interface DesktopHostWorkspaceApi {
-  onOpenSettingsRequest(
-    listener: (request: DesktopWorkspaceOpenSettingsRequest) => void
-  ): () => void;
   openWorkspaceAppFolder(input: {
     appId: string;
     folderKind: DesktopWorkspaceAppFolderKind;
@@ -83,22 +81,25 @@ export interface DesktopHostNotificationsApi {
   ): () => void;
 }
 
-export interface DesktopWorkspaceAppManagedCredentialsApi {
-  requestGrant(
-    input: DesktopManagedModelGrantRequest
-  ): Promise<DesktopManagedModelGrantResult>;
-}
-
-export interface DesktopWorkspaceAppWorkspaceApi {
-  openSettings(input: DesktopWorkspaceOpenSettingsRequest): Promise<void>;
-}
-
 export interface DesktopHostWindowApi {
   approveClose(): Promise<void>;
   capturePreview(
     input: DesktopHostWindowCapturePreviewInput
   ): Promise<string | null>;
   onCloseRequest(listener: () => void): () => void;
+}
+
+export type DesktopWorkspaceAppExternalHostRequestResult =
+  DesktopWorkspaceAppExternalRendererResult;
+
+export interface DesktopWorkspaceAppExternalHostApi {
+  onRequest(
+    listener: (
+      request: DesktopWorkspaceAppExternalRendererRequest
+    ) =>
+      | Promise<DesktopWorkspaceAppExternalHostRequestResult>
+      | DesktopWorkspaceAppExternalHostRequestResult
+  ): () => void;
 }
 
 export interface DesktopHostFilesApi {
@@ -198,8 +199,16 @@ export interface DesktopWallpaperApi {
   ): Promise<DesktopCustomWallpaperImage>;
 }
 
+export interface DesktopComputerUseApi {
+  checkStatus(): Promise<DesktopComputerUseStatus>;
+  install(): Promise<DesktopComputerUseActionResult>;
+  uninstall(): Promise<DesktopComputerUseActionResult>;
+  grantPermissions(): Promise<DesktopComputerUseActionResult>;
+}
+
 export interface DesktopApi {
   browser?: DesktopBrowserApi;
+  computerUse: DesktopComputerUseApi;
   developer: DesktopDeveloperApi;
   dockPreviewCache: DesktopDockPreviewCacheApi;
   platform: DesktopPlatformApi;
@@ -207,4 +216,5 @@ export interface DesktopApi {
   runtime: DesktopRuntimeApi;
   update: DesktopUpdateApi;
   wallpaper: DesktopWallpaperApi;
+  workspaceAppExternal?: DesktopWorkspaceAppExternalHostApi;
 }

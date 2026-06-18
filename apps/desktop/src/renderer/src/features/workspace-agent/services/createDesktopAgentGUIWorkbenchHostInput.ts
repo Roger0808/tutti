@@ -3,7 +3,9 @@ import type {
   AgentGUIProps,
   AgentHostInputApi
 } from "@tutti-os/agent-gui";
+import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-mention-provider";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import type {
   DesktopHostFilesApi,
   DesktopPlatformApi,
@@ -12,17 +14,31 @@ import type {
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IReporterService } from "@renderer/features/analytics";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
+import {
+  createReferenceSourceAggregator,
+  createStaticReferenceSourceRegistry,
+  type ReferenceSourceAggregator
+} from "@tutti-os/workspace-file-reference/core";
 import { createDesktopWorkspaceFileReferenceAdapter } from "../../workspace-file-manager/services/createDesktopWorkspaceFileReferenceAdapter.ts";
+import {
+  createAppArtifactReferenceSource,
+  createIssueReferenceSource,
+  createWorkspaceFileReferenceSource,
+  resolveMentionReferenceTarget
+} from "../../agent-reference-sources/index.ts";
 import { createDesktopAgentActivityRuntime } from "./createDesktopAgentActivityRuntime.ts";
 import { createDesktopAgentHostApi } from "./createDesktopAgentHostApi.ts";
 import { createAgentWorkspaceFileReferenceTracker } from "./internal/agentWorkspaceFileReferenceAnalytics.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
+import { translate } from "../../../i18n/appRuntime.ts";
 
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentActivityRuntime;
   agentHostApi: AgentHostInputApi;
-  richTextAtProviders: NonNullable<AgentGUIProps["richTextAtProviders"]>;
+  contextMentionProviders: NonNullable<
+    AgentGUIProps["contextMentionProviders"]
+  >;
   trackWorkspaceFileReferences: (input: {
     provider?: string | null;
     references: readonly WorkspaceFileReference[];
@@ -31,6 +47,10 @@ export interface DesktopAgentGUIWorkbenchHostInput {
     AgentGUIProps["workspaceFileReferenceAdapter"]
   >;
   onRequestGitBranches: NonNullable<AgentGUIProps["onRequestGitBranches"]>;
+  referenceSourceAggregator: ReferenceSourceAggregator;
+  resolveMentionReferenceTarget: NonNullable<
+    AgentGUIProps["resolveMentionReferenceTarget"]
+  >;
 }
 
 export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
@@ -104,27 +124,54 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       reporterNow,
       reporterService
     });
-  return {
-    agentActivityRuntime,
-    agentHostApi: resolvedAgentHostApi,
-    richTextAtProviders: richTextAtService.getProviders({
-      capabilities: [
-        "workspace-file",
-        "workspace-issue",
-        "agent-session",
-        "workspace-app"
-      ],
-      surface: "composer",
-      target: "agent-gui",
-      workspaceId
-    }),
-    trackWorkspaceFileReferences: (input) =>
-      workspaceFileReferenceTracker.track(input),
-    workspaceFileReferenceAdapter: createDesktopWorkspaceFileReferenceAdapter({
+  const workspaceFileReferenceAdapter =
+    createDesktopWorkspaceFileReferenceAdapter({
       hostFilesApi,
       tuttidClient,
       workspaceId
-    }),
+    });
+  // 多源引用聚合:本地文件 + 应用产物(任务产物为将来一个新源)。
+  // 应用源的 open/preview 复用本地 adapter 同一条 host 链路。
+  const referenceSourceAggregator = createReferenceSourceAggregator(
+    createStaticReferenceSourceRegistry([
+      createWorkspaceFileReferenceSource({
+        adapter: workspaceFileReferenceAdapter,
+        label: translate("workspace.referenceSources.localSourceLabel"),
+        order: 0
+      }),
+      createAppArtifactReferenceSource({
+        tuttidClient,
+        adapter: workspaceFileReferenceAdapter,
+        label: translate("workspace.referenceSources.appSourceLabel"),
+        order: 1
+      }),
+      createIssueReferenceSource({
+        tuttidClient,
+        adapter: workspaceFileReferenceAdapter,
+        label: translate("workspace.referenceSources.issueSourceLabel"),
+        order: 2
+      })
+    ])
+  );
+  return {
+    agentActivityRuntime,
+    agentHostApi: resolvedAgentHostApi,
+    contextMentionProviders: richTextAtService
+      .getProviders({
+        capabilities: [
+          "file",
+          "workspace-issue",
+          "agent-session",
+          "workspace-app"
+        ],
+        surface: "composer",
+        target: "agent-gui",
+        workspaceId
+      })
+      .map(richTextTriggerProviderToContextMentionProvider),
+    trackWorkspaceFileReferences: (input) =>
+      workspaceFileReferenceTracker.track(input),
+    workspaceFileReferenceAdapter,
     onRequestGitBranches: async ({ agentSessionId, workingDirectory }) => {
       const result = agentSessionId
         ? await tuttidClient.listWorkspaceAgentSessionGitBranches(
@@ -141,6 +188,17 @@ export function createDesktopAgentGUIWorkbenchHostInput({
         branches: result.branches,
         currentBranch: result.currentBranch ?? null
       };
-    }
+    },
+    referenceSourceAggregator,
+    resolveMentionReferenceTarget
+  };
+}
+
+function richTextTriggerProviderToContextMentionProvider(
+  provider: RichTextTriggerProvider
+): AgentContextMentionProvider {
+  return {
+    ...provider,
+    trigger: "@"
   };
 }

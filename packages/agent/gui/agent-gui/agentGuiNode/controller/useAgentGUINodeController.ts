@@ -106,7 +106,8 @@ import {
   setAgentSessionViewControlStateLoading,
   setAgentSessionViewOverlayMessages,
   setAgentSessionViewMessagesLoading,
-  updateAgentSessionViewControlState
+  updateAgentSessionViewControlState,
+  type AgentSessionViewRef
 } from "../../../contexts/workspace/presentation/renderer/agentSessions/agentSessionViewStore";
 import {
   useAgentSessionDurableRefresh,
@@ -145,6 +146,17 @@ import {
 } from "../agentRichText/agentFileMentionExtension";
 import { resolveAgentGUIExplicitConversationTitle } from "../model/agentGuiProviderIdentity";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
+import {
+  buildNodeDefaultComposerSettings,
+  cloneComposerSettings,
+  composerSupportForProvider,
+  mergeRuntimeContextComposerSettings,
+  nodeDataFromComposerSettings,
+  normalizeConfigOptionValue,
+  normalizePermissionModeId,
+  resolveEffectiveComposerSettings,
+  sameComposerSettings
+} from "./agentGuiController.composerHelpers";
 import {
   PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
   PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
@@ -736,7 +748,7 @@ function shouldPreserveExistingConversationTitle(
 
 function sessionHasRenderableMessages(input: {
   agentSessionId: string;
-  sessionViewRef: (agentSessionId: string | null) => string;
+  sessionViewRef: (agentSessionId: string | null) => AgentSessionViewRef;
   snapshotMessagesById: Record<string, WorkspaceAgentActivityMessage[]>;
 }): boolean {
   const normalizedAgentSessionId = input.agentSessionId.trim();
@@ -1237,28 +1249,12 @@ function recordValue(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function normalizeConfigOptionValue(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
 function draftAgentSessionIdFromComposerOptions(
   options: AgentActivityComposerOptions | null | undefined
 ): string | null {
   return normalizeConfigOptionValue(
     options?.runtimeContext?.draftAgentSessionId
   );
-}
-
-function reasoningConfigOptionIdForProvider(
-  provider: AgentGUINodeData["provider"]
-): string {
-  return provider === "codex" ? "reasoning_effort" : "effort";
-}
-
-function speedConfigOptionIdForProvider(
-  provider: AgentGUINodeData["provider"]
-): string {
-  return provider === "codex" ? "service_tier" : "fast";
 }
 
 function composerSettingOptionsFromActivity(
@@ -1397,169 +1393,6 @@ function normalizePermissionModeSemantic(
       return (normalizeOptionalText(value) ??
         "unconfigurable") as AgentSessionPermissionModeOption["semantic"];
   }
-}
-
-function resolveEffectiveComposerSettings(input: {
-  settings: AgentSessionComposerSettings;
-}): AgentSessionComposerSettings {
-  return {
-    model: normalizeOptionalText(input.settings.model) ?? null,
-    reasoningEffort:
-      (normalizeOptionalText(
-        input.settings.reasoningEffort
-      ) as AgentSessionReasoningEffort | null) ?? null,
-    speed:
-      (normalizeOptionalText(
-        input.settings.speed
-      ) as AgentSessionSpeed | null) ?? null,
-    planMode: Boolean(input.settings.planMode),
-    permissionModeId: normalizePermissionModeId(input.settings.permissionModeId)
-  };
-}
-
-type RuntimeConfigSetting =
-  | "model"
-  | "reasoningEffort"
-  | "speed"
-  | "permissionModeId";
-
-function runtimeConfigKeyForSetting(
-  provider: AgentGUINodeData["provider"],
-  setting: RuntimeConfigSetting
-): string {
-  if (setting === "reasoningEffort") {
-    return reasoningConfigOptionIdForProvider(provider);
-  }
-  if (setting === "speed") {
-    return speedConfigOptionIdForProvider(provider);
-  }
-  if (setting === "permissionModeId") {
-    return "mode";
-  }
-  return "model";
-}
-
-function shouldUpdateRuntimeConfigOption(
-  provider: AgentGUINodeData["provider"],
-  id: string | null,
-  setting: RuntimeConfigSetting
-): boolean {
-  if (setting === "model") {
-    return id === "model";
-  }
-  if (setting === "permissionModeId") {
-    return id === "mode";
-  }
-  if (setting === "speed") {
-    return (
-      id === speedConfigOptionIdForProvider(provider) ||
-      id === "service_tier" ||
-      id === "speed" ||
-      id === "fast"
-    );
-  }
-  return (
-    id === reasoningConfigOptionIdForProvider(provider) ||
-    id === "model_reasoning_effort" ||
-    id === "reasoning_effort" ||
-    id === "effort"
-  );
-}
-
-function mergeRuntimeContextComposerSettings(
-  provider: AgentGUINodeData["provider"],
-  runtimeContext: Record<string, unknown> | undefined,
-  settings: AgentSessionComposerSettings
-): Record<string, unknown> | undefined {
-  if (!runtimeContext) {
-    return runtimeContext;
-  }
-  const nextRuntimeContext: Record<string, unknown> = { ...runtimeContext };
-  const runtimeConfigPatch: Record<string, unknown> = {};
-  const optionPatches: Array<{
-    setting: RuntimeConfigSetting;
-    value: string | null;
-  }> = [];
-
-  if (settings.model !== undefined) {
-    const value = normalizeOptionalText(settings.model);
-    runtimeConfigPatch[runtimeConfigKeyForSetting(provider, "model")] = value;
-    optionPatches.push({ setting: "model", value });
-  }
-  if (settings.reasoningEffort !== undefined) {
-    const value = normalizeOptionalText(settings.reasoningEffort);
-    runtimeConfigPatch[
-      runtimeConfigKeyForSetting(provider, "reasoningEffort")
-    ] = value;
-    optionPatches.push({ setting: "reasoningEffort", value });
-  }
-  if (settings.speed !== undefined) {
-    const value = normalizeOptionalText(settings.speed);
-    runtimeConfigPatch[runtimeConfigKeyForSetting(provider, "speed")] = value;
-    optionPatches.push({ setting: "speed", value });
-  }
-  if (settings.permissionModeId !== undefined) {
-    const value = normalizeOptionalText(settings.permissionModeId);
-    runtimeConfigPatch[
-      runtimeConfigKeyForSetting(provider, "permissionModeId")
-    ] = value;
-    optionPatches.push({ setting: "permissionModeId", value });
-  }
-
-  if (Object.keys(runtimeConfigPatch).length > 0) {
-    const currentConfig = recordValue(nextRuntimeContext.config);
-    nextRuntimeContext.config = {
-      ...(currentConfig ?? {}),
-      ...runtimeConfigPatch
-    };
-  }
-  if (
-    optionPatches.length > 0 &&
-    Array.isArray(nextRuntimeContext.configOptions)
-  ) {
-    nextRuntimeContext.configOptions = nextRuntimeContext.configOptions.map(
-      (option) => {
-        const optionRecord = recordValue(option);
-        if (!optionRecord) {
-          return option;
-        }
-        const id = normalizeConfigOptionValue(optionRecord.id);
-        const patch = optionPatches.find((item) =>
-          shouldUpdateRuntimeConfigOption(provider, id, item.setting)
-        );
-        return patch ? { ...optionRecord, currentValue: patch.value } : option;
-      }
-    );
-  }
-  return nextRuntimeContext;
-}
-
-function normalizePermissionModeId(
-  value: string | null | undefined
-): string | null {
-  return normalizeOptionalText(value);
-}
-
-function cloneComposerSettings(
-  settings: AgentSessionComposerSettings | null
-): AgentSessionComposerSettings | null {
-  if (!settings) {
-    return null;
-  }
-  return { ...settings };
-}
-
-function sameComposerSettings(
-  left: AgentSessionComposerSettings | null,
-  right: AgentSessionComposerSettings | null
-): boolean {
-  return (
-    (left?.model ?? null) === (right?.model ?? null) &&
-    (left?.reasoningEffort ?? null) === (right?.reasoningEffort ?? null) &&
-    (left?.speed ?? null) === (right?.speed ?? null) &&
-    Boolean(left?.planMode) === Boolean(right?.planMode) &&
-    (left?.permissionModeId ?? null) === (right?.permissionModeId ?? null)
-  );
 }
 
 function useStableComposerSettings(
@@ -1771,76 +1604,6 @@ function conversationBusyStatusFromAgentActivityDisplayStatus(
   return null;
 }
 
-function buildNodeDefaultComposerSettings(
-  data: AgentGUINodeData,
-  options?: {
-    defaultReasoningEffort?: AgentSessionReasoningEffort | null;
-    defaultSpeed?: AgentSessionSpeed | null;
-  }
-): AgentSessionComposerSettings {
-  // Generic cleanup only — provider-level clamping is owned by the daemon
-  // (normalizeComposerSettingsForProvider and the session create path).
-  const composerOverrides = nodeComposerOverridesForProvider(data) ?? {};
-  return {
-    model: normalizeOptionalText(composerOverrides.model),
-    reasoningEffort:
-      (normalizeOptionalText(
-        composerOverrides.reasoningEffort
-      ) as AgentSessionReasoningEffort | null) ??
-      options?.defaultReasoningEffort ??
-      null,
-    speed:
-      (normalizeOptionalText(
-        composerOverrides.speed
-      ) as AgentSessionSpeed | null) ??
-      options?.defaultSpeed ??
-      null,
-    planMode: Boolean(composerOverrides.planMode),
-    permissionModeId: normalizePermissionModeId(
-      composerOverrides.permissionModeId
-    )
-  };
-}
-
-function nodeComposerOverridesForProvider(
-  data: AgentGUINodeData
-): AgentSessionComposerSettings | null {
-  return (
-    data.composerOverridesByProvider?.[data.provider] ??
-    data.composerOverrides ??
-    null
-  );
-}
-
-function composerSupportForProvider(provider: AgentGUINodeData["provider"]): {
-  model: boolean;
-  permission: boolean;
-  reasoning: boolean;
-  speed: boolean;
-  plan: boolean;
-} {
-  if (
-    provider === "claude-code" ||
-    provider === "codex" ||
-    provider === "gemini"
-  ) {
-    return {
-      model: true,
-      permission: provider === "claude-code" || provider === "codex",
-      reasoning: true,
-      speed: provider === "claude-code" || provider === "codex",
-      plan: false
-    };
-  }
-  return {
-    model: false,
-    permission: provider === "nexight",
-    reasoning: false,
-    speed: false,
-    plan: false
-  };
-}
-
 function permissionModeOptions(
   provider: AgentGUINodeData["provider"],
   permissionConfig: AgentSessionPermissionConfig | null | undefined
@@ -1853,28 +1616,6 @@ function permissionModeOptions(
     label: permissionModeLabel(provider, mode),
     description: permissionModeDescription(provider, mode)
   }));
-}
-
-function nodeDataFromComposerSettings(
-  current: AgentGUINodeData,
-  settings: AgentSessionComposerSettings
-): AgentGUINodeData {
-  // Generic cleanup only — provider-level clamping is owned by the daemon.
-  const composerOverrides = {
-    model: normalizeOptionalText(settings.model),
-    reasoningEffort: normalizeOptionalText(settings.reasoningEffort),
-    speed: normalizeOptionalText(settings.speed),
-    planMode: Boolean(settings.planMode),
-    permissionModeId: normalizePermissionModeId(settings.permissionModeId)
-  };
-  return {
-    ...current,
-    composerOverrides,
-    composerOverridesByProvider: {
-      ...(current.composerOverridesByProvider ?? {}),
-      [current.provider]: composerOverrides
-    }
-  };
 }
 
 function permissionModeLabel(
@@ -3815,6 +3556,7 @@ export function useAgentGUINodeController({
     conversations,
     hasLoadedConversations,
     openSessionRequest,
+    previewMode,
     syncConversationListProjection,
     selectConversation,
     conversationListQuery,
@@ -6289,7 +6031,9 @@ export function useAgentGUINodeController({
           ...supportedNextSettings,
           planMode: supportedNextSettings.planMode ?? previousSettings.planMode,
           browserUse:
-            supportedNextSettings.browserUse ?? previousSettings.browserUse
+            supportedNextSettings.browserUse ?? previousSettings.browserUse,
+          computerUse:
+            supportedNextSettings.computerUse ?? previousSettings.computerUse
         };
         draftSettingsBySessionIdRef.current = {
           ...draftSettingsBySessionIdRef.current,
@@ -6334,6 +6078,8 @@ export function useAgentGUINodeController({
         speed: sessionSettings?.speed ?? currentDefaults.speed,
         planMode: sessionSettings?.planMode ?? currentDefaults.planMode,
         browserUse: sessionSettings?.browserUse ?? currentDefaults.browserUse,
+        computerUse:
+          sessionSettings?.computerUse ?? currentDefaults.computerUse,
         permissionModeId:
           sessionSettings?.permissionModeId ?? currentDefaults.permissionModeId
       };
@@ -6403,6 +6149,8 @@ export function useAgentGUINodeController({
       });
       const nextBrowserUse = supportedNextSettings.browserUse;
       const currentBrowserUse = sessionSettings?.browserUse ?? true;
+      const nextComputerUse = supportedNextSettings.computerUse;
+      const currentComputerUse = sessionSettings?.computerUse ?? true;
       const sessionSettingsPatch: AgentSessionComposerSettings = {};
 
       if (nextModel !== undefined && nextModel !== currentModel) {
@@ -6425,6 +6173,12 @@ export function useAgentGUINodeController({
         nextBrowserUse !== currentBrowserUse
       ) {
         sessionSettingsPatch.browserUse = nextBrowserUse;
+      }
+      if (
+        nextComputerUse !== undefined &&
+        nextComputerUse !== currentComputerUse
+      ) {
+        sessionSettingsPatch.computerUse = nextComputerUse;
       }
       if (
         nextPermission &&
@@ -7912,6 +7666,7 @@ export function useAgentGUINodeController({
         speed: draftSpeed,
         planMode: Boolean(draftSettings.planMode),
         browserUse: draftSettings.browserUse ?? true,
+        computerUse: draftSettings.computerUse ?? true,
         permissionModeId: normalizePermissionModeId(
           draftSettings.permissionModeId
         )
@@ -7921,6 +7676,7 @@ export function useAgentGUINodeController({
       supportsReasoningEffort: composerSupport.reasoning,
       supportsSpeed: composerSupport.speed,
       supportsBrowser: composerSupport.browser,
+      supportsComputerUse: composerSupport.computer,
       supportsPermissionMode,
       supportsPlanMode: composerSupport.plan,
       isSettingsLoading,

@@ -29,6 +29,7 @@ const { mockProjectMissingState } = vi.hoisted(() => ({
 
 afterEach(() => {
   mockProjectMissingState.current = false;
+  vi.restoreAllMocks();
 });
 
 const workspaceUserProjectI18n = createWorkspaceUserProjectI18nRuntime(
@@ -164,6 +165,7 @@ vi.mock("./AgentSlashCommandPalette", () => ({
     entries,
     onSelect,
     onSelectCapability,
+    onSelectCapabilitySettings,
     onSelectSkill,
     skillsGroupLabel
   }: {
@@ -172,6 +174,7 @@ vi.mock("./AgentSlashCommandPalette", () => ({
     entries: any[];
     onSelect: (command: any) => void;
     onSelectCapability?: (capability: any) => void;
+    onSelectCapabilitySettings?: (capability: any) => void;
     onSelectSkill: (skill: any) => void;
     skillsGroupLabel: string;
   }) => (
@@ -186,21 +189,36 @@ vi.mock("./AgentSlashCommandPalette", () => ({
         <div>{skillsGroupLabel}</div>
       ) : null}
       {entries.map((entry) => (
-        <button
-          key={entry.key}
-          type="button"
-          onClick={() => {
-            if (entry.type === "command") {
-              onSelect(entry.command);
-            } else if (entry.type === "capability") {
-              onSelectCapability?.(entry.capability);
-            } else {
-              onSelectSkill(entry.skill);
-            }
-          }}
-        >
-          {entry.label}
-        </button>
+        <div key={entry.key}>
+          <button
+            type="button"
+            onClick={() => {
+              if (entry.type === "command") {
+                onSelect(entry.command);
+              } else if (entry.type === "capability") {
+                if (entry.selectAction === "settings") {
+                  onSelectCapabilitySettings?.(entry.capability);
+                } else {
+                  onSelectCapability?.(entry.capability);
+                }
+              } else {
+                onSelectSkill(entry.skill);
+              }
+            }}
+          >
+            {entry.label}
+          </button>
+          {entry.type === "capability" && entry.settingsLabel ? (
+            <button
+              aria-label={entry.settingsAriaLabel ?? entry.settingsLabel}
+              type="button"
+              onClick={() => onSelectCapabilitySettings?.(entry.capability)}
+            >
+              {entry.settingsLabel}
+            </button>
+          ) : null}
+          {entry.description ? <span>{entry.description}</span> : null}
+        </div>
       ))}
     </div>
   )
@@ -391,6 +409,9 @@ describe("AgentComposer", () => {
         isSendingTurn={false}
         isSubmittingPrompt={false}
         labels={createLabels()}
+        capabilityMenuState={{
+          browserUse: { connectionMode: "isolated" }
+        }}
         workspaceUserProjectI18n={workspaceUserProjectI18n}
         onDraftContentChange={onDraftContentChange}
         onSettingsChange={onSettingsChange}
@@ -405,6 +426,7 @@ describe("AgentComposer", () => {
 
     const palette = await screen.findByTestId("mock-slash-palette");
     expect(palette).toHaveTextContent("能力");
+    expect(palette).toHaveTextContent("当前配置：使用独立浏览器。");
     const browserCapability = within(palette).getByRole("button", {
       name: "浏览器"
     });
@@ -414,6 +436,217 @@ describe("AgentComposer", () => {
     expect(onDraftContentChange).toHaveBeenCalledWith(createDraft("/browser "));
     expect(screen.getByRole("textbox")).toHaveValue("/browser ");
     expect(onSettingsChange).toHaveBeenCalledWith({ browserUse: true });
+  });
+
+  it("requests browser-use settings from the slash capability group", async () => {
+    const onDraftContentChange = vi.fn();
+    const onSettingsChange = vi.fn();
+    const onCapabilitySettingsRequest = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("/浏览")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsBrowser: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onCapabilitySettingsRequest={onCapabilitySettingsRequest}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={onSettingsChange}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const palette = await screen.findByTestId("mock-slash-palette");
+    fireEvent.click(
+      within(palette).getByRole("button", { name: "浏览器设置" })
+    );
+
+    expect(onCapabilitySettingsRequest).toHaveBeenCalledWith("browserUse");
+    expect(onDraftContentChange).not.toHaveBeenCalled();
+    expect(onSettingsChange).not.toHaveBeenCalled();
+  });
+
+  it("opens computer-use setup from Enter when the capability is not installed", async () => {
+    const onDraftContentChange = vi.fn();
+    const onSettingsChange = vi.fn();
+    const onCapabilitySettingsRequest = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("/电脑")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsComputerUse: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        capabilityMenuState={{
+          computerUse: { installed: false }
+        }}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onCapabilitySettingsRequest={onCapabilitySettingsRequest}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={onSettingsChange}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const palette = await screen.findByTestId("mock-slash-palette");
+    expect(palette).toHaveTextContent("未安装。按 Enter 打开设置。");
+
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+
+    expect(onCapabilitySettingsRequest).toHaveBeenCalledWith("computerUse");
+    expect(onDraftContentChange).not.toHaveBeenCalled();
+    expect(onSettingsChange).not.toHaveBeenCalled();
+  });
+
+  it("opens computer-use setup from Enter when permissions are incomplete", async () => {
+    const onDraftContentChange = vi.fn();
+    const onSettingsChange = vi.fn();
+    const onCapabilitySettingsRequest = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("/电脑")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsComputerUse: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        capabilityMenuState={{
+          computerUse: {
+            authorization: "needs-authorization",
+            installed: true
+          }
+        }}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onCapabilitySettingsRequest={onCapabilitySettingsRequest}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={onSettingsChange}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const palette = await screen.findByTestId("mock-slash-palette");
+    expect(palette).toHaveTextContent("需要授权。按 Enter 打开设置。");
+
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+
+    expect(onCapabilitySettingsRequest).toHaveBeenCalledWith("computerUse");
+    expect(onDraftContentChange).not.toHaveBeenCalled();
+    expect(onSettingsChange).not.toHaveBeenCalled();
+  });
+
+  it("opens computer-use setup from Enter when permission status is unknown", async () => {
+    const onDraftContentChange = vi.fn();
+    const onSettingsChange = vi.fn();
+    const onCapabilitySettingsRequest = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("/电脑")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsComputerUse: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        capabilityMenuState={{
+          computerUse: {
+            authorization: "unknown",
+            installed: true
+          }
+        }}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onCapabilitySettingsRequest={onCapabilitySettingsRequest}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={onSettingsChange}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const palette = await screen.findByTestId("mock-slash-palette");
+    expect(palette).toHaveTextContent("无法确认授权状态。按 Enter 打开设置。");
+
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+
+    expect(onCapabilitySettingsRequest).toHaveBeenCalledWith("computerUse");
+    expect(onDraftContentChange).not.toHaveBeenCalled();
+    expect(onSettingsChange).not.toHaveBeenCalled();
   });
 
   it("submits browser capability tokens through the tutti browser-use handoff", () => {
@@ -1006,6 +1239,9 @@ describe("AgentComposer", () => {
     fireEvent.submit(container.querySelector("form")!);
 
     const panel = screen.getByTestId("agent-gui-slash-status-panel");
+    expect(
+      screen.getByTestId("agent-gui-command-menu-surface")
+    ).toContainElement(panel);
     expect(panel).toHaveTextContent("Status");
     expect(panel).toHaveTextContent("7d limit");
     expect(panel).toHaveTextContent("95% left");
@@ -1013,11 +1249,130 @@ describe("AgentComposer", () => {
     expect(panel).not.toHaveTextContent("Context");
   });
 
-  it("keeps the status panel inset and squared off against the composer input", () => {
+  it("closes the status command menu with Escape", () => {
+    const { container } = render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        slashStatus={{
+          limits: [
+            {
+              id: "weekly",
+              label: "7d limit",
+              value: "95% left"
+            }
+          ]
+        }}
+        draftContent={createDraft("/status")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.submit(container.querySelector("form")!);
+    expect(
+      screen.getByTestId("agent-gui-slash-status-panel")
+    ).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByPlaceholderText("placeholder"), {
+      key: "Escape"
+    });
+
+    expect(
+      screen.queryByTestId("agent-gui-slash-status-panel")
+    ).not.toBeInTheDocument();
+  });
+
+  it("closes the status command menu when focus leaves the composer menu", () => {
+    const { container } = render(
+      <>
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider="codex"
+          slashStatus={{
+            limits: [
+              {
+                id: "weekly",
+                label: "7d limit",
+                value: "95% left"
+              }
+            ]
+          }}
+          draftContent={createDraft("/status")}
+          availableCommands={
+            [] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={vi.fn()}
+          onSettingsChange={vi.fn()}
+          onSubmit={vi.fn()}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+        />
+        <button type="button">outside target</button>
+      </>
+    );
+
+    fireEvent.submit(container.querySelector("form")!);
+    expect(
+      screen.getByTestId("agent-gui-command-menu-surface")
+    ).toBeInTheDocument();
+
+    screen.getByText("outside target").focus();
+    fireEvent.focusIn(screen.getByText("outside target"));
+
+    expect(
+      screen.queryByTestId("agent-gui-command-menu-surface")
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the status panel styled as floating command menu content", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-node__slash-status-panel\s*{[^}]*position:\s*relative[^}]*z-index:\s*1[^}]*margin:\s*0 12px[^}]*border-bottom:\s*0[^}]*border-radius:\s*10px 10px 0 0/s
+      /\.agent-gui-node__slash-status-panel\s*{[^}]*width:\s*100%[^}]*min-width:\s*0[^}]*padding:\s*10px 12px/s
+    );
+    expect(css).not.toMatch(
+      /\.agent-gui-node__slash-status-panel\s*{[^}]*border-bottom:\s*0/s
     );
   });
 
@@ -2124,6 +2479,9 @@ describe("AgentComposer", () => {
       expect(
         screen.getByTestId("agent-gui-review-picker-panel")
       ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("agent-gui-command-menu-surface")
+      ).toContainElement(screen.getByTestId("agent-gui-review-picker-panel"));
       expect(onSubmit).not.toHaveBeenCalled();
 
       // Selecting the "uncommitted changes" scope submits a bare /review.
@@ -2134,6 +2492,58 @@ describe("AgentComposer", () => {
       ]);
     }
   );
+
+  it("lets the review picker handle staged Escape before closing", () => {
+    const { container } = render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        slashStatus={{ agentSessionId: "agent-session-1", limits: [] }}
+        draftContent={createDraft("/review")}
+        availableCommands={
+          [{ name: "review" }] satisfies readonly AgentHostAgentSessionCommand[]
+        }
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.submit(container.querySelector("form")!);
+    fireEvent.click(screen.getByText("与分支比较"));
+    const branchSearch = screen.getByPlaceholderText("选择分支");
+
+    fireEvent.keyDown(branchSearch, { key: "Escape" });
+
+    expect(screen.getByText("未提交的更改")).toBeInTheDocument();
+    const rootSearch = screen.getByPlaceholderText("搜索");
+
+    fireEvent.keyDown(rootSearch, { key: "Escape" });
+
+    expect(
+      screen.queryByTestId("agent-gui-review-picker-panel")
+    ).not.toBeInTheDocument();
+  });
 
   it.each(["codex", "claude-code"] as const)(
     "submits %s /review <text> as a custom review without opening the picker",
@@ -2252,6 +2662,22 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     planUnavailable: "计划不可用",
     browserUseCapabilityLabel: "浏览器",
     browserUseCapabilityDescription: "让 Agent 使用浏览器。",
+    browserUseCapabilityDescriptionAutoConnect:
+      "当前配置：复用已登录的 Chrome。",
+    browserUseCapabilityDescriptionIsolated: "当前配置：使用独立浏览器。",
+    browserUseCapabilitySettingsLabel: "浏览器设置",
+    browserUseCapabilitySettingsDescription: "配置 Agent 使用的浏览器。",
+    capabilityInlineSettingsLabel: "设置",
+    computerUseCapabilityLabel: "电脑控制",
+    computerUseCapabilityDescription: "让 Agent 控制 macOS 桌面。",
+    computerUseCapabilitySetupRequiredDescription:
+      "未安装。按 Enter 打开设置。",
+    computerUseCapabilityAuthorizationRequiredDescription:
+      "需要授权。按 Enter 打开设置。",
+    computerUseCapabilityAuthorizationUnknownDescription:
+      "无法确认授权状态。按 Enter 打开设置。",
+    computerUseCapabilitySettingsLabel: "电脑控制设置",
+    computerUseCapabilitySettingsDescription: "安装、移除或授权电脑控制。",
     queuedLabel: "排队",
     sendQueuedPromptNext: "下一条发送",
     editQueuedPrompt: "编辑",

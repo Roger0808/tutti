@@ -1,6 +1,14 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
 import { createAgentGuiWorkbenchContribution } from "@tutti-os/agent-gui/workbench/contribution";
-import type { AgentGuiWorkbenchProvider } from "@tutti-os/agent-gui/workbench/types";
+import {
+  normalizeAgentGuiWorkbenchProvider,
+  resolveAgentGuiWorkbenchProviderLabel
+} from "@tutti-os/agent-gui/workbench/providerCatalog";
+import type {
+  AgentGuiWorkbenchProvider,
+  AgentGuiWorkbenchState
+} from "@tutti-os/agent-gui/workbench/types";
+import type { AgentActivitySession } from "@tutti-os/agent-activity-core";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type {
@@ -8,6 +16,7 @@ import type {
   WorkbenchDockPreviewCache
 } from "@tutti-os/workbench-surface";
 import type {
+  DesktopComputerUseApi,
   DesktopHostFilesApi,
   DesktopPlatformApi,
   DesktopRuntimeApi
@@ -38,18 +47,21 @@ export function createWorkspaceAgentGuiContribution(input: {
   agentProviderStatusService: AgentProviderStatusService;
   appCenterService: IWorkspaceAppCenterService;
   appI18n: I18nRuntime<string>;
+  computerUseApi: Pick<DesktopComputerUseApi, "checkStatus">;
   dockPreviewCache: WorkbenchDockPreviewCache;
   dockIconUrls?: Parameters<
     typeof createAgentGuiWorkbenchContribution
   >[0]["dockIconUrls"];
   hostFilesApi: DesktopHostFilesApi;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
+  onCapabilitySettingsRequest?: Parameters<
+    typeof DesktopAgentGUIWorkbenchBody
+  >[0]["onCapabilitySettingsRequest"];
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
     "homeDirectory" | "os" | "resolveDroppedPaths"
   >;
-  resolveAppIconUrl?: (appId: string) => string | null;
   reporterService?: Pick<IReporterService, "trackEvents">;
   richTextAtService: IDesktopRichTextAtService;
   runtimeApi: DesktopRuntimeApi;
@@ -95,18 +107,24 @@ export function createWorkspaceAgentGuiContribution(input: {
       appCenterService: input.appCenterService,
       agentProviderStatusService: input.agentProviderStatusService,
       context,
+      computerUseApi: input.computerUseApi,
       dockPreviewCache: input.dockPreviewCache,
+      onCapabilitySettingsRequest: input.onCapabilitySettingsRequest,
       onLinkAction: handleLinkAction,
       onStateChange: (...args) => helpers.onStateChange(...args),
       previewMode: options?.previewMode,
-      richTextAtProviders: agentGUIWorkbenchHostInput.richTextAtProviders,
-      resolveAppIconUrl: input.resolveAppIconUrl,
+      contextMentionProviders:
+        agentGUIWorkbenchHostInput.contextMentionProviders,
       runtimeApi: input.runtimeApi,
       trackWorkspaceFileReferences:
         agentGUIWorkbenchHostInput.trackWorkspaceFileReferences,
       workspaceFileReferenceAdapter:
         agentGUIWorkbenchHostInput.workspaceFileReferenceAdapter,
       onRequestGitBranches: agentGUIWorkbenchHostInput.onRequestGitBranches,
+      referenceSourceAggregator:
+        agentGUIWorkbenchHostInput.referenceSourceAggregator,
+      resolveMentionReferenceTarget:
+        agentGUIWorkbenchHostInput.resolveMentionReferenceTarget,
       workspaceId: input.workspaceId
     });
 
@@ -133,10 +151,46 @@ export function createWorkspaceAgentGuiContribution(input: {
         { height: context.node.frame.height, width: context.node.frame.width },
         renderAgentGuiWorkbenchBody(context, helpers, { previewMode: true })
       ),
+    resolveDockPopupTitle: (state) =>
+      resolveWorkspaceAgentGuiDockPopupTitle(state, {
+        workspaceAgentActivityService: input.workspaceAgentActivityService,
+        workspaceId: input.workspaceId
+      }),
     resolveDockEntryVisibility: (provider: AgentGuiWorkbenchProvider) =>
       isWorkspaceAgentGuiDefaultDockProvider(provider) ? "always" : "never",
     workspaceId: input.workspaceId
   });
+}
+
+function resolveWorkspaceAgentGuiDockPopupTitle(
+  state: AgentGuiWorkbenchState | null,
+  input: {
+    workspaceAgentActivityService: IWorkspaceAgentActivityService;
+    workspaceId: string;
+  }
+): string | null {
+  const agentSessionId = state?.lastActiveAgentSessionId?.trim();
+  if (!agentSessionId) {
+    return null;
+  }
+  const session = input.workspaceAgentActivityService
+    .getSnapshot(input.workspaceId)
+    .sessions.find((item) => item.agentSessionId === agentSessionId);
+  return session ? resolveDisplayableAgentGuiSessionTitle(session) : null;
+}
+
+function resolveDisplayableAgentGuiSessionTitle(
+  session: Pick<AgentActivitySession, "provider" | "title">
+): string | null {
+  const title = session.title.trim();
+  if (!title) {
+    return null;
+  }
+  const provider = normalizeAgentGuiWorkbenchProvider(session.provider);
+  return title.toLowerCase() ===
+    resolveAgentGuiWorkbenchProviderLabel(provider).toLowerCase()
+    ? null
+    : title;
 }
 
 const dockPopupPreviewViewport = {

@@ -52,7 +52,7 @@ export interface AgentMentionPaletteEntry {
   item?: AgentContextMentionItem;
 }
 
-interface AgentFileMentionPaletteProps {
+export interface AgentFileMentionPaletteProps {
   state: AgentMentionSearchState;
   highlightedKey: string | null;
   label: string;
@@ -69,6 +69,11 @@ interface AgentFileMentionPaletteProps {
   onExpandGroup: (groupId: AgentMentionGroupId) => void;
   onCycleFilter: () => void;
   onMoveSelection: (delta: 1 | -1) => void;
+  /**
+   * 可选:点击 issue / app 行末尾的「查看产物文件」图标时回调(打开引用 picker 并定位)。
+   * 仅 workspace-issue / workspace-app 行渲染该入口。
+   */
+  onOpenReferences?: (item: AgentContextMentionItem) => void;
 }
 
 const AGENT_MENTION_PALETTE_THEME: MentionPaletteTheme = {
@@ -188,16 +193,17 @@ export function AgentFileMentionPalette({
   onSelectFilter,
   onExpandGroup,
   onCycleFilter,
-  onMoveSelection
+  onMoveSelection,
+  onOpenReferences
 }: AgentFileMentionPaletteProps): React.JSX.Element {
   "use memo";
+  const openReferencesLabel = translate(
+    "agentHost.agentGui.mentionOpenReferences"
+  );
   const filter = state.filter as AgentMentionFilterId;
   const highlightedBrowseCategory = highlightedKey?.startsWith("category:")
     ? highlightedKey.slice("category:".length)
     : null;
-  const browseDisplayFilter = isBrowseCategoryId(highlightedBrowseCategory)
-    ? highlightedBrowseCategory
-    : filter;
   const showBrowseHint = shouldShowBrowseSearchHint({
     browseFilter: filter,
     groups: state.groups,
@@ -238,7 +244,7 @@ export function AgentFileMentionPalette({
         };
 
   const emptyLabelForShell = showBrowseHint
-    ? browseHintForFilter(browseDisplayFilter)
+    ? browseHintForFilter(filter)
     : resolveMentionPaletteEmptyLabel({
         emptyLabel,
         filter,
@@ -261,7 +267,13 @@ export function AgentFileMentionPalette({
       renderItem={(item) =>
         renderMentionRow(agentMentionItemToRowItem(item), {
           classNames: AGENT_MENTION_ROW_CLASS_NAMES,
-          dataAttributeMode: "agent"
+          dataAttributeMode: "agent",
+          ...(onOpenReferences && isReferenceableMentionItem(item)
+            ? {
+                onOpenReferences: () => onOpenReferences(item),
+                openReferencesLabel
+              }
+            : {})
         })
       }
       labels={{
@@ -298,6 +310,9 @@ export function AgentFileMentionPalette({
     />
   );
 }
+
+export const AgentContextMentionPalette = AgentFileMentionPalette;
+export type AgentContextMentionPaletteProps = AgentFileMentionPaletteProps;
 
 /**
  * Map a controller group onto the shared shell group, layering in the
@@ -391,6 +406,15 @@ function resolveMentionPaletteEmptyLabel(input: {
     input.query.trim().length > 0
   ) {
     return translate("agentHost.agentGui.mentionNoMatchingFiles");
+  }
+  if (input.filter === "session") {
+    return agentMentionEmptyGroupLabel("my_sessions", input.query);
+  }
+  if (input.filter === "app") {
+    return agentMentionEmptyGroupLabel("apps", input.query);
+  }
+  if (input.filter === "issue") {
+    return agentMentionEmptyGroupLabel("issues", input.query);
   }
   return input.emptyLabel;
 }
@@ -488,6 +512,22 @@ function agentMentionItemToRowItem(
   };
 }
 
+/**
+ * 暂不展示产物文件入口的应用(agent 启动器类,无产物文件):Claude Code / Codex。
+ */
+const NON_REFERENCEABLE_APP_IDS = new Set(["agent-claude-code", "agent-codex"]);
+
+/** 仅 workspace-issue / workspace-app(排除 agent 启动器应用)行有产物文件入口。 */
+function isReferenceableMentionItem(item: AgentContextMentionItem): boolean {
+  if (item.kind === "workspace-issue") {
+    return true;
+  }
+  if (item.kind === "workspace-app") {
+    return !NON_REFERENCEABLE_APP_IDS.has(item.appId);
+  }
+  return false;
+}
+
 function mentionSessionAgentProvider(
   item: Extract<AgentContextMentionItem, { kind: "session" }>
 ): string | null {
@@ -560,18 +600,6 @@ function browseHintForFilter(filter: AgentMentionFilterId): string {
     case "issue":
       return translate("agentHost.agentGui.contextPickerBrowseIssueHint");
   }
-}
-
-function isBrowseCategoryId(
-  value: string | null
-): value is AgentMentionFilterId {
-  return (
-    value === "all" ||
-    value === "app" ||
-    value === "file" ||
-    value === "session" ||
-    value === "issue"
-  );
 }
 
 function hasInteractiveGroupEntries(

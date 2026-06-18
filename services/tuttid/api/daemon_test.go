@@ -45,6 +45,7 @@ type stubFileService struct {
 	deleteEntryFn          func(context.Context, string, string, workspacefiles.EntryKind) error
 	getDirectoryTreeFn     func(context.Context, string, workspacefiles.DirectoryTreeSnapshotInput) (workspacefiles.DirectoryTreeSnapshot, error)
 	listDirectoryFn        func(context.Context, string, workspacefiles.DirectoryListInput) (workspacefiles.DirectoryListing, error)
+	listRecentFn           func(context.Context, string, workspacefiles.RecentListInput) (workspacefiles.DirectoryListing, error)
 	moveEntryFn            func(context.Context, string, string, string) (workspacefiles.FileEntry, error)
 	preflightUploadFilesFn func(context.Context, string, workspacefiles.PreflightUploadInput) (workspacefiles.PreflightUploadResult, error)
 	resolveRootFn          func(context.Context, string) (workspacefiles.WorkspaceRoot, error)
@@ -66,9 +67,11 @@ type stubAgentSessionService struct {
 	composerOptionsFn        func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	createFn                 func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
 	deleteFn                 func(context.Context, string, string) (bool, error)
+	importExternalFn         func(context.Context, string, agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error)
 	listFn                   func(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
 	listMessagesFn           func(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
 	readAttachmentFn         func(context.Context, string, string, string) (agentservice.PromptAttachment, error)
+	scanExternalFn           func(context.Context, agentservice.ExternalImportScanInput) (agentservice.ExternalImportScanResult, error)
 	listGitBranchesFn        func(context.Context, string, string) (agentservice.GitBranches, error)
 	listGitBranchesForPathFn func(context.Context, string, string) (agentservice.GitBranches, error)
 	updatePinFn              func(context.Context, string, string, bool) (agentservice.Session, error)
@@ -108,6 +111,10 @@ func (s stubAppCenterService) Launch(ctx context.Context, workspaceID string, ap
 }
 
 func (stubAppCenterService) ListReferences(context.Context, string, string, workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error) {
+	return workspacebiz.AppReferenceListResult{}, nil
+}
+
+func (stubAppCenterService) SearchReferences(context.Context, string, string, workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceListResult, error) {
 	return workspacebiz.AppReferenceListResult{}, nil
 }
 
@@ -180,6 +187,20 @@ func (s stubAgentSessionService) ListMessages(ctx context.Context, workspaceID s
 		return agentservice.SessionMessagesPage{}, nil
 	}
 	return s.listMessagesFn(ctx, workspaceID, agentSessionID, input)
+}
+
+func (s stubAgentSessionService) ScanExternalImports(ctx context.Context, input agentservice.ExternalImportScanInput) (agentservice.ExternalImportScanResult, error) {
+	if s.scanExternalFn == nil {
+		return agentservice.ExternalImportScanResult{}, nil
+	}
+	return s.scanExternalFn(ctx, input)
+}
+
+func (s stubAgentSessionService) ImportExternalSessions(ctx context.Context, workspaceID string, input agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error) {
+	if s.importExternalFn == nil {
+		return agentservice.ExternalImportResult{}, nil
+	}
+	return s.importExternalFn(ctx, workspaceID, input)
 }
 
 func (s stubAgentSessionService) Create(ctx context.Context, workspaceID string, input agentservice.CreateSessionInput) (agentservice.Session, error) {
@@ -287,6 +308,17 @@ func (s stubFileService) ListDirectory(
 		return workspacefiles.DirectoryListing{}, nil
 	}
 	return s.listDirectoryFn(ctx, workspaceID, input)
+}
+
+func (s stubFileService) ListRecent(
+	ctx context.Context,
+	workspaceID string,
+	input workspacefiles.RecentListInput,
+) (workspacefiles.DirectoryListing, error) {
+	if s.listRecentFn == nil {
+		return workspacefiles.DirectoryListing{}, nil
+	}
+	return s.listRecentFn(ctx, workspaceID, input)
 }
 
 func (s stubFileService) GetDirectoryTreeSnapshot(
@@ -1859,6 +1891,53 @@ func TestDaemonAPIGeneratedRoutesListWorkspaceFileDirectory(t *testing.T) {
 	var response tuttigenerated.WorkspaceFileDirectoryResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
 	if response.WorkspaceId != "ws-1" || response.DirectoryPath != "/workspace/src" {
+		t.Fatalf("response = %#v", response)
+	}
+	if len(response.Entries) != 1 || response.Entries[0].Path != "/workspace/src/main.go" {
+		t.Fatalf("entries = %#v", response.Entries)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesListWorkspaceRecentFiles(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(
+		mux,
+		NewRoutes(DaemonAPI{
+			FileService: stubFileService{
+				listRecentFn: func(_ context.Context, workspaceID string, input workspacefiles.RecentListInput) (workspacefiles.DirectoryListing, error) {
+					if workspaceID != "ws-1" {
+						t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+					}
+					if input.Limit != 5 {
+						t.Fatalf("limit = %d, want 5", input.Limit)
+					}
+					lastUsed := int64(1700)
+					return workspacefiles.DirectoryListing{
+						WorkspaceID:   workspaceID,
+						Root:          "/workspace",
+						DirectoryPath: "/workspace",
+						Entries: []workspacefiles.FileEntry{
+							{
+								Path:         "/workspace/src/main.go",
+								Name:         "main.go",
+								Kind:         workspacefiles.EntryKindFile,
+								LastOpenedMs: &lastUsed,
+							},
+						},
+					}, nil
+				},
+			},
+		}),
+	)
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/workspaces/ws-1/files/recent?limit=5", nil)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceFileDirectoryResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.WorkspaceId != "ws-1" {
 		t.Fatalf("response = %#v", response)
 	}
 	if len(response.Entries) != 1 || response.Entries[0].Path != "/workspace/src/main.go" {

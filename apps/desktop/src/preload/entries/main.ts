@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { createBrowserDesktopApi } from "../api/browser";
+import { createComputerUseDesktopApi } from "../api/computerUse";
 import { createDeveloperDesktopApi } from "../api/developer";
 import { createDockPreviewCacheDesktopApi } from "../api/dockPreviewCache";
 import { createHostDesktopApi } from "../api/host";
@@ -7,6 +8,7 @@ import { createPlatformDesktopApi } from "../api/platform";
 import { createRuntimeDesktopApi } from "../api/runtime";
 import { createUpdateDesktopApi } from "../api/update";
 import { createWallpaperDesktopApi } from "../api/wallpaper";
+import { createWorkspaceAppExternalDesktopApi } from "../api/workspaceAppExternal";
 import type { DesktopApi } from "../types";
 import {
   desktopIpcChannels,
@@ -14,6 +16,7 @@ import {
 } from "../../shared/contracts/ipc";
 
 const desktopApi: DesktopApi = {
+  computerUse: createComputerUseDesktopApi(),
   developer: createDeveloperDesktopApi(),
   dockPreviewCache: createDockPreviewCacheDesktopApi(),
   host: createHostDesktopApi(),
@@ -25,6 +28,7 @@ const desktopApi: DesktopApi = {
 
 if (isWorkspaceWindowPreload()) {
   desktopApi.browser = createBrowserDesktopApi();
+  desktopApi.workspaceAppExternal = createWorkspaceAppExternalDesktopApi();
 }
 
 ipcRenderer.on(

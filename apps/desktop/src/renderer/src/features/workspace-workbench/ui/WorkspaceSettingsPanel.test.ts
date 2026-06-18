@@ -27,10 +27,10 @@ test("workspace settings panel lists appearance below general", () => {
   );
 });
 
-test("workspace settings general panel lists language before default provider", () => {
+test("workspace settings general panel lists agent defaults before language", () => {
   assert.match(
     source,
-    /workspace\.settings\.general\.languageLabel[\s\S]*workspace\.settings\.general\.defaultAgentProviderLabel/
+    /workspace\.settings\.general\.defaultAgentProviderLabel[\s\S]*workspace\.externalImport\.settingsLabel[\s\S]*workspace\.settings\.general\.browserUseConnectionModeLabel[\s\S]*workspace\.settings\.general\.preventSleepLabel[\s\S]*workspace\.settings\.general\.languageLabel/
   );
 });
 
@@ -40,6 +40,15 @@ test("workspace settings general panel owns browser-use connection mode", () => 
     /function WorkspaceGeneralSettingsSection[\s\S]*workspace\.settings\.general\.browserUseConnectionModeLabel[\s\S]*workspace\.settings\.general\.browserUseConnectionModeOptions\.autoConnect[\s\S]*workspace\.settings\.general\.preventSleepLabel/
   );
   assert.match(source, /changeBrowserUseConnectionMode/);
+});
+
+test("workspace settings computer-use permission hints are tooltips", () => {
+  assert.match(source, /resolveComputerUseGrantTooltip/);
+  assert.match(source, /<TooltipTrigger asChild>/);
+  assert.match(
+    source,
+    /workspace\.settings\.general\.computerUsePermissionMissingTooltip/
+  );
 });
 
 test("workspace settings general panel does not expose update preferences", () => {

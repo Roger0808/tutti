@@ -1434,6 +1434,9 @@ type AppFileReference struct {
 	MimeType    *string              `json:"mimeType"`
 	MtimeMs     *int64               `json:"mtimeMs"`
 
+	// ParentGroupLabel Optional label of the group/project this file belongs to, surfaced as the result's context subtitle in cross-source search. Apps should set it on search results so users can tell which project a file is in; when omitted, Tutti falls back to the app display name.
+	ParentGroupLabel *string `json:"parentGroupLabel,omitempty"`
+
 	// Path Absolute filesystem path resolved by tuttid from the app runtime reference location. Workspace app runtimes do not provide this public API field directly.
 	Path      string   `json:"path"`
 	Score     *float32 `json:"score"`
@@ -1501,6 +1504,27 @@ type AppReferenceListResponse struct {
 type AppReferenceListTimeRange struct {
 	FromMs *int64 `json:"fromMs,omitempty"`
 	ToMs   *int64 `json:"toMs,omitempty"`
+}
+
+// AppReferenceSearchRequest defines model for AppReferenceSearchRequest.
+type AppReferenceSearchRequest struct {
+	Cursor *string             `json:"cursor,omitempty"`
+	Kinds  *[]AppReferenceKind `json:"kinds,omitempty"`
+	Limit  *int                `json:"limit,omitempty"`
+	Query  string              `json:"query"`
+
+	// TimeRange Inclusive timestamp range for references. For file references, runtimes should filter by the file mtimeMs when available.
+	TimeRange *AppReferenceListTimeRange `json:"timeRange,omitempty"`
+}
+
+// AppReferenceSearchResponse defines model for AppReferenceSearchResponse.
+type AppReferenceSearchResponse struct {
+	AppId string `json:"appId"`
+
+	// Items Flat, relevance-ordered list of file references. Search never returns group items.
+	Items       []AppReferenceListReferenceItem `json:"items"`
+	NextCursor  *string                         `json:"nextCursor"`
+	WorkspaceId string                          `json:"workspaceId"`
 }
 
 // CheckUserProjectPathRequest defines model for CheckUserProjectPathRequest.
@@ -1848,6 +1872,76 @@ type ExportWorkspaceAppResponse struct {
 	WorkspaceId       string `json:"workspaceId"`
 }
 
+// ExternalAgentImportError defines model for ExternalAgentImportError.
+type ExternalAgentImportError struct {
+	Message    string                  `json:"message"`
+	Provider   *WorkspaceAgentProvider `json:"provider,omitempty"`
+	SourcePath *string                 `json:"sourcePath,omitempty"`
+}
+
+// ExternalAgentImportProject defines model for ExternalAgentImportProject.
+type ExternalAgentImportProject struct {
+	Label               string                   `json:"label"`
+	LastUpdatedAtUnixMs *int64                   `json:"lastUpdatedAtUnixMs,omitempty"`
+	MessageCount        int                      `json:"messageCount"`
+	Path                string                   `json:"path"`
+	Providers           []WorkspaceAgentProvider `json:"providers"`
+	SessionCount        int                      `json:"sessionCount"`
+}
+
+// ExternalAgentImportProjectSelection defines model for ExternalAgentImportProjectSelection.
+type ExternalAgentImportProjectSelection struct {
+	Path       string                    `json:"path"`
+	Providers  *[]WorkspaceAgentProvider `json:"providers,omitempty"`
+	SessionIds *[]string                 `json:"sessionIds,omitempty"`
+}
+
+// ExternalAgentImportProvider defines model for ExternalAgentImportProvider.
+type ExternalAgentImportProvider struct {
+	Available    bool                   `json:"available"`
+	Error        *string                `json:"error,omitempty"`
+	MessageCount int                    `json:"messageCount"`
+	Provider     WorkspaceAgentProvider `json:"provider"`
+	Root         string                 `json:"root"`
+	SessionCount int                    `json:"sessionCount"`
+}
+
+// ExternalAgentImportResultResponse defines model for ExternalAgentImportResultResponse.
+type ExternalAgentImportResultResponse struct {
+	Errors           []ExternalAgentImportError `json:"errors"`
+	ImportedMessages int                        `json:"importedMessages"`
+	ImportedProjects int                        `json:"importedProjects"`
+	ImportedSessions int                        `json:"importedSessions"`
+	SkippedSessions  int                        `json:"skippedSessions"`
+}
+
+// ExternalAgentImportScanRequest defines model for ExternalAgentImportScanRequest.
+type ExternalAgentImportScanRequest struct {
+	Providers *[]WorkspaceAgentProvider `json:"providers,omitempty"`
+}
+
+// ExternalAgentImportScanResponse defines model for ExternalAgentImportScanResponse.
+type ExternalAgentImportScanResponse struct {
+	Errors          []ExternalAgentImportError    `json:"errors"`
+	Projects        []ExternalAgentImportProject  `json:"projects"`
+	Providers       []ExternalAgentImportProvider `json:"providers"`
+	ScannedMessages int                           `json:"scannedMessages"`
+	ScannedSessions int                           `json:"scannedSessions"`
+	Sessions        []ExternalAgentImportSession  `json:"sessions"`
+	SkippedSessions int                           `json:"skippedSessions"`
+}
+
+// ExternalAgentImportSession defines model for ExternalAgentImportSession.
+type ExternalAgentImportSession struct {
+	Id                  string                 `json:"id"`
+	LastUpdatedAtUnixMs *int64                 `json:"lastUpdatedAtUnixMs,omitempty"`
+	MessageCount        int                    `json:"messageCount"`
+	ProjectPath         string                 `json:"projectPath"`
+	Provider            WorkspaceAgentProvider `json:"provider"`
+	SourcePath          string                 `json:"sourcePath"`
+	Title               string                 `json:"title"`
+}
+
 // FixWorkspaceAppFactoryJobRequest defines model for FixWorkspaceAppFactoryJobRequest.
 type FixWorkspaceAppFactoryJobRequest struct {
 	Prompt string `json:"prompt"`
@@ -1868,6 +1962,13 @@ type HealthStatusResponse struct {
 
 // HealthStatusResponseStatus defines model for HealthStatusResponse.Status.
 type HealthStatusResponseStatus string
+
+// ImportExternalAgentSessionsRequest defines model for ImportExternalAgentSessionsRequest.
+type ImportExternalAgentSessionsRequest struct {
+	ImportSessions       *bool                                 `json:"importSessions,omitempty"`
+	Projects             []ExternalAgentImportProjectSelection `json:"projects"`
+	RegisterUserProjects *bool                                 `json:"registerUserProjects,omitempty"`
+}
 
 // ImportWorkspaceAppRequest defines model for ImportWorkspaceAppRequest.
 type ImportWorkspaceAppRequest struct {
@@ -2582,7 +2683,8 @@ type WorkspaceAppMinimizeBehavior string
 
 // WorkspaceAppReferencesState defines model for WorkspaceAppReferencesState.
 type WorkspaceAppReferencesState struct {
-	ListSupported bool `json:"listSupported"`
+	ListSupported   bool `json:"listSupported"`
+	SearchSupported bool `json:"searchSupported"`
 }
 
 // WorkspaceAppResponse defines model for WorkspaceAppResponse.
@@ -2862,6 +2964,9 @@ type WorkspaceFilePrefetchBudgetMs = int
 // WorkspaceFilePrefetchDepth defines model for WorkspaceFilePrefetchDepth.
 type WorkspaceFilePrefetchDepth = int
 
+// WorkspaceFileRecentLimit defines model for WorkspaceFileRecentLimit.
+type WorkspaceFileRecentLimit = int
+
 // WorkspaceFileSearchKinds defines model for WorkspaceFileSearchKinds.
 type WorkspaceFileSearchKinds = []WorkspaceFileFilterKind
 
@@ -2955,6 +3060,11 @@ type ReadWorkspaceFilePreviewParams struct {
 	Path *WorkspaceFilePath `form:"path,omitempty" json:"path,omitempty"`
 }
 
+// ListWorkspaceRecentFilesParams defines parameters for ListWorkspaceRecentFiles.
+type ListWorkspaceRecentFilesParams struct {
+	Limit *WorkspaceFileRecentLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // SearchWorkspaceFilesParams defines parameters for SearchWorkspaceFiles.
 type SearchWorkspaceFilesParams struct {
 	Query         WorkspaceFileSearchQuery    `form:"query" json:"query"`
@@ -3029,6 +3139,12 @@ type UpdateWorkspaceJSONRequestBody = UpdateWorkspaceRequest
 // CreateWorkspaceAgentSessionJSONRequestBody defines body for CreateWorkspaceAgentSession for application/json ContentType.
 type CreateWorkspaceAgentSessionJSONRequestBody = CreateWorkspaceAgentSessionRequest
 
+// ImportWorkspaceExternalAgentSessionsJSONRequestBody defines body for ImportWorkspaceExternalAgentSessions for application/json ContentType.
+type ImportWorkspaceExternalAgentSessionsJSONRequestBody = ImportExternalAgentSessionsRequest
+
+// ScanWorkspaceExternalAgentSessionImportsJSONRequestBody defines body for ScanWorkspaceExternalAgentSessionImports for application/json ContentType.
+type ScanWorkspaceExternalAgentSessionImportsJSONRequestBody = ExternalAgentImportScanRequest
+
 // SendWorkspaceAgentSessionInputJSONRequestBody defines body for SendWorkspaceAgentSessionInput for application/json ContentType.
 type SendWorkspaceAgentSessionInputJSONRequestBody = SendWorkspaceAgentSessionInputRequest
 
@@ -3064,6 +3180,9 @@ type InstallWorkspaceAppJSONRequestBody = InstallWorkspaceAppRequest
 
 // ListWorkspaceAppReferencesJSONRequestBody defines body for ListWorkspaceAppReferences for application/json ContentType.
 type ListWorkspaceAppReferencesJSONRequestBody = AppReferenceListRequest
+
+// SearchWorkspaceAppReferencesJSONRequestBody defines body for SearchWorkspaceAppReferences for application/json ContentType.
+type SearchWorkspaceAppReferencesJSONRequestBody = AppReferenceSearchRequest
 
 // RollbackWorkspaceAppJSONRequestBody defines body for RollbackWorkspaceApp for application/json ContentType.
 type RollbackWorkspaceAppJSONRequestBody = RollbackWorkspaceAppRequest

@@ -29,10 +29,12 @@ import type {
   WorkspaceWallpaperDisplayMode,
   WorkspaceWallpaperId
 } from "./workspaceWallpaper";
+import type { DesktopHostNotificationNavigationPayload } from "@shared/contracts/ipc";
 import type {
-  DesktopHostNotificationNavigationPayload,
-  DesktopWorkspaceOpenSettingsRequest
-} from "@shared/contracts/ipc";
+  TuttiExternalAtQueryInput,
+  TuttiExternalAtQueryResult
+} from "@tutti-os/workspace-external-core/contracts";
+import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
 
 export type WorkspaceCustomWallpaperStatus = "idle" | "saving" | "removing";
 
@@ -52,6 +54,10 @@ export interface WorkspaceWorkbenchBodyRendererContext {
   externalNodeState: WorkspaceFileManagerPersistedState | null;
   workspaceId: string;
 }
+
+export type WorkspaceWorkbenchCapabilitySettingsTarget =
+  | "browserUse"
+  | "computerUse";
 
 export interface WorkspaceWorkbenchHostInput {
   readonly captureNodePreviewImage?: WorkbenchHostProps["captureNodePreviewImage"];
@@ -97,18 +103,25 @@ export interface IWorkspaceWorkbenchHostService {
     defaultAgentProvider?: string | null;
     dockIconStyle: DesktopDockIconStyle;
     i18n: WorkspaceWorkbenchDesktopI18nRuntime;
+    onCapabilitySettingsRequest?: (
+      target: WorkspaceWorkbenchCapabilitySettingsTarget
+    ) => void;
     renderFilesNodeBody: (
       context: WorkspaceWorkbenchBodyRendererContext
     ) => ReactNode;
     themeAppearance: DesktopThemeAppearance;
     workspaceId: string;
   }): WorkspaceWorkbenchHostInput;
+  createWorkspaceAppExternalFileReferenceAdapter(
+    workspaceId: string
+  ): WorkspaceFileReferenceAdapter;
+  queryWorkspaceAppExternalAt(input: {
+    query: TuttiExternalAtQueryInput;
+    workspaceId: string;
+  }): Promise<TuttiExternalAtQueryResult[]>;
   onWindowCloseRequest(listener: () => void): () => void;
   onNotificationNavigate(
     listener: (payload: DesktopHostNotificationNavigationPayload) => void
-  ): () => void;
-  onOpenSettingsRequest(
-    listener: (request: DesktopWorkspaceOpenSettingsRequest) => void
   ): () => void;
   readWallpaperDisplayMode(workspaceId: string): WorkspaceWallpaperDisplayMode;
   readWallpaperId(workspaceId: string): WorkspaceWallpaperId;

@@ -54,6 +54,9 @@ function createTransportClient(
     async listWorkspaceAppReferences() {
       throw new Error("not used");
     },
+    async searchWorkspaceAppReferences() {
+      throw new Error("not used");
+    },
     async installWorkspaceApp() {
       throw new Error("not used");
     },
@@ -314,6 +317,14 @@ function createTransportClient(
         workspaceId: workspaceID
       };
     },
+    async listWorkspaceRecentFiles(workspaceID) {
+      return {
+        directoryPath: "/workspace",
+        entries: [],
+        root: "/workspace",
+        workspaceId: workspaceID
+      };
+    },
     async listWorkspaceIssueTaskRuns() {
       throw new Error("not used");
     },
@@ -346,6 +357,12 @@ function createTransportClient(
     },
     async listWorkspaceAgentSessions(workspaceID) {
       return { sessions: [], workspaceId: workspaceID };
+    },
+    async scanWorkspaceExternalAgentSessionImports() {
+      throw new Error("not used");
+    },
+    async importWorkspaceExternalAgentSessions() {
+      throw new Error("not used");
     },
     async listWorkspaces() {
       return { workspaces: [], totalCount: 0 };

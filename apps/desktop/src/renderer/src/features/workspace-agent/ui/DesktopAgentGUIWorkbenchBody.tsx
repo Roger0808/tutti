@@ -34,7 +34,8 @@ import type {
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { Toast } from "@renderer/lib/toast";
 import type { DesktopAgentComposerDefaults } from "@shared/preferences";
-import type { DesktopRuntimeApi } from "@preload/types";
+import type { DesktopComputerUseApi, DesktopRuntimeApi } from "@preload/types";
+import type { DesktopComputerUseStatus } from "@shared/contracts/ipc";
 import {
   areDesktopAgentGUINodeStatesEqual,
   areDesktopAgentGUIWorkbenchStatesEqual,
@@ -58,7 +59,9 @@ import {
   isDesktopManagedAgentProvider,
   projectDesktopManagedAgentsState
 } from "../services/internal/desktopManagedAgentProviders.ts";
-import { resolveWorkbenchDockFileAtItems } from "../services/internal/resolveWorkbenchDockFileAtItems.ts";
+import { createDesktopWorkspaceAppMentionProvider } from "../../rich-text-at/providers/desktopWorkspaceAppMentionProvider.ts";
+import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "@tutti-os/agent-gui/context-mention-provider";
+import { resolveWorkbenchDockFileMentionItems } from "../services/internal/resolveWorkbenchDockFileMentionItems.ts";
 import { createDesktopAgentGeneratedFileMentionProvider } from "../services/internal/createDesktopAgentGeneratedFileMentionProvider.ts";
 import { resolveDesktopWorkspaceAppIconEntries } from "../services/internal/desktopWorkspaceAppIcons.ts";
 import { wrapDesktopFileMentionProviderWithDockFiles } from "../services/internal/wrapDesktopFileMentionProviderWithDockFiles.ts";
@@ -83,18 +86,23 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   appCenterService: IWorkspaceAppCenterService;
   agentProviderStatusService?: IAgentProviderStatusService;
   context: WorkbenchHostNodeBodyContext;
+  computerUseApi?: Pick<DesktopComputerUseApi, "checkStatus">;
   dockPreviewCache: WorkbenchDockPreviewCache;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
+  onCapabilitySettingsRequest?: AgentGUIProps["onCapabilitySettingsRequest"];
   onStateChange: (state: DesktopAgentGUIWorkbenchState) => void;
   previewMode?: boolean;
-  richTextAtProviders: NonNullable<AgentGUIProps["richTextAtProviders"]>;
-  resolveAppIconUrl?: (appId: string) => string | null;
+  contextMentionProviders: NonNullable<
+    AgentGUIProps["contextMentionProviders"]
+  >;
   runtimeApi?: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
   trackWorkspaceFileReferences?: AgentGUIProps["onWorkspaceFileReferencesAdded"];
   workspaceFileReferenceAdapter: NonNullable<
     AgentGUIProps["workspaceFileReferenceAdapter"]
   >;
   onRequestGitBranches: NonNullable<AgentGUIProps["onRequestGitBranches"]>;
+  referenceSourceAggregator?: AgentGUIProps["referenceSourceAggregator"];
+  resolveMentionReferenceTarget?: AgentGUIProps["resolveMentionReferenceTarget"];
   workspaceId: string;
 }
 
@@ -106,12 +114,28 @@ const EMPTY_AGENT_PROVIDER_STATUS_SNAPSHOT: AgentProviderStatusSnapshot = {
   pendingActions: [],
   statuses: []
 };
+
+function resolveComputerUseAuthorizationState(
+  status: DesktopComputerUseStatus | null
+): "authorized" | "needs-authorization" | "unknown" | null {
+  if (!status?.installed) {
+    return null;
+  }
+  const permissions = status.permissions;
+  if (!permissions || permissions.source !== "driver-daemon") {
+    return "unknown";
+  }
+  return permissions.accessibility === true &&
+    permissions.screenRecording === true &&
+    permissions.screenRecordingCapturable === true
+    ? "authorized"
+    : "needs-authorization";
+}
 const DESKTOP_AGENT_GUI_AGENT_SETTINGS = {
   avoidGroupingEdits: false
 } satisfies NonNullable<AgentGUIProps["agentSettings"]>;
 const DESKTOP_AGENT_GUI_NOOP = (): void => {};
 const DESKTOP_AGENT_GUI_POSITION = { x: 0, y: 0 };
-
 type DesktopAgentProbeState = NonNullable<
   AgentGUIProps["workspaceAgentProbes"]
 >;
@@ -213,34 +237,52 @@ export function DesktopAgentGUIWorkbenchBody({
   appCenterService,
   agentProviderStatusService,
   context,
+  computerUseApi,
   dockPreviewCache,
   onLinkAction,
+  onCapabilitySettingsRequest,
   onStateChange,
   previewMode = false,
-  richTextAtProviders,
-  resolveAppIconUrl,
+  contextMentionProviders,
   runtimeApi,
   trackWorkspaceFileReferences,
   workspaceFileReferenceAdapter,
   onRequestGitBranches,
+  referenceSourceAggregator,
+  resolveMentionReferenceTarget,
   workspaceId
 }: DesktopAgentGUIWorkbenchBodyProps): JSX.Element {
   const { i18n, locale } = useTranslation();
   const { service: desktopPreferencesService, state: desktopPreferencesState } =
     useDesktopPreferencesService();
+  const [computerUseStatus, setComputerUseStatus] =
+    useState<DesktopComputerUseStatus | null>(null);
   const appCenterState = useSnapshot(appCenterService.store);
   const workspaceAppIcons = useMemo(
     () =>
       resolveDesktopWorkspaceAppIconEntries({
         apps: appCenterState.apps,
-        resolveAppIconUrl,
         workspaceId
       }),
-    [appCenterState.apps, resolveAppIconUrl, workspaceId]
+    [appCenterState.apps, workspaceId]
   );
+  const workspaceAppMentionProvider = useMemo(() => {
+    const baseProvider = contextMentionProviders.find(
+      (provider) =>
+        provider.id === AGENT_CONTEXT_MENTION_PROVIDER_IDS.workspaceApp
+    );
+    return baseProvider
+      ? createDesktopWorkspaceAppMentionProvider({
+          apps: appCenterState.apps,
+          baseProvider,
+          locale,
+          workspaceId
+        })
+      : null;
+  }, [appCenterState.apps, locale, contextMentionProviders, workspaceId]);
   const resolveDockFiles = useCallback(
     () =>
-      resolveWorkbenchDockFileAtItems({
+      resolveWorkbenchDockFileMentionItems({
         host: context.host,
         workspaceId
       }),
@@ -254,27 +296,63 @@ export function DesktopAgentGUIWorkbenchBody({
       }),
     [agentActivityRuntime, workspaceId]
   );
-  const effectiveRichTextAtProviders = useMemo(
+  const effectiveContextMentionProviders = useMemo(
     () => [
-      ...richTextAtProviders.map((provider) =>
-        wrapDesktopFileMentionProviderWithDockFiles(provider, {
-          readDockPreview: dockPreviewCache.read.bind(dockPreviewCache),
-          resolveDockFiles
-        })
-      ),
-      agentGeneratedFileMentionProvider
+      ...contextMentionProviders
+        .filter(
+          (provider) =>
+            provider.id !== AGENT_CONTEXT_MENTION_PROVIDER_IDS.workspaceApp
+        )
+        .map((provider) =>
+          wrapDesktopFileMentionProviderWithDockFiles(provider, {
+            readDockPreview: dockPreviewCache.read.bind(dockPreviewCache),
+            resolveDockFiles
+          })
+        ),
+      agentGeneratedFileMentionProvider,
+      ...(workspaceAppMentionProvider ? [workspaceAppMentionProvider] : [])
     ],
     [
       agentGeneratedFileMentionProvider,
       dockPreviewCache,
       resolveDockFiles,
-      richTextAtProviders
+      contextMentionProviders,
+      workspaceAppMentionProvider
     ]
   );
   const managedAgentsState = useDesktopManagedAgentsState(
     previewMode ? undefined : agentProviderStatusService
   );
   const provider = desktopAgentGUIProviderFromInstanceId(context.instanceId);
+  useEffect(() => {
+    if (previewMode || !computerUseApi) {
+      setComputerUseStatus(null);
+      return;
+    }
+
+    let canceled = false;
+    const refreshComputerUseStatus = () => {
+      void computerUseApi
+        .checkStatus()
+        .then((status) => {
+          if (!canceled) {
+            setComputerUseStatus(status);
+          }
+        })
+        .catch(() => {
+          if (!canceled) {
+            setComputerUseStatus(null);
+          }
+        });
+    };
+
+    refreshComputerUseStatus();
+    const interval = window.setInterval(refreshComputerUseStatus, 15_000);
+    return () => {
+      canceled = true;
+      window.clearInterval(interval);
+    };
+  }, [computerUseApi, previewMode]);
   const handleAgentProviderLogin = useCallback(
     (
       loginProvider: Parameters<
@@ -659,6 +737,16 @@ export function DesktopAgentGUIWorkbenchBody({
       i18n={i18n}
       locale={locale}
       agentSettings={DESKTOP_AGENT_GUI_AGENT_SETTINGS}
+      capabilityMenuState={{
+        browserUse: {
+          connectionMode: desktopPreferencesState.browserUseConnectionMode
+        },
+        computerUse: {
+          authorization:
+            resolveComputerUseAuthorizationState(computerUseStatus),
+          installed: computerUseStatus?.installed ?? null
+        }
+      }}
       currentUserId="local"
       desktopSize={desktopSize}
       embedded
@@ -679,6 +767,9 @@ export function DesktopAgentGUIWorkbenchBody({
           ? handleAgentProviderLogin
           : undefined
       }
+      onCapabilitySettingsRequest={
+        previewMode ? undefined : onCapabilitySettingsRequest
+      }
       onClose={DESKTOP_AGENT_GUI_NOOP}
       onLinkAction={onLinkAction}
       onResize={DESKTOP_AGENT_GUI_NOOP}
@@ -687,12 +778,14 @@ export function DesktopAgentGUIWorkbenchBody({
       onWorkspaceFileReferencesAdded={trackWorkspaceFileReferences}
       position={DESKTOP_AGENT_GUI_POSITION}
       previewMode={previewMode}
-      richTextAtProviders={effectiveRichTextAtProviders}
+      contextMentionProviders={effectiveContextMentionProviders}
       state={nodeState}
       title={context.node.title}
       width={frame.width}
       workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
       onRequestGitBranches={onRequestGitBranches}
+      referenceSourceAggregator={referenceSourceAggregator}
+      resolveMentionReferenceTarget={resolveMentionReferenceTarget}
       workspaceAppIcons={workspaceAppIcons}
       workspaceId={workspaceId}
       workspacePath="/"

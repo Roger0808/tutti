@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 )
 
@@ -13,6 +14,7 @@ type Service struct {
 	ModelCatalog              AgentModelCatalog
 	SessionReader             SessionReader
 	MessageReader             MessageReader
+	ExternalImportStore       agentactivitybiz.Repository
 	SessionDirectoryAllocator SessionDirectoryAllocator
 	PromptAttachmentStore     PromptAttachmentStore
 	RuntimePreparer           agentsidecarservice.Preparer
@@ -85,6 +87,7 @@ type ListSessionsInput struct {
 type PersistedSession struct {
 	ID                string
 	WorkspaceID       string
+	Origin            string
 	Provider          string
 	ProviderSessionID string
 	Cwd               string
@@ -159,6 +162,7 @@ type RuntimeStartInput struct {
 	Model            string
 	PlanMode         bool
 	BrowserUse       *bool
+	ComputerUse      *bool
 	ReasoningEffort  string
 	Speed            string
 	Visible          *bool
@@ -236,6 +240,7 @@ type ComposerSettingsPatch struct {
 	PermissionModeID *string
 	PlanMode         *bool
 	BrowserUse       *bool
+	ComputerUse      *bool
 	ReasoningEffort  *string
 	Speed            *string
 }
@@ -256,6 +261,7 @@ type CreateSessionInput struct {
 	Model                *string
 	PlanMode             *bool
 	BrowserUse           *bool
+	ComputerUse          *bool
 	ReasoningEffort      *string
 	Speed                *string
 	Visible              *bool

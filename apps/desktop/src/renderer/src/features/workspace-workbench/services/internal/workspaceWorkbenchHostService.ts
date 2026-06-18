@@ -17,15 +17,16 @@ import type {
   WorkspaceCustomWallpaperSnapshot,
   WorkspaceCustomWallpaperStatus,
   WorkspaceWorkbenchBodyRendererContext,
+  WorkspaceWorkbenchCapabilitySettingsTarget,
   WorkspaceWorkbenchHostInput
 } from "../workspaceWorkbenchHostService.interface";
 import type {
   DesktopBrowserApi,
+  DesktopComputerUseApi,
   DesktopDockPreviewCacheApi,
   DesktopHostFilesApi,
   DesktopHostNotificationsApi,
   DesktopHostWindowApi,
-  DesktopHostWorkspaceApi,
   DesktopPlatformApi,
   DesktopRuntimeApi,
   DesktopWallpaperApi
@@ -56,7 +57,9 @@ import {
   IWorkspaceAppCenterService,
   reportWorkspaceAppOpenedFromDockEntry
 } from "@renderer/features/workspace-app-center";
+import { createDesktopAgentGeneratedFileMentionProvider } from "@renderer/features/workspace-agent";
 import { IWorkspaceFileManagerService } from "../../../workspace-file-manager/services/workspaceFileManagerService.interface.ts";
+import { createDesktopWorkspaceFileReferenceAdapter } from "../../../workspace-file-manager/services/createDesktopWorkspaceFileReferenceAdapter.ts";
 import { IWorkspaceUserProjectService } from "../../../workspace-user-project/services/workspaceUserProjectService.interface.ts";
 import { defaultWorkspaceWorkbenchContributionFactories } from "./contributions/defaultWorkspaceWorkbenchContributionFactories.ts";
 import { createWorkspaceWorkbenchContributionRegistryResult } from "./workspaceWorkbenchContributionRegistry.ts";
@@ -79,10 +82,7 @@ import { createWorkspaceDynamicDockSignature } from "./workspaceDynamicDockSigna
 import { createWorkspaceLaunchpadDockEntry } from "./workspaceLaunchpadDockEntry.ts";
 import { createDesktopWorkspaceDockPreviewCache } from "./desktopWorkspaceDockPreviewCache.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
-import type {
-  DesktopHostNotificationNavigationPayload,
-  DesktopWorkspaceOpenSettingsRequest
-} from "@shared/contracts/ipc";
+import type { DesktopHostNotificationNavigationPayload } from "@shared/contracts/ipc";
 import { SettingsCustomWallpaperClearedReporter } from "../../../analytics/reporters/settings-custom-wallpaper-cleared/settingsCustomWallpaperClearedReporter.ts";
 import { SettingsCustomWallpaperUploadedReporter } from "../../../analytics/reporters/settings-custom-wallpaper-uploaded/settingsCustomWallpaperUploadedReporter.ts";
 import {
@@ -94,6 +94,15 @@ import {
   resolveWorkspaceDockIconSet,
   type WorkspaceDockIconSet
 } from "../workspaceDockIconStyle.ts";
+import { createRichTextTriggerRegistry } from "@tutti-os/ui-rich-text/plugins";
+import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
+import { tuttiExternalAtProviderIds } from "@tutti-os/workspace-external-core/core";
+import type {
+  TuttiExternalAtQueryInput,
+  TuttiExternalAtQueryResult
+} from "@tutti-os/workspace-external-core/contracts";
+import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
+import { serializeWorkspaceAppExternalAtMatch } from "./workspaceAppExternalAtSerialization.ts";
 
 const workspaceDockNativePreviewMaxWidthPx = 260;
 const workspaceDockNativePreviewMaxHeightPx = 170;
@@ -104,11 +113,11 @@ export interface WorkspaceWorkbenchHostServiceDependencies {
   appCenterService: IWorkspaceAppCenterService;
   browserApi?: DesktopBrowserApi;
   browserService: WorkspaceBrowserService;
+  computerUseApi: DesktopComputerUseApi;
   dockPreviewCacheApi: DesktopDockPreviewCacheApi;
   hostFilesApi: DesktopHostFilesApi;
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWindowApi: DesktopHostWindowApi;
-  hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenSettingsRequest">;
   workspaceFileManagerService: IWorkspaceFileManagerService;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceAgentActivityService: WorkspaceAgentActivityService;
@@ -128,12 +137,12 @@ export interface WorkspaceWorkbenchHostServiceDependencies {
 
 export interface WorkspaceWorkbenchHostExternalDependencies {
   browserApi?: DesktopBrowserApi;
+  computerUseApi: DesktopComputerUseApi;
   dockPreviewCacheApi: DesktopDockPreviewCacheApi;
   eventStreamClient?: TuttidEventStreamClient;
   hostFilesApi: DesktopHostFilesApi;
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWindowApi: DesktopHostWindowApi;
-  hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenSettingsRequest">;
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
@@ -194,12 +203,12 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       browserService: createWorkspaceBrowserService({
         browserApi: externalDependencies.browserApi
       }),
+      computerUseApi: externalDependencies.computerUseApi,
       dockPreviewCacheApi: externalDependencies.dockPreviewCacheApi,
       eventStreamClient: externalDependencies.eventStreamClient,
       hostFilesApi: externalDependencies.hostFilesApi,
       hostNotificationsApi: externalDependencies.hostNotificationsApi,
       hostWindowApi: externalDependencies.hostWindowApi,
-      hostWorkspaceApi: externalDependencies.hostWorkspaceApi,
       workspaceFileManagerService,
       workspaceUserProjectService,
       workspaceAgentActivityService,
@@ -232,10 +241,63 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     return this.dependencies.hostNotificationsApi.onNavigate(listener);
   }
 
-  onOpenSettingsRequest(
-    listener: (request: DesktopWorkspaceOpenSettingsRequest) => void
-  ): () => void {
-    return this.dependencies.hostWorkspaceApi.onOpenSettingsRequest(listener);
+  createWorkspaceAppExternalFileReferenceAdapter(
+    workspaceId: string
+  ): WorkspaceFileReferenceAdapter {
+    return createDesktopWorkspaceFileReferenceAdapter({
+      hostFilesApi: this.dependencies.hostFilesApi,
+      tuttidClient: this.dependencies.tuttidClient,
+      workspaceId
+    });
+  }
+
+  async queryWorkspaceAppExternalAt(input: {
+    query: TuttiExternalAtQueryInput;
+    workspaceId: string;
+  }): Promise<TuttiExternalAtQueryResult[]> {
+    const providerIds = new Set(
+      input.query.providers && input.query.providers.length > 0
+        ? input.query.providers
+        : tuttiExternalAtProviderIds
+    );
+    const richTextCapabilities = [...providerIds].filter(
+      (providerId) => providerId !== "agent-generated-file"
+    );
+    const providers: RichTextTriggerProvider[] = [
+      ...this.dependencies.richTextAtService.getProviders({
+        capabilities: richTextCapabilities,
+        surface: "workspace-app-external",
+        target: "workspace-app",
+        workspaceId: input.workspaceId
+      })
+    ];
+    if (providerIds.has("agent-generated-file")) {
+      const agentGeneratedFileProvider =
+        createDesktopAgentGeneratedFileMentionProvider({
+          agentActivityRuntime: this.dependencies.workspaceAgentActivityService,
+          workspaceId: input.workspaceId
+        });
+      providers.push({
+        ...agentGeneratedFileProvider,
+        trigger: "@"
+      });
+    }
+    const registry = createRichTextTriggerRegistry(providers);
+    const matches = await registry.query({
+      keyword: input.query.keyword,
+      maxResults: input.query.maxResults,
+      trigger: "@",
+      context: {
+        metadata: {
+          workspaceId: input.workspaceId
+        }
+      }
+    });
+    return matches
+      .map(serializeWorkspaceAppExternalAtMatch)
+      .filter(
+        (result): result is TuttiExternalAtQueryResult => result !== null
+      );
   }
 
   readWallpaperDisplayMode(workspaceId: string) {
@@ -523,6 +585,9 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     dockIconStyle: DesktopDockIconStyle;
     themeAppearance: DesktopThemeAppearance;
     defaultAgentProvider?: string | null;
+    onCapabilitySettingsRequest?: (
+      target: WorkspaceWorkbenchCapabilitySettingsTarget
+    ) => void;
     renderFilesNodeBody: (
       context: WorkspaceWorkbenchBodyRendererContext
     ) => ReactNode;
@@ -537,6 +602,8 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       cached.i18n === input.i18n &&
       cached.themeAppearance === input.themeAppearance
     ) {
+      cached.capabilitySettingsRequestRef.current =
+        input.onCapabilitySettingsRequest;
       cached.confirmCloseGuardRef.current = input.confirmCloseGuard;
       cached.renderFilesNodeBodyRef.current = input.renderFilesNodeBody;
       return this.createHostInputWithDynamicDockEntries(
@@ -551,6 +618,9 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
 
     const renderFilesNodeBodyRef = {
       current: input.renderFilesNodeBody
+    };
+    const capabilitySettingsRequestRef = {
+      current: input.onCapabilitySettingsRequest
     };
     const confirmCloseGuardRef = {
       current: input.confirmCloseGuard
@@ -569,13 +639,13 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           appCenterService: this.dependencies.appCenterService,
           browserApi: this.dependencies.browserApi,
           browserService: this.dependencies.browserService,
+          computerUseApi: this.dependencies.computerUseApi,
           confirmCloseGuard: (request) => confirmCloseGuardRef.current(request),
           dockPreviewCache,
           defaultAgentProvider: input.defaultAgentProvider,
           dockIcons: {
             agents: dockIcons.agents,
             applications: dockIcons.applications,
-            appIconUrl: dockIcons.appIconUrl,
             browser: dockIcons.browser,
             files: createWorkspaceDockImageIcon(dockIcons.files),
             issue: dockIcons.issue,
@@ -583,6 +653,9 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           },
           hostFilesApi: this.dependencies.hostFilesApi,
           i18n: input.i18n,
+          onCapabilitySettingsRequest: (target) => {
+            capabilitySettingsRequestRef.current?.(target);
+          },
           agentProviderStatusService:
             this.dependencies.agentProviderStatusService,
           eventStreamClient: this.dependencies.eventStreamClient,
@@ -621,7 +694,10 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       dockStateSource: createWorkspaceAgentProviderDockStateSource({
         agentProviderStatusService:
           this.dependencies.agentProviderStatusService,
-        i18n: input.i18n
+        i18n: input.i18n,
+        workspaceAgentActivityService:
+          this.dependencies.workspaceAgentActivityService,
+        workspaceId: input.workspaceId
       }),
       prepareHostClose: resolveWorkbenchHostPrepareClose(
         contributionRegistry.contributions
@@ -652,6 +728,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     this.cachedHostInputs.set(input.workspaceId, {
       appI18n: input.appI18n,
       baseHostInput,
+      capabilitySettingsRequestRef,
       confirmCloseGuardRef,
       defaultAgentProvider: input.defaultAgentProvider,
       dockIconStyle: input.dockIconStyle,
@@ -703,8 +780,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
             captureWebviewPreview: captureBrowserPreview
               ? (nodeId) => captureBrowserPreview({ nodeId })
               : undefined,
-            i18n: input.appI18n,
-            resolveAppIconUrl: cached?.dockIcons.appIconUrl
+            i18n: input.appI18n
           })
         ),
         createWorkspaceLaunchpadDockEntry({
@@ -1005,6 +1081,11 @@ IWorkspaceUserProjectService(WorkspaceWorkbenchHostService, undefined, 7);
 interface CachedWorkspaceWorkbenchHostInput {
   appI18n: I18nRuntime<string>;
   baseHostInput: WorkspaceWorkbenchHostInput;
+  capabilitySettingsRequestRef: {
+    current:
+      | ((target: WorkspaceWorkbenchCapabilitySettingsTarget) => void)
+      | undefined;
+  };
   confirmCloseGuardRef: {
     current: (
       request: WorkbenchHostCloseDialogRequest

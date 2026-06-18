@@ -1,4 +1,6 @@
 .DS_Store
+*.swp
+*.swo
 .env
 .env.*
 !.env.example
@@ -9,6 +11,7 @@ out/
 coverage/
 .pnpm-store/
 .cache/
+.tmp/
 .superpowers/
 .claude/
 .agents/
