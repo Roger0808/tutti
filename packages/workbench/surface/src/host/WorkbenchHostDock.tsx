@@ -1158,8 +1158,19 @@ export function WorkbenchHostDock({
                       logWorkbenchDockDebug("dock.click", debugDiagnostics, {
                         anchorKey,
                         clickResolution,
+                        dockDiagnostics: entry.diagnostics ?? null,
                         dockNodeState: resolvedEntry.dockNodeState,
                         entryId: entry.id,
+                        entryLaunchBehavior: entry.launchBehavior ?? "enabled",
+                        entryOrder: entry.order ?? null,
+                        entryState: entry.state ?? { kind: "enabled" },
+                        entryVisibility: entry.visibility ?? "always",
+                        hoverActions:
+                          entry.hoverActions?.map((action) => ({
+                            disabled: action.disabled === true,
+                            id: action.id,
+                            pending: Boolean(action.pendingLabel)
+                          })) ?? [],
                         instanceMode: instanceMode ?? null,
                         matchedNodeCount: resolvedEntry.matchedNodes.length,
                         matchedNodeIds: resolvedEntry.matchedNodes.map(
