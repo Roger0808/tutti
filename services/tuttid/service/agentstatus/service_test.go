@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -666,6 +667,33 @@ func TestServiceRunActionUpgradesStaleClaudeACPAdapter(t *testing.T) {
 	}
 	if result.Probe == nil || result.Probe.Status != ProbeReady {
 		t.Fatalf("Probe = %#v, want ready probe after upgrade", result.Probe)
+	}
+}
+
+func TestServiceResolveProviderCommandCreatesExternalRegistryNPMPrefix(t *testing.T) {
+	home := t.TempDir()
+	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	service := probeTestService(home)
+	service.ExternalAgentRegistry = registryStore
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+
+	if _, err := os.Stat(prefixDir); !os.IsNotExist(err) {
+		t.Fatalf("prefix dir exists before resolve: err=%v", err)
+	}
+
+	result, err := service.ResolveProviderCommand(context.Background(), "claude-code")
+	if err != nil {
+		t.Fatalf("ResolveProviderCommand() error = %v", err)
+	}
+	if _, err := os.Stat(prefixDir); err != nil {
+		t.Fatalf("prefix dir was not created before npm exec: %v", err)
+	}
+	if len(result.Command) == 0 ||
+		!slices.Contains(result.Command, "--prefix") ||
+		!slices.Contains(result.Command, prefixDir) ||
+		!slices.Contains(result.Command, "exec") {
+		t.Fatalf("Command = %#v, want managed npm exec with prefix", result.Command)
 	}
 }
 

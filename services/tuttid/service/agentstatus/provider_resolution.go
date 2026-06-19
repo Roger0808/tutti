@@ -85,6 +85,12 @@ func (s Service) resolveExternalRegistryNPMSpec(
 ) ProviderSpec {
 	registry := s.externalAgentRegistry()
 	prefixDir := registry.PackagePrefix(agent.ID)
+	if err := os.MkdirAll(prefixDir, 0o755); err != nil {
+		spec.AdapterCommand = nil
+		spec.AdapterEnv = nil
+		spec.AdapterUnavailableReasonCode = "external_agent_registry_package_dir_unavailable"
+		return spec
+	}
 	packageName, packageVersion := splitNPMPackageSpec(distribution.Package)
 	packageDir := npmPackageInstallDir(prefixDir, packageName)
 	spec.AdapterPackage = AdapterPackageRequirement{
