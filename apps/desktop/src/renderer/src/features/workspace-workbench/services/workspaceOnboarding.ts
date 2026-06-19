@@ -35,6 +35,29 @@ export function writeWorkspaceOnboardingAutoOpenedToSnapshot(
   };
 }
 
+export function preserveWorkspaceOnboardingSnapshotMetadata(
+  previousSnapshot: WorkbenchSnapshot | null | undefined,
+  nextSnapshot: WorkbenchSnapshot
+): WorkbenchSnapshot {
+  if (nextSnapshot.metadata?.[workspaceOnboardingMetadataKey] !== undefined) {
+    return nextSnapshot;
+  }
+
+  const onboardingMetadata =
+    previousSnapshot?.metadata?.[workspaceOnboardingMetadataKey];
+  if (onboardingMetadata === undefined) {
+    return nextSnapshot;
+  }
+
+  return {
+    ...nextSnapshot,
+    metadata: {
+      ...(nextSnapshot.metadata ?? {}),
+      [workspaceOnboardingMetadataKey]: onboardingMetadata
+    }
+  };
+}
+
 function readWorkspaceOnboardingMetadata(
   snapshot: WorkbenchSnapshot | null | undefined
 ): WorkspaceOnboardingSnapshotMetadata | null {
