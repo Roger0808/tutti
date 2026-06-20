@@ -61,6 +61,45 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 	}
 }
 
+func TestServiceImportExternalSessionsOmitsProjectsWithoutValidSessions(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	emptyProject := filepath.Join(root, "empty-project")
+	if err := os.MkdirAll(emptyProject, 0o755); err != nil {
+		t.Fatalf("create empty project error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(emptyProject); ok {
+		emptyProject = canonical
+	}
+	// No Codex/Claude history exists under these homes, so the selected project
+	// has no valid session.
+	t.Setenv("CODEX_HOME", filepath.Join(root, "codex-home"))
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: emptyProject}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if len(result.ProjectPaths) != 0 {
+		t.Fatalf("project paths = %#v, want none for project without valid sessions", result.ProjectPaths)
+	}
+	if result.ImportedSessions != 0 || result.ImportedProjects != 0 {
+		t.Fatalf("import result = %#v, want nothing imported", result)
+	}
+}
+
 func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)
@@ -181,6 +220,9 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	}
 	if result.ImportedProjects != 1 || result.ImportedSessions != 1 || result.ImportedMessages != 4 {
 		t.Fatalf("import result = %#v, want one project, one session, four message updates", result)
+	}
+	if len(result.ProjectPaths) != 1 || result.ProjectPaths[0] != projectA {
+		t.Fatalf("project paths = %#v, want [%s]", result.ProjectPaths, projectA)
 	}
 	importedSession, err := service.Get(ctx, "ws-1", codexAID)
 	if err != nil {

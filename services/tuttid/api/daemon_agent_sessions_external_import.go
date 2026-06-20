@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
@@ -43,30 +44,94 @@ func (api DaemonAPI) ImportWorkspaceExternalAgentSessions(ctx context.Context, r
 	projects := externalImportProjectSelectionsFromGenerated(request.Body.Projects)
 	register := request.Body.RegisterUserProjects == nil || *request.Body.RegisterUserProjects
 	importSessions := request.Body.ImportSessions == nil || *request.Body.ImportSessions
-	projects, registrationErrors := api.registerExternalImportUserProjects(ctx, projects, register)
-	if len(projects) == 0 {
-		return tuttigenerated.ImportWorkspaceExternalAgentSessions200JSONResponse(
-			generatedExternalImportResult(agentservice.ExternalImportResult{Errors: registrationErrors}),
-		), nil
+
+	// Import sessions first, then register only the projects that actually
+	// matched at least one valid session so empty projects never get surfaced.
+	var result agentservice.ExternalImportResult
+	var validPaths map[string]struct{}
+	if importSessions {
+		var err error
+		result, err = api.AgentSessionService.ImportExternalSessions(ctx, string(request.WorkspaceID), agentservice.ExternalImportInput{
+			Projects: projects,
+		})
+		if err != nil {
+			return writeImportWorkspaceExternalAgentSessionsError(err), nil
+		}
+		validPaths = stringSet(result.ProjectPaths)
+	} else {
+		scan, err := api.AgentSessionService.ScanExternalImports(ctx, agentservice.ExternalImportScanInput{})
+		if err != nil {
+			return writeImportWorkspaceExternalAgentSessionsError(err), nil
+		}
+		validPaths = externalImportSelectionPathsWithSessions(projects, scan)
 	}
-	if !importSessions {
-		return tuttigenerated.ImportWorkspaceExternalAgentSessions200JSONResponse(
-			generatedExternalImportResult(agentservice.ExternalImportResult{
-				ImportedProjects: len(projects),
-				Errors:           registrationErrors,
-			}),
-		), nil
-	}
-	result, err := api.AgentSessionService.ImportExternalSessions(ctx, string(request.WorkspaceID), agentservice.ExternalImportInput{
-		Projects: projects,
-	})
-	if err != nil {
-		return writeImportWorkspaceExternalAgentSessionsError(err), nil
-	}
+
+	validSelections := filterExternalImportSelectionsByPaths(projects, validPaths)
+	registeredSelections, registrationErrors := api.registerExternalImportUserProjects(ctx, validSelections, register)
+	result.ImportedProjects = len(registeredSelections)
 	result.Errors = append(registrationErrors, result.Errors...)
 	return tuttigenerated.ImportWorkspaceExternalAgentSessions200JSONResponse(
 		generatedExternalImportResult(result),
 	), nil
+}
+
+func stringSet(values []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			set[trimmed] = struct{}{}
+		}
+	}
+	return set
+}
+
+func filterExternalImportSelectionsByPaths(
+	selections []agentservice.ExternalImportProjectSelection,
+	validPaths map[string]struct{},
+) []agentservice.ExternalImportProjectSelection {
+	filtered := make([]agentservice.ExternalImportProjectSelection, 0, len(selections))
+	for _, selection := range selections {
+		if _, ok := validPaths[strings.TrimSpace(selection.Path)]; ok {
+			filtered = append(filtered, selection)
+		}
+	}
+	return filtered
+}
+
+// externalImportSelectionPathsWithSessions returns the set of selected project
+// paths that contain at least one scanned session, used by the register-only
+// path to avoid surfacing empty projects.
+func externalImportSelectionPathsWithSessions(
+	selections []agentservice.ExternalImportProjectSelection,
+	scan agentservice.ExternalImportScanResult,
+) map[string]struct{} {
+	valid := make(map[string]struct{})
+	for _, selection := range selections {
+		selectionPath := strings.TrimSpace(selection.Path)
+		if selectionPath == "" {
+			continue
+		}
+		for _, project := range scan.Projects {
+			if externalImportPathContains(selectionPath, project.Path) {
+				valid[selectionPath] = struct{}{}
+				break
+			}
+		}
+	}
+	return valid
+}
+
+func externalImportPathContains(parent string, child string) bool {
+	parent = filepath.Clean(parent)
+	child = filepath.Clean(child)
+	if parent == child {
+		return true
+	}
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func externalImportProvidersFromGenerated(input *[]tuttigenerated.WorkspaceAgentProvider) []string {
