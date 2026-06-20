@@ -80,6 +80,11 @@ import { resolveAgentGUIConversationDisplayTitle } from "./model/agentGuiProvide
 import { CanvasNodeTrashLinedIcon } from "../shared/canvasNodeChromeIcons";
 import { AgentSessionChrome } from "./AgentSessionChrome";
 import {
+  AgentGoalBanner,
+  isGoalBannerVisible,
+  type AgentGoalBannerLabels
+} from "./AgentGoalBanner";
+import {
   AgentComposer,
   type AgentComposerGitBranchLoader,
   type AgentComposerProps,
@@ -271,6 +276,15 @@ export interface AgentGUIViewLabels {
   activatingSession: string;
   retryActivation: string;
   continueInNewConversation: string;
+  goalLabel: string;
+  goalStatusActive: string;
+  goalStatusPaused: string;
+  goalStatusBlocked: string;
+  goalStatusUsageLimited: string;
+  goalStatusBudgetLimited: string;
+  goalStatusComplete: string;
+  goalBudgetUsage: (used: number, budget: number) => string;
+  goalClearHint: string;
   processing: string;
   turnSummary: string;
   planLead: string;
@@ -1556,6 +1570,30 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.retryActivation
     ]
   );
+  const goalBannerLabels = useMemo<AgentGoalBannerLabels>(
+    () => ({
+      goalLabel: labels.goalLabel,
+      statusActive: labels.goalStatusActive,
+      statusPaused: labels.goalStatusPaused,
+      statusBlocked: labels.goalStatusBlocked,
+      statusUsageLimited: labels.goalStatusUsageLimited,
+      statusBudgetLimited: labels.goalStatusBudgetLimited,
+      statusComplete: labels.goalStatusComplete,
+      budgetUsage: labels.goalBudgetUsage,
+      clearHint: labels.goalClearHint
+    }),
+    [
+      labels.goalLabel,
+      labels.goalStatusActive,
+      labels.goalStatusPaused,
+      labels.goalStatusBlocked,
+      labels.goalStatusUsageLimited,
+      labels.goalStatusBudgetLimited,
+      labels.goalStatusComplete,
+      labels.goalBudgetUsage,
+      labels.goalClearHint
+    ]
+  );
   const interactivePromptLabels = useMemo(
     () => ({
       approvalLead: labels.approvalRequired,
@@ -2237,6 +2275,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           storeRevision={bottomDockStoreRevision}
           keyboardShortcutsEnabled={isActive}
           chromeLabels={chromeLabels}
+          goalBannerLabels={goalBannerLabels}
           promptLabels={interactivePromptLabels}
           onSubmitApprovalOption={submitApprovalOption}
           onRetryActivation={retryActivation}
@@ -2571,6 +2610,7 @@ interface AgentGUIBottomDockPaneProps {
   onUsageAlertCompact: () => void;
   onUsageAlertDismiss: () => void;
   chromeLabels: ChromeLabels;
+  goalBannerLabels: AgentGoalBannerLabels;
   promptLabels: InteractivePromptLabels;
   onSubmitApprovalOption: AgentGUINodeViewProps["actions"]["submitApprovalOption"];
   onAuthLogin?: (provider?: string | null) => void;
@@ -2593,6 +2633,7 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   onUsageAlertCompact,
   onUsageAlertDismiss,
   chromeLabels,
+  goalBannerLabels,
   promptLabels,
   onSubmitApprovalOption,
   onAuthLogin,
@@ -2608,6 +2649,15 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
     isRespondingApproval,
     sessionChrome
   } = state;
+
+  // Active thread goal rides the same runtimeContext channel as account /
+  // rateLimits, so we read it straight off the session chrome's raw state.
+  const goal = objectRecord(sessionChrome.rawState?.runtimeContext?.goal);
+  const goalObjective = goal ? stringValue(goal.objective) : "";
+  const goalStatus = goal ? stringValue(goal.status) : "";
+  const goalTokenBudget = goal ? numberValue(goal.tokenBudget) : null;
+  const goalTokensUsed = goal ? numberValue(goal.tokensUsed) : null;
+  const showGoalBanner = isGoalBannerVisible(goalObjective, goalStatus);
 
   return (
     <div
@@ -2661,6 +2711,15 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
         onContinueInNewConversation={onContinueInNewConversation}
         labels={chromeLabels}
       />
+      {showGoalBanner ? (
+        <AgentGoalBanner
+          objective={goalObjective}
+          status={goalStatus}
+          tokenBudget={goalTokenBudget ?? undefined}
+          tokensUsed={goalTokensUsed ?? undefined}
+          labels={goalBannerLabels}
+        />
+      ) : null}
       {bottomDockReplacementPrompt ? (
         <div
           className={styles.bottomDockPrompt}

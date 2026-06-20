@@ -903,6 +903,16 @@ export const AgentGUINode = memo(function AgentGUINode({
       continueInNewConversation: t(
         "agentHost.agentGui.continueInNewConversation"
       ),
+      goalLabel: t("agentHost.agentGui.goalLabel"),
+      goalStatusActive: t("agentHost.agentGui.goalStatusActive"),
+      goalStatusPaused: t("agentHost.agentGui.goalStatusPaused"),
+      goalStatusBlocked: t("agentHost.agentGui.goalStatusBlocked"),
+      goalStatusUsageLimited: t("agentHost.agentGui.goalStatusUsageLimited"),
+      goalStatusBudgetLimited: t("agentHost.agentGui.goalStatusBudgetLimited"),
+      goalStatusComplete: t("agentHost.agentGui.goalStatusComplete"),
+      goalBudgetUsage: (used: number, budget: number) =>
+        t("agentHost.agentGui.goalBudgetUsage", { used, budget }),
+      goalClearHint: t("agentHost.agentGui.goalClearHint"),
       processing: t("agentHost.agentGui.processing"),
       turnSummary: t("agentHost.agentGui.turnSummary"),
       planLead: t("agentHost.agentGui.planLead"),

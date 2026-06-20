@@ -17,7 +17,8 @@ const styles = {
   chromeMessage: "agent-gui-chrome__message",
   chromeActions: "agent-gui-chrome__actions",
   chromeMetaRow: "agent-gui-chrome__meta-row",
-  chromeDangerGhostButton: "agent-gui-chrome__danger-ghost-button"
+  chromeDangerGhostButton: "agent-gui-chrome__danger-ghost-button",
+  chromeGoalHint: "agent-gui-chrome__goal-hint"
 } as const;
 
 export default styles;
