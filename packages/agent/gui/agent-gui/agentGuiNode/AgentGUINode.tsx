@@ -1049,6 +1049,13 @@ export const AgentGUINode = memo(function AgentGUINode({
         "agentHost.agentGui.slashPaletteCapabilitiesGroup"
       ),
       slashPaletteSkillsGroup: t("agentHost.agentGui.slashPaletteSkillsGroup"),
+      slashPalettePluginsGroup: t(
+        "agentHost.agentGui.slashPalettePluginsGroup"
+      ),
+      slashPaletteConnectorsGroup: t(
+        "agentHost.agentGui.slashPaletteConnectorsGroup"
+      ),
+      slashPaletteMcpGroup: t("agentHost.agentGui.slashPaletteMcpGroup"),
       browserUseCapabilityLabel: t(
         "agentHost.agentGui.browserUseCapabilityLabel"
       ),

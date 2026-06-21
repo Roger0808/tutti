@@ -1470,6 +1470,9 @@ function createLabels(): AgentGUIViewLabels {
     slashPaletteCommandsGroup: "slashPaletteCommandsGroup",
     slashPaletteCapabilitiesGroup: "slashPaletteCapabilitiesGroup",
     slashPaletteSkillsGroup: "slashPaletteSkillsGroup",
+    slashPalettePluginsGroup: "slashPalettePluginsGroup",
+    slashPaletteConnectorsGroup: "slashPaletteConnectorsGroup",
+    slashPaletteMcpGroup: "slashPaletteMcpGroup",
     browserUseCapabilityLabel: "browserUseCapabilityLabel",
     browserUseCapabilityDescription: "browserUseCapabilityDescription",
     browserUseCapabilityDescriptionAutoConnect:
