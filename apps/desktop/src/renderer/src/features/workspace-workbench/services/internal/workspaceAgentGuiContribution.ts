@@ -18,7 +18,6 @@ import type {
 import type {
   DesktopComputerUseApi,
   DesktopHostFilesApi,
-  DesktopHostWindowApi,
   DesktopPlatformApi,
   DesktopRuntimeApi
 } from "@preload/types";
@@ -55,7 +54,6 @@ export function createWorkspaceAgentGuiContribution(input: {
     typeof createAgentGuiWorkbenchContribution
   >[0]["dockIconUrls"];
   hostFilesApi: DesktopHostFilesApi;
-  hostWindowApi: DesktopHostWindowApi;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: Parameters<
     typeof DesktopAgentGUIWorkbenchBody
