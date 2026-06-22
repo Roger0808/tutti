@@ -40,8 +40,19 @@ import type {
   TuttiExternalReferenceOpenInput,
   TuttiExternalRendererRequest,
   TuttiExternalSettingsOpenInput,
+  TuttiExternalUserProjectCreateInput,
+  TuttiExternalUserProjectPathInput,
+  TuttiExternalUserProjectRememberDefaultSelectionInput,
   TuttiExternalWorkspaceOpenFeatureInput
 } from "@tutti-os/workspace-external-core/contracts";
+import type {
+  WorkspaceUserProject,
+  WorkspaceUserProjectDefaultSelection,
+  WorkspaceUserProjectPathCheck,
+  WorkspaceUserProjectSelectionPreparation,
+  WorkspaceUserProjectSelectionPreparationInput,
+  WorkspaceUserProjectServiceSnapshot
+} from "@tutti-os/workspace-user-project/contracts";
 
 export const desktopIpcChannels = {
   computerUse: {
@@ -66,9 +77,24 @@ export const desktopIpcChannels = {
     permissionsRequest: "workspace-app-permissions:request",
     pdfPrintHtml: "workspace-app-pdf:print-html",
     referencesOpen: "workspace-app-references:open",
+    guestEvent: "workspace-app-external:guest-event",
+    rendererEvent: "workspace-app-external:renderer-event",
     rendererRequest: "workspace-app-external:renderer-request",
     rendererResponse: "workspace-app-external:renderer-response",
     settingsOpen: "workspace-app-settings:open",
+    userProjectsCheckPath: "workspace-app-user-projects:check-path",
+    userProjectsCreate: "workspace-app-user-projects:create",
+    userProjectsGetDefaultSelection:
+      "workspace-app-user-projects:get-default-selection",
+    userProjectsGetSnapshot: "workspace-app-user-projects:get-snapshot",
+    userProjectsList: "workspace-app-user-projects:list",
+    userProjectsPrepareSelection:
+      "workspace-app-user-projects:prepare-selection",
+    userProjectsRefresh: "workspace-app-user-projects:refresh",
+    userProjectsRememberDefaultSelection:
+      "workspace-app-user-projects:remember-default-selection",
+    userProjectsSelectDirectory: "workspace-app-user-projects:select-directory",
+    userProjectsUse: "workspace-app-user-projects:use",
     workspaceFeatureOpen: "workspace-app-feature:open"
   },
   browser: {
@@ -435,12 +461,26 @@ export type DesktopIpcResult<TResult> =
 export type DesktopWorkspaceAppExternalRendererResult =
   | TuttiExternalAtQueryResult[]
   | TuttiExternalFileSelectResult
+  | WorkspaceUserProject
+  | WorkspaceUserProjectDefaultSelection
+  | WorkspaceUserProjectPathCheck
+  | WorkspaceUserProjectSelectionPreparation
+  | WorkspaceUserProjectServiceSnapshot
+  | { path: string }
+  | { projects: WorkspaceUserProject[] }
+  | null
   | void;
 
 export interface DesktopWorkspaceAppExternalRendererResponse {
   requestId: string;
   result: DesktopIpcResult<DesktopWorkspaceAppExternalRendererResult>;
 }
+
+export type DesktopWorkspaceAppExternalRendererEvent = {
+  snapshot: WorkspaceUserProjectServiceSnapshot;
+  type: "userProjects.changed";
+  workspaceId: string;
+};
 
 export type DesktopWorkspaceAppExternalRendererRequest =
   TuttiExternalRendererRequest;
@@ -565,6 +605,21 @@ export interface DesktopInvokePayloadByChannel {
     .referencesOpen]: TuttiExternalReferenceOpenInput;
   [desktopIpcChannels.appExternal.settingsOpen]: TuttiExternalSettingsOpenInput;
   [desktopIpcChannels.appExternal
+    .userProjectsCheckPath]: TuttiExternalUserProjectPathInput;
+  [desktopIpcChannels.appExternal
+    .userProjectsCreate]: TuttiExternalUserProjectCreateInput;
+  [desktopIpcChannels.appExternal.userProjectsGetDefaultSelection]: undefined;
+  [desktopIpcChannels.appExternal.userProjectsGetSnapshot]: undefined;
+  [desktopIpcChannels.appExternal.userProjectsList]: undefined;
+  [desktopIpcChannels.appExternal
+    .userProjectsPrepareSelection]: WorkspaceUserProjectSelectionPreparationInput;
+  [desktopIpcChannels.appExternal.userProjectsRefresh]: undefined;
+  [desktopIpcChannels.appExternal
+    .userProjectsRememberDefaultSelection]: TuttiExternalUserProjectRememberDefaultSelectionInput;
+  [desktopIpcChannels.appExternal.userProjectsSelectDirectory]: undefined;
+  [desktopIpcChannels.appExternal
+    .userProjectsUse]: TuttiExternalUserProjectPathInput;
+  [desktopIpcChannels.appExternal
     .workspaceFeatureOpen]: DesktopWorkspaceOpenFeatureRequest;
   [desktopIpcChannels.browser.activate]: BrowserNodeActivationInput;
   [desktopIpcChannels.browser.capturePreview]: BrowserNodeNodeIdInput;
@@ -662,6 +717,25 @@ export interface DesktopInvokeResultByChannel {
     .pdfPrintHtml]: TuttiExternalPdfPrintHtmlResult;
   [desktopIpcChannels.appExternal.referencesOpen]: void;
   [desktopIpcChannels.appExternal.settingsOpen]: void;
+  [desktopIpcChannels.appExternal
+    .userProjectsCheckPath]: WorkspaceUserProjectPathCheck;
+  [desktopIpcChannels.appExternal.userProjectsCreate]: WorkspaceUserProject;
+  [desktopIpcChannels.appExternal
+    .userProjectsGetDefaultSelection]: WorkspaceUserProjectDefaultSelection | null;
+  [desktopIpcChannels.appExternal
+    .userProjectsGetSnapshot]: WorkspaceUserProjectServiceSnapshot;
+  [desktopIpcChannels.appExternal.userProjectsList]: {
+    projects: WorkspaceUserProject[];
+  };
+  [desktopIpcChannels.appExternal
+    .userProjectsPrepareSelection]: WorkspaceUserProjectSelectionPreparation;
+  [desktopIpcChannels.appExternal
+    .userProjectsRefresh]: WorkspaceUserProjectServiceSnapshot;
+  [desktopIpcChannels.appExternal.userProjectsRememberDefaultSelection]: void;
+  [desktopIpcChannels.appExternal.userProjectsSelectDirectory]: {
+    path: string;
+  } | null;
+  [desktopIpcChannels.appExternal.userProjectsUse]: WorkspaceUserProject;
   [desktopIpcChannels.appExternal.workspaceFeatureOpen]: void;
   [desktopIpcChannels.browser.activate]: void;
   [desktopIpcChannels.browser.capturePreview]: string | null;

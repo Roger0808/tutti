@@ -38,6 +38,7 @@ import type {
   TuttiExternalAtQueryResult
 } from "@tutti-os/workspace-external-core/contracts";
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
+import type { WorkspaceUserProjectApi } from "@tutti-os/workspace-user-project/contracts";
 import type { DesktopWorkspaceAppOpenFileResolvedPayload } from "@shared/contracts/ipc";
 
 export type WorkspaceCustomWallpaperStatus = "idle" | "saving" | "removing";
@@ -119,6 +120,7 @@ export interface IWorkspaceWorkbenchHostService {
   createWorkspaceAppExternalFileReferenceAdapter(
     workspaceId: string
   ): WorkspaceFileReferenceAdapter;
+  createWorkspaceAppExternalUserProjectApi(): WorkspaceUserProjectApi;
   queryWorkspaceAppExternalAt(input: {
     query: TuttiExternalAtQueryInput;
     workspaceId: string;

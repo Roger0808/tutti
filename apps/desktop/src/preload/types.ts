@@ -27,6 +27,7 @@ import type {
   DesktopRendererDiagnosticPayload,
   DesktopTerminalDiagnosticPayload,
   DesktopTerminalStreamUrlRequest,
+  DesktopWorkspaceAppExternalRendererEvent,
   DesktopWorkspaceAppExternalRendererRequest,
   DesktopWorkspaceAppExternalRendererResult,
   DesktopWorkspaceAppOpenFileResolvedPayload,
@@ -108,6 +109,7 @@ export interface DesktopWorkspaceAppExternalHostApi {
       | Promise<DesktopWorkspaceAppExternalHostRequestResult>
       | DesktopWorkspaceAppExternalHostRequestResult
   ): () => void;
+  sendEvent(event: DesktopWorkspaceAppExternalRendererEvent): void;
 }
 
 export interface DesktopHostFilesApi {

@@ -111,6 +111,7 @@ import type {
   TuttiExternalAtQueryResult
 } from "@tutti-os/workspace-external-core/contracts";
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
+import type { WorkspaceUserProjectApi } from "@tutti-os/workspace-user-project/contracts";
 import { serializeWorkspaceAppExternalAtMatch } from "./workspaceAppExternalAtSerialization.ts";
 
 const workspaceDockNativePreviewMaxWidthPx = 260;
@@ -273,6 +274,12 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       tuttidClient: this.dependencies.tuttidClient,
       workspaceId
     });
+  }
+
+  createWorkspaceAppExternalUserProjectApi(): WorkspaceUserProjectApi {
+    return createWorkspaceAppExternalUserProjectApi(
+      this.dependencies.workspaceUserProjectService
+    );
   }
 
   async queryWorkspaceAppExternalAt(input: {
@@ -1128,6 +1135,47 @@ IWorkspaceAgentPromptSessionService(
 IWorkspaceAppCenterService(WorkspaceWorkbenchHostService, undefined, 5);
 IWorkspaceFileManagerService(WorkspaceWorkbenchHostService, undefined, 6);
 IWorkspaceUserProjectService(WorkspaceWorkbenchHostService, undefined, 7);
+
+export function createWorkspaceAppExternalUserProjectApi(
+  service: IWorkspaceUserProjectService
+): WorkspaceUserProjectApi {
+  return {
+    checkPath: (input) => service.checkProjectPath(input.path),
+    create: (input) => service.createProject(input.name),
+    getDefaultSelection: () => service.getDefaultSelection(),
+    getSnapshot: () =>
+      Promise.resolve(cloneWorkspaceUserProjectServiceSnapshot(service)),
+    list: async () => {
+      await service.ensureLoaded();
+      return {
+        projects: service.store.projects.map((project) => ({ ...project }))
+      };
+    },
+    prepareSelection: (input) => service.prepareSelection(input),
+    refresh: async () => {
+      await service.refresh();
+      return cloneWorkspaceUserProjectServiceSnapshot(service);
+    },
+    rememberDefaultSelection: (input) =>
+      service.rememberDefaultSelection(input),
+    selectDirectory: () => service.selectDirectory(),
+    subscribe: (listener) =>
+      service.subscribe(() => {
+        listener(cloneWorkspaceUserProjectServiceSnapshot(service));
+      }),
+    use: (input) => service.registerProjectPath(input.path)
+  };
+}
+
+function cloneWorkspaceUserProjectServiceSnapshot(
+  service: IWorkspaceUserProjectService
+): ReturnType<IWorkspaceUserProjectService["getSnapshot"]> {
+  const snapshot = service.getSnapshot();
+  return {
+    ...snapshot,
+    projects: snapshot.projects.map((project) => ({ ...project }))
+  };
+}
 
 interface CachedWorkspaceWorkbenchHostInput {
   appI18n: I18nRuntime<string>;

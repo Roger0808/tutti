@@ -1,6 +1,7 @@
 import {
   BrowserWindow,
   ipcMain,
+  webContents,
   type IpcMainEvent,
   type WebContents
 } from "electron";
@@ -8,6 +9,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import {
   desktopIpcChannels,
   type DesktopIpcResult,
+  type DesktopWorkspaceAppExternalRendererEvent,
   type DesktopWorkspaceAppExternalRendererRequest,
   type DesktopWorkspaceAppExternalRendererResponse,
   type DesktopWorkspaceAppExternalRendererResult,
@@ -23,6 +25,10 @@ import {
   normalizeTuttiExternalPermissionRequestInput,
   normalizeTuttiExternalReferenceOpenInput,
   normalizeTuttiExternalSettingsOpenInput,
+  normalizeTuttiExternalUserProjectCreateInput,
+  normalizeTuttiExternalUserProjectPathInput,
+  normalizeTuttiExternalUserProjectRememberDefaultSelectionInput,
+  normalizeTuttiExternalUserProjectSelectionPreparationInput,
   normalizeTuttiExternalWorkspaceOpenFeatureInput
 } from "@tutti-os/workspace-external-core/core";
 import type {
@@ -225,6 +231,141 @@ export function registerWorkspaceAppContextIpc(
       });
     }
   );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.userProjectsCheckPath,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input = normalizeTuttiExternalUserProjectPathInput(
+        payload,
+        "checkPath"
+      );
+      return requestWorkspaceAppExternalRenderer(context, {
+        appId: context.appID,
+        input,
+        operation: "userProjects.checkPath",
+        requestId: randomUUID(),
+        workspaceId: context.workspaceID
+      });
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.userProjectsCreate,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input = normalizeTuttiExternalUserProjectCreateInput(payload);
+      return requestWorkspaceAppExternalRenderer(context, {
+        appId: context.appID,
+        input,
+        operation: "userProjects.create",
+        requestId: randomUUID(),
+        workspaceId: context.workspaceID
+      });
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.userProjectsGetDefaultSelection,
+    async (event) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      return requestWorkspaceAppExternalRenderer(context, {
+        appId: context.appID,
+        operation: "userProjects.getDefaultSelection",
+        requestId: randomUUID(),
+        workspaceId: context.workspaceID
+      });
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.userProjectsGetSnapshot,
+    async (event) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      return requestWorkspaceAppExternalRenderer(context, {
+        appId: context.appID,
+        operation: "userProjects.getSnapshot",
+        requestId: randomUUID(),
+        workspaceId: context.workspaceID
+      });
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.userProjectsList,
+    async (event) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      return requestWorkspaceAppExternalRenderer(context, {
+        appId: context.appID,
+        operation: "userProjects.list",
+        requestId: randomUUID(),
+        workspaceId: context.workspaceID
+      });
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.userProjectsPrepareSelection,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input =
+        normalizeTuttiExternalUserProjectSelectionPreparationInput(payload);
+      return requestWorkspaceAppExternalRenderer(context, {
+        appId: context.appID,
+        input,
+        operation: "userProjects.prepareSelection",
+        requestId: randomUUID(),
+        workspaceId: context.workspaceID
+      });
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.userProjectsRefresh,
+    async (event) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      return requestWorkspaceAppExternalRenderer(context, {
+        appId: context.appID,
+        operation: "userProjects.refresh",
+        requestId: randomUUID(),
+        workspaceId: context.workspaceID
+      });
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.userProjectsRememberDefaultSelection,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input =
+        normalizeTuttiExternalUserProjectRememberDefaultSelectionInput(payload);
+      return requestWorkspaceAppExternalRenderer(context, {
+        appId: context.appID,
+        input,
+        operation: "userProjects.rememberDefaultSelection",
+        requestId: randomUUID(),
+        workspaceId: context.workspaceID
+      });
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.userProjectsSelectDirectory,
+    async (event) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      return requestWorkspaceAppExternalRenderer(context, {
+        appId: context.appID,
+        operation: "userProjects.selectDirectory",
+        requestId: randomUUID(),
+        workspaceId: context.workspaceID
+      });
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.userProjectsUse,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input = normalizeTuttiExternalUserProjectPathInput(payload, "use");
+      return requestWorkspaceAppExternalRenderer(context, {
+        appId: context.appID,
+        input,
+        operation: "userProjects.use",
+        requestId: randomUUID(),
+        workspaceId: context.workspaceID
+      });
+    }
+  );
   ipcMain.on(
     desktopIpcChannels.appContext.diagnostic,
     (event, payload: unknown) => {
@@ -248,6 +389,18 @@ export function registerWorkspaceAppContextIpc(
           payload: normalizedPayload
         });
       }
+    }
+  );
+  ipcMain.on(
+    desktopIpcChannels.appExternal.rendererEvent,
+    (event, payload: unknown) => {
+      const rendererEvent = isWorkspaceAppExternalRendererEvent(payload)
+        ? payload
+        : null;
+      if (!rendererEvent) {
+        return;
+      }
+      forwardWorkspaceAppExternalRendererEvent(event.sender, rendererEvent);
     }
   );
   ipcMain.on(
@@ -456,6 +609,32 @@ function writeWorkspaceAppDiagnosticLog(
   }
 
   workspaceAppFrontendLogWriter?.write(guestWebContentsId, context, record);
+}
+
+function forwardWorkspaceAppExternalRendererEvent(
+  ownerContents: WebContents,
+  rendererEvent: DesktopWorkspaceAppExternalRendererEvent
+): void {
+  for (const [guestWebContentsId, context] of workspaceAppGuestContexts) {
+    if (context.workspaceID !== rendererEvent.workspaceId) {
+      continue;
+    }
+    if (context.ownerWindow.webContents.id !== ownerContents.id) {
+      continue;
+    }
+    const guestContents = webContents.fromId(guestWebContentsId);
+    if (
+      !guestContents ||
+      guestContents.isDestroyed() ||
+      !workspaceAppGuestWebContents.has(guestContents)
+    ) {
+      continue;
+    }
+    guestContents.send(
+      desktopIpcChannels.appExternal.guestEvent,
+      rendererEvent
+    );
+  }
 }
 
 function requireWorkspaceAppGuestContext(
@@ -676,6 +855,7 @@ function createWorkspaceAppContext(
     capabilities: [
       "files.open@1",
       "pdf.printHtmlToPdf@1",
+      "userProjects@1",
       "workspace.openFeature@1"
     ],
     contextToken: createWorkspaceAppContextToken(endpoint, context, {
@@ -756,6 +936,31 @@ function isWorkspaceAppDiagnosticPayload(
   value: unknown
 ): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isWorkspaceAppExternalRendererEvent(
+  value: unknown
+): value is DesktopWorkspaceAppExternalRendererEvent {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (value.type !== "userProjects.changed") {
+    return false;
+  }
+  if (typeof value.workspaceId !== "string") {
+    return false;
+  }
+  if (!isRecord(value.snapshot)) {
+    return false;
+  }
+  const snapshot = value.snapshot;
+  return (
+    (typeof snapshot.error === "string" || snapshot.error === null) &&
+    typeof snapshot.initialized === "boolean" &&
+    typeof snapshot.isLoading === "boolean" &&
+    Array.isArray(snapshot.projects) &&
+    typeof snapshot.revision === "number"
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
