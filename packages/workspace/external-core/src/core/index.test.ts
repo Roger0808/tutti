@@ -9,6 +9,10 @@ import {
   normalizeTuttiExternalPermissionRequestInput,
   normalizeTuttiExternalReferenceOpenInput,
   normalizeTuttiExternalSettingsOpenInput,
+  normalizeTuttiExternalUserProjectCreateInput,
+  normalizeTuttiExternalUserProjectPathInput,
+  normalizeTuttiExternalUserProjectRememberDefaultSelectionInput,
+  normalizeTuttiExternalUserProjectSelectionPreparationInput,
   normalizeTuttiExternalWorkspaceOpenFeatureInput,
   tuttiExternalAtDefaultMaxResults,
   tuttiExternalAtMaxResultsLimit,
@@ -295,6 +299,50 @@ test("rejects invalid reference open input", () => {
     () =>
       normalizeTuttiExternalReferenceOpenInput({ href: "https://example.com" }),
     /mention URL/
+  );
+});
+
+test("normalizes user project inputs", () => {
+  assert.deepEqual(
+    normalizeTuttiExternalUserProjectCreateInput({ name: " Project " }),
+    {
+      name: "Project"
+    }
+  );
+  assert.deepEqual(
+    normalizeTuttiExternalUserProjectPathInput({ path: " /repo " }, "use"),
+    {
+      path: "/repo"
+    }
+  );
+  assert.deepEqual(
+    normalizeTuttiExternalUserProjectRememberDefaultSelectionInput({
+      path: "   "
+    }),
+    {
+      path: null
+    }
+  );
+  assert.deepEqual(
+    normalizeTuttiExternalUserProjectSelectionPreparationInput({
+      projectLocked: true,
+      selectedPath: " /repo "
+    }),
+    {
+      projectLocked: true,
+      selectedPath: "/repo"
+    }
+  );
+});
+
+test("rejects invalid user project inputs", () => {
+  assert.throws(
+    () => normalizeTuttiExternalUserProjectCreateInput({ name: "" }),
+    /name is required/
+  );
+  assert.throws(
+    () => normalizeTuttiExternalUserProjectPathInput({ path: "" }, "checkPath"),
+    /path is required/
   );
 });
 

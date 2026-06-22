@@ -14,10 +14,14 @@ import {
   type TuttiExternalPdfPrintHtmlInput,
   type TuttiExternalReferenceOpenInput,
   type TuttiExternalSettingsOpenInput,
+  type TuttiExternalUserProjectCreateInput,
+  type TuttiExternalUserProjectPathInput,
+  type TuttiExternalUserProjectRememberDefaultSelectionInput,
   type TuttiExternalWorkspaceAgentProvider,
   type TuttiExternalWorkspaceFeature,
   type TuttiExternalWorkspaceOpenFeatureInput
 } from "../contracts/index.ts";
+import type { WorkspaceUserProjectSelectionPreparationInput } from "@tutti-os/workspace-user-project/contracts";
 
 export {
   tuttiExternalAtProviderIds,
@@ -253,6 +257,58 @@ export function normalizeTuttiExternalPdfPrintHtmlInput(
     ...(input.margin !== undefined && input.margin !== null
       ? { margin: normalizePdfMargin(input.margin) }
       : {})
+  };
+}
+
+export function normalizeTuttiExternalUserProjectCreateInput(
+  input: unknown
+): TuttiExternalUserProjectCreateInput {
+  if (!isRecord(input)) {
+    throw new Error("userProjects.create input must be an object.");
+  }
+  return {
+    name: normalizeRequiredString(input.name, "userProjects.create name")
+  };
+}
+
+export function normalizeTuttiExternalUserProjectPathInput(
+  input: unknown,
+  operation: "checkPath" | "use"
+): TuttiExternalUserProjectPathInput {
+  if (!isRecord(input)) {
+    throw new Error(`userProjects.${operation} input must be an object.`);
+  }
+  return {
+    path: normalizeRequiredString(input.path, `userProjects.${operation} path`)
+  };
+}
+
+export function normalizeTuttiExternalUserProjectRememberDefaultSelectionInput(
+  input: unknown
+): TuttiExternalUserProjectRememberDefaultSelectionInput {
+  if (!isRecord(input)) {
+    throw new Error(
+      "userProjects.rememberDefaultSelection input must be an object."
+    );
+  }
+  if (input.path === null || input.path === undefined) {
+    return { path: null };
+  }
+  const path = typeof input.path === "string" ? input.path.trim() : "";
+  return { path: path || null };
+}
+
+export function normalizeTuttiExternalUserProjectSelectionPreparationInput(
+  input: unknown
+): WorkspaceUserProjectSelectionPreparationInput {
+  if (!isRecord(input)) {
+    throw new Error("userProjects.prepareSelection input must be an object.");
+  }
+  const selectedPath =
+    typeof input.selectedPath === "string" ? input.selectedPath.trim() : "";
+  return {
+    projectLocked: input.projectLocked === true,
+    selectedPath: selectedPath || null
   };
 }
 
