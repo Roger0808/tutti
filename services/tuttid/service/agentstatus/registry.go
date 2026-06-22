@@ -168,11 +168,13 @@ func DefaultRegistry() Registry {
 	return Registry{Specs: specs}
 }
 
+// codexCLIInstallerSpec installs the first-party codex binary via the
+// daemon-managed GitHub-release installer. This runs headlessly (HTTP download
+// + checksum + extract + symlink), unlike the official `curl … | sh` script
+// which aborts with "stdin is not a terminal" when run without a TTY.
 func codexCLIInstallerSpec() InstallerSpec {
 	return InstallerSpec{
-		Kind:           InstallerKindOfficialScript,
-		DisplayCommand: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
-		ScriptURL:      "https://chatgpt.com/codex/install.sh",
-		ScriptShell:    "sh",
+		Kind:     InstallerKindCodexCLILatest,
+		CodexCLI: &CodexCLILatestInstallerSpec{},
 	}
 }
