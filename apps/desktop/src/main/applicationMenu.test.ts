@@ -161,6 +161,31 @@ test("application menu localizes check for updates", () => {
   assert.ok(appMenu.submenu.some((item) => item.label === "检查更新..."));
 });
 
+test("application menu routes Command-Q through the shortcut quit handler", () => {
+  let shortcutQuitRequested = 0;
+  const menu = createApplicationMenuTemplate({
+    platform: "darwin",
+    quitFromCommandShortcut() {
+      shortcutQuitRequested += 1;
+    }
+  });
+
+  const appMenu = menu.find((item) => item.label === "Tutti");
+  assert.ok(appMenu);
+  assert.ok(Array.isArray(appMenu.submenu));
+  const quitItem = appMenu.submenu.find((item) => item.label === "Quit Tutti");
+  assert.ok(quitItem);
+  assert.equal(quitItem.accelerator, "Command+Q");
+
+  quitItem.click?.(
+    {} as Parameters<NonNullable<typeof quitItem.click>>[0],
+    undefined as Parameters<NonNullable<typeof quitItem.click>>[1],
+    undefined as unknown as Parameters<NonNullable<typeof quitItem.click>>[2]
+  );
+
+  assert.equal(shortcutQuitRequested, 1);
+});
+
 test("application menu exposes Perf Monitor DevTools when configured", () => {
   const ownerWindow = {};
   let receivedOwnerWindow: unknown;

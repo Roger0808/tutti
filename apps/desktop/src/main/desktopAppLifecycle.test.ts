@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createDesktopAppLifecycleHandlers,
+  requestDesktopAppQuitFromCommandShortcut,
+  resetDesktopAppQuitShortcutForTest,
   type DesktopAppLifecycleRuntime
 } from "./desktopAppLifecycle.ts";
 import type { TuttidManager } from "./daemon/tuttidManager";
@@ -58,10 +60,7 @@ function createUpdateService(events: string[]): AppUpdateService {
   };
 }
 
-function createRuntime(
-  events: string[],
-  closeOutcomes: Array<"approved" | "blocked"> = ["approved"]
-): DesktopAppLifecycleRuntime {
+function createRuntime(events: string[]): DesktopAppLifecycleRuntime {
   return {
     destroyAllWindows() {
       events.push("windows:destroy-all");
@@ -72,9 +71,8 @@ function createRuntime(
     quit() {
       events.push("app:quit");
     },
-    async requestWorkspaceWindowsClose() {
-      events.push("windows:request-quit-close");
-      return closeOutcomes.shift() ?? "approved";
+    showQuitShortcutToast() {
+      events.push("windows:show-quit-shortcut-toast");
     }
   };
 }
@@ -129,7 +127,6 @@ test("before quit waits for managed tuttid stop before quitting the app", async 
     [
       "quit:prevented",
       "info:desktop app before quit",
-      "windows:request-quit-close",
       "tuttid:stop:start"
     ].join("|")
   );
@@ -144,11 +141,10 @@ test("before quit waits for managed tuttid stop before quitting the app", async 
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(
-    events.slice(0, 4).join("|"),
+    events.slice(0, 3).join("|"),
     [
       "quit:prevented",
       "info:desktop app before quit",
-      "windows:request-quit-close",
       "tuttid:stop:start"
     ].join("|")
   );
@@ -192,7 +188,6 @@ test("before quit does not trigger a second stop while shutdown is already in pr
     [
       "quit:prevented",
       "info:desktop app before quit",
-      "windows:request-quit-close",
       "tuttid:stop",
       "windows:destroy-all",
       "app:quit"
@@ -200,47 +195,40 @@ test("before quit does not trigger a second stop while shutdown is already in pr
   );
 });
 
-test("before quit only closes workspace windows when they handle the quit request", async () => {
+test("command quit shortcut shows a toast before quitting on the next press", () => {
   const events: string[] = [];
-  const handlers = createDesktopAppLifecycleHandlers(
-    {
-      logger: createLogger(events),
-      tuttid: createTuttidManager(async () => {
-        events.push("tuttid:stop");
-      }),
-      updateService: createUpdateService(events),
-      workspaceLaunch: createWorkspaceLaunch()
-    },
-    createRuntime(events, ["blocked", "approved"])
-  );
+  resetDesktopAppQuitShortcutForTest();
 
-  handlers.beforeQuit({
-    preventDefault() {
-      events.push("quit:prevented");
-    }
+  requestDesktopAppQuitFromCommandShortcut({
+    now: () => 1_000,
+    quit: () => events.push("app:quit"),
+    showQuitShortcutToast: () => events.push("toast")
   });
-  await Promise.resolve();
-  await Promise.resolve();
-  await new Promise((resolve) => setImmediate(resolve));
-
-  handlers.beforeQuit({
-    preventDefault() {
-      events.push("quit:prevented:again");
-    }
+  requestDesktopAppQuitFromCommandShortcut({
+    now: () => 2_000,
+    quit: () => events.push("app:quit"),
+    showQuitShortcutToast: () => events.push("toast")
   });
-  await Promise.resolve();
-  await Promise.resolve();
-  await new Promise((resolve) => setImmediate(resolve));
 
-  assert.deepEqual(events, [
-    "quit:prevented",
-    "info:desktop app before quit",
-    "windows:request-quit-close",
-    "quit:prevented:again",
-    "info:desktop app before quit",
-    "windows:request-quit-close",
-    "tuttid:stop",
-    "windows:destroy-all",
-    "app:quit"
-  ]);
+  assert.deepEqual(events, ["toast", "app:quit"]);
+  resetDesktopAppQuitShortcutForTest();
+});
+
+test("command quit shortcut confirmation expires", () => {
+  const events: string[] = [];
+  resetDesktopAppQuitShortcutForTest();
+
+  requestDesktopAppQuitFromCommandShortcut({
+    now: () => 1_000,
+    quit: () => events.push("app:quit"),
+    showQuitShortcutToast: () => events.push("toast")
+  });
+  requestDesktopAppQuitFromCommandShortcut({
+    now: () => 7_000,
+    quit: () => events.push("app:quit"),
+    showQuitShortcutToast: () => events.push("toast")
+  });
+
+  assert.deepEqual(events, ["toast", "toast"]);
+  resetDesktopAppQuitShortcutForTest();
 });

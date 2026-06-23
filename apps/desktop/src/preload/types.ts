@@ -101,6 +101,7 @@ export interface DesktopHostWindowApi {
   onCloseRequest(
     listener: (payload: DesktopHostWindowCloseRequestPayload) => void
   ): () => void;
+  onQuitShortcutToast(listener: () => void): () => void;
   resolveCloseRequest(
     payload: DesktopHostWindowCloseRequestResolutionPayload
   ): void;
