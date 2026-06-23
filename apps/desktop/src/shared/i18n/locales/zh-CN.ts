@@ -95,10 +95,14 @@ export const zhCN = {
       file: "文件",
       help: "帮助",
       openPerfMonitor: "打开 Perf Monitor DevTools",
+      quit: "退出 Tutti",
       upToDateDetail: "Tutti {{version}} 是当前的最新版本。",
       upToDateMessage: "您使用的就是最新版本！",
       view: "显示",
       window: "窗口"
+    },
+    quitShortcut: {
+      confirmToastTitle: "再次敲击 Command + Q 即可退出Tutti"
     }
   },
   workspace: {

@@ -200,6 +200,21 @@ export function createHostDesktopApi(): DesktopHostApi {
           );
         };
       },
+      onQuitShortcutToast(listener): () => void {
+        const handler = () => {
+          listener();
+        };
+        ipcRenderer.on(
+          desktopIpcChannels.host.window.quitShortcutToast,
+          handler
+        );
+        return () => {
+          ipcRenderer.removeListener(
+            desktopIpcChannels.host.window.quitShortcutToast,
+            handler
+          );
+        };
+      },
       resolveCloseRequest(payload): void {
         ipcRenderer.send(
           desktopIpcChannels.host.window.closeRequestResolved,

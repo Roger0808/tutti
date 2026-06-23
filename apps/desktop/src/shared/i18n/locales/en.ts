@@ -96,10 +96,14 @@ export const en = {
       file: "File",
       help: "Help",
       openPerfMonitor: "Open Perf Monitor DevTools",
+      quit: "Quit Tutti",
       upToDateDetail: "Tutti {{version}} is currently the latest version.",
       upToDateMessage: "You're up to date!",
       view: "View",
       window: "Window"
+    },
+    quitShortcut: {
+      confirmToastTitle: "Press Command + Q again to quit Tutti"
     }
   },
   workspace: {

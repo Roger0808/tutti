@@ -178,7 +178,8 @@ export const desktopIpcChannels = {
       capturePreview: "host:window:capturePreview",
       closeRequest: "host:window:closeRequest",
       closeRequestResolved: "host:window:closeRequestResolved",
-      layout: "host:window:layout"
+      layout: "host:window:layout",
+      quitShortcutToast: "host:window:quitShortcutToast"
     },
     workspace: {
       openWorkspaceAppFolder: "host:workspace:openWorkspaceAppFolder",
