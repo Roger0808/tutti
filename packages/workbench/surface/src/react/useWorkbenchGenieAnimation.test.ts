@@ -68,6 +68,20 @@ test("genie texture capture clones only meaningful visible DOM", () => {
   assert.doesNotMatch(source, /element\.cloneNode\(true\)/);
 });
 
+test("genie texture capture only records retained image clones", () => {
+  assert.match(
+    genieAnimationSource,
+    /if \(!includeSelf && clone\.childNodes\.length === 0\) \{\s*return null;\s*\}\s*if \(sourceElement instanceof HTMLImageElement\)/
+  );
+});
+
+test("genie inline image downsampling tolerates tainted canvases", () => {
+  assert.match(
+    source,
+    /try \{\s*context\.drawImage\(image, 0, 0, targetSize\.width, targetSize\.height\);\s*return canvas\.toDataURL\("image\/png"\);\s*\} catch \{\s*return null;\s*\}/
+  );
+});
+
 test("genie scanline rendering maps strip edges to avoid horizontal seams", () => {
   assert.match(genieAnimationSource, /function resolveGenieRowTargetY/);
   assert.match(

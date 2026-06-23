@@ -291,6 +291,17 @@ function cloneMeaningfulGenieNode(
   const clone = sourceElement.cloneNode(false) as Element;
   copyGenieComputedStyle(sourceElement, clone, computed);
 
+  for (const child of Array.from(source.childNodes)) {
+    const childClone = cloneMeaningfulGenieNode(child, rootRect, images);
+    if (childClone) {
+      clone.appendChild(childClone);
+    }
+  }
+
+  if (!includeSelf && clone.childNodes.length === 0) {
+    return null;
+  }
+
   if (sourceElement instanceof HTMLImageElement) {
     const rect = sourceElement.getBoundingClientRect();
     images.push({
@@ -302,17 +313,6 @@ function cloneMeaningfulGenieNode(
         sourceElement.getAttribute("src") ||
         null
     });
-  }
-
-  for (const child of Array.from(source.childNodes)) {
-    const childClone = cloneMeaningfulGenieNode(child, rootRect, images);
-    if (childClone) {
-      clone.appendChild(childClone);
-    }
-  }
-
-  if (!includeSelf && clone.childNodes.length === 0) {
-    return null;
   }
   return clone;
 }

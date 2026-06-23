@@ -261,8 +261,12 @@ async function resizeInlineImageResourceForGenieTexture(
   if (!context) {
     return null;
   }
-  context.drawImage(image, 0, 0, targetSize.width, targetSize.height);
-  return canvas.toDataURL("image/png");
+  try {
+    context.drawImage(image, 0, 0, targetSize.width, targetSize.height);
+    return canvas.toDataURL("image/png");
+  } catch {
+    return null;
+  }
 }
 
 function prepareElementTextureCapture(
