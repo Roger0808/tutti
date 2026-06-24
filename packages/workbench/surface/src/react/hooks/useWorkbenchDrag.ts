@@ -29,7 +29,10 @@ export function useWorkbenchDrag<TData>(node: WorkbenchNode<TData>) {
           x: initialFrame.x + moveEvent.clientX - origin.x,
           y: initialFrame.y + moveEvent.clientY - origin.y
         };
-        updateSnap(moveEvent.clientY);
+        updateSnap(
+          { x: moveEvent.clientX, y: moveEvent.clientY },
+          { edgeSnapEnabled: true }
+        );
         controller.commands.dragNode(node.id, nextFrame);
       };
 
@@ -42,7 +45,12 @@ export function useWorkbenchDrag<TData>(node: WorkbenchNode<TData>) {
       };
 
       const finishDrag = (upEvent: PointerEvent) => {
-        if (updateSnap(upEvent.clientY) !== null) {
+        if (
+          updateSnap(
+            { x: upEvent.clientX, y: upEvent.clientY },
+            { edgeSnapEnabled: true }
+          ) !== null
+        ) {
           controller.commands.applyActiveSnapTarget(node.id);
         }
         clearListeners();
