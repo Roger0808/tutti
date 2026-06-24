@@ -638,6 +638,7 @@ func TestStartCommandPassesComposerSettings(t *testing.T) {
 			"prompt":           "do work",
 			"provider":         "codex",
 			"reasoning-effort": "high",
+			"speed":            "fast",
 		},
 	}); err != nil {
 		t.Fatalf("Handler: %v", err)
@@ -650,6 +651,9 @@ func TestStartCommandPassesComposerSettings(t *testing.T) {
 	}
 	if sessions.createInput.ReasoningEffort == nil || *sessions.createInput.ReasoningEffort != "high" {
 		t.Fatalf("ReasoningEffort = %#v", sessions.createInput.ReasoningEffort)
+	}
+	if sessions.createInput.Speed == nil || *sessions.createInput.Speed != "fast" {
+		t.Fatalf("Speed = %#v", sessions.createInput.Speed)
 	}
 }
 
@@ -929,12 +933,16 @@ func TestProviderHiddenAgentAppCapabilityRemainsInvokable(t *testing.T) {
 		Input: map[string]any{
 			"model":  "gpt-5",
 			"prompt": "do work",
+			"speed":  "fast",
 		},
 	}); err != nil {
 		t.Fatalf("Invoke hidden codex command: %v", err)
 	}
 	if sessions.createInput.Provider != "codex" {
 		t.Fatalf("created provider = %q, want codex", sessions.createInput.Provider)
+	}
+	if sessions.createInput.Speed == nil || *sessions.createInput.Speed != "fast" {
+		t.Fatalf("created speed = %#v, want fast", sessions.createInput.Speed)
 	}
 }
 
