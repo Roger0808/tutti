@@ -135,6 +135,10 @@ func (s Service) resolveExternalRegistryNPMSpec(
 	command = append(command, distribution.Args...)
 	spec.AdapterCommand = command
 	spec.AdapterEnv = append(appRuntime.EnvOverrides, envMapToList(distribution.Env)...)
+	// Resolve from a reliable registry mirror for the `npm exec` fallback (used
+	// when the installed bin isn't found). Harmless when running the installed bin
+	// directly, which never consults npm.
+	spec.AdapterEnv = append(spec.AdapterEnv, s.agentNPMRegistryEnvVar())
 	return spec
 }
 

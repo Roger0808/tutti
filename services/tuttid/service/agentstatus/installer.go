@@ -531,6 +531,10 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, spec 
 		packageSpec,
 	})
 	env := managedruntime.ProcessEnv(append(appRuntime.EnvOverrides, envMapToList(npmSpec.Env)...)...)
+	// Resolve from a reliable registry mirror so the install does not hang/fail on
+	// slow or blocked public-npm access. Appended last so it wins over any
+	// registry-supplied value.
+	env = append(env, s.agentNPMRegistryEnvVar())
 	return s.installCommand(ctx, InstallCommandInput{
 		Command: command,
 		Env:     env,
