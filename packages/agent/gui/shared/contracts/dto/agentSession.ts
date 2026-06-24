@@ -179,7 +179,6 @@ export interface AgentPromptContentBlock {
   text?: string;
   mimeType?: "image/png" | "image/jpeg" | "image/webp";
   data?: string;
-  url?: string;
   attachmentId?: string;
   name?: string;
   path?: string;
