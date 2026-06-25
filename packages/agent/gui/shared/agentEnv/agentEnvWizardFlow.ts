@@ -36,6 +36,13 @@ export interface DeriveAgentSetupStagesInput {
   authRequired: boolean;
   ready: boolean;
   activePhase: CodexSetupPhase | null;
+  /**
+   * Whether the daemon-driven install action is in flight. This is the
+   * authoritative "installing" signal: the adapter (external-registry) installer
+   * emits no activeAction phase, so without this an in-progress adapter install
+   * would show no spinner.
+   */
+  installActionPending: boolean;
   loginPending: boolean;
   cliVersionDetail: string | null;
   adapterDetail: string | null;
@@ -62,29 +69,30 @@ const INSTALLING_PHASES: ReadonlySet<CodexSetupPhase> = new Set([
 export function deriveAgentSetupStages(
   input: DeriveAgentSetupStagesInput
 ): AgentSetupStage[] {
-  const installing = input.activePhase
-    ? INSTALLING_PHASES.has(input.activePhase)
-    : false;
-  const installOk =
-    input.ready || (input.cliInstalled && !input.versionTooOld && !installing);
+  const installing =
+    input.installActionPending ||
+    (input.activePhase ? INSTALLING_PHASES.has(input.activePhase) : false);
 
   const detectStatus: CodexSetupStepStatus = input.detected ? "ok" : "running";
 
-  const installStatus: CodexSetupStepStatus = installing
-    ? "running"
-    : installOk
-      ? "ok"
+  // A satisfied CLI stays checked even while an install runs, so the spinner
+  // lands on the stage actually being worked on (e.g. the adapter during a
+  // repair) rather than flipping every install-related stage back to running.
+  const cliOk = input.ready || (input.cliInstalled && !input.versionTooOld);
+  const installStatus: CodexSetupStepStatus = cliOk
+    ? "ok"
+    : installing
+      ? "running"
       : input.versionTooOld
         ? "error"
         : "pending";
 
   const adapterOk =
-    input.ready ||
-    (input.adapterInstalled && !input.adapterVersionMismatch && !installing);
-  const adapterStatus: CodexSetupStepStatus = installing
-    ? "running"
-    : adapterOk
-      ? "ok"
+    input.ready || (input.adapterInstalled && !input.adapterVersionMismatch);
+  const adapterStatus: CodexSetupStepStatus = adapterOk
+    ? "ok"
+    : installing
+      ? "running"
       : input.adapterVersionMismatch
         ? "error"
         : "pending";

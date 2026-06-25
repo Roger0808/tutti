@@ -294,6 +294,7 @@ export function AgentEnvPanel({
     authRequired: status?.auth.status === "required",
     ready,
     activePhase: activeAction?.phase ?? null,
+    installActionPending: installPending,
     loginPending,
     cliVersionDetail: status?.cli.version ?? null,
     adapterDetail:

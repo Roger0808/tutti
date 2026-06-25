@@ -29,6 +29,7 @@ function input(
     authRequired: false,
     ready: false,
     activePhase: null,
+    installActionPending: false,
     loginPending: false,
     cliVersionDetail: null,
     adapterDetail: null,
@@ -87,6 +88,19 @@ describe("deriveAgentSetupStages", () => {
     );
     expect(stage(stages, "install").status).toBe("ok");
     expect(stage(stages, "adapter").status).toBe("pending");
+  });
+
+  it("shows the adapter running on a pending install action even without an activePhase (claude-code adapter installer emits no phase)", () => {
+    const stages = deriveAgentSetupStages(
+      input({
+        cliInstalled: true,
+        adapterInstalled: false,
+        installActionPending: true,
+        activePhase: null
+      })
+    );
+    expect(stage(stages, "install").status).toBe("ok");
+    expect(stage(stages, "adapter").status).toBe("running");
   });
 
   it("marks adapter ok and error from its own flags", () => {
