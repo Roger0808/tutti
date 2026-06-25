@@ -85,9 +85,15 @@ test("selectedReferenceToWorkspaceFileReference 形状兼容", () => {
     selectedReferenceToWorkspaceFileReference({
       path: "/a",
       kind: "folder",
-      displayName: "A"
+      displayName: "A",
+      sourceId: "host-local-file"
     }),
-    { path: "/a", kind: "folder", displayName: "A" }
+    {
+      path: "/a",
+      kind: "folder",
+      displayName: "A",
+      sourceId: "host-local-file"
+    }
   );
 });
 
