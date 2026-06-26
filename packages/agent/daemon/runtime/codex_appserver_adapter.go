@@ -1441,28 +1441,15 @@ func (a *CodexAppServerAdapter) interruptActiveTurn(
 	activeTurnID string,
 	reason string,
 ) error {
-	// Best-effort graceful interrupt. Failure here is not terminal: we still
-	// fall through to wait for termination and force-close if needed.
-	interruptCtx, cancel := context.WithTimeout(ctx, acpPermissionModeTimeout)
-	_, interruptErr := appSession.client.CallNoHandler(interruptCtx, appServerMethodTurnInterrupt, map[string]any{
-		"threadId": appSession.threadID,
-		"turnId":   activeTurnID,
-	})
-	cancel()
-	if interruptErr != nil {
-		slog.Warn("agent session app-server interrupt failed",
-			"event", "agent_session.app_server.interrupt.failed",
-			"agent_session_id", session.AgentSessionID,
-			"provider_session_id", appSession.threadID,
-			"turn_id", activeTurnID,
-			"reason", reason,
-			"error", interruptErr.Error(),
-		)
-	}
+	// Best-effort graceful interrupt, sent asynchronously: a wedged codex may
+	// never answer turn/interrupt, and a synchronous call would burn the whole
+	// acpPermissionModeTimeout before the grace window even starts. Firing it in
+	// the background keeps time-to-force bounded by cancelGraceWindow.
+	go a.sendTurnInterrupt(appSession, session, activeTurnID, reason)
 
 	// Without a turn handle we cannot wait for termination or force-close.
 	if appTurn == nil {
-		return interruptErr
+		return nil
 	}
 
 	grace := a.cancelGraceWindow
@@ -1498,6 +1485,31 @@ func (a *CodexAppServerAdapter) interruptActiveTurn(
 	case <-ctx.Done():
 	}
 	return nil
+}
+
+// sendTurnInterrupt issues a best-effort turn/interrupt. It is called in the
+// background so a hung interrupt RPC cannot delay the force-close grace window.
+func (a *CodexAppServerAdapter) sendTurnInterrupt(
+	appSession *codexAppServerSession,
+	session Session,
+	activeTurnID string,
+	reason string,
+) {
+	interruptCtx, cancel := context.WithTimeout(context.Background(), acpPermissionModeTimeout)
+	defer cancel()
+	if _, err := appSession.client.CallNoHandler(interruptCtx, appServerMethodTurnInterrupt, map[string]any{
+		"threadId": appSession.threadID,
+		"turnId":   activeTurnID,
+	}); err != nil {
+		slog.Warn("agent session app-server interrupt failed",
+			"event", "agent_session.app_server.interrupt.failed",
+			"agent_session_id", session.AgentSessionID,
+			"provider_session_id", appSession.threadID,
+			"turn_id", activeTurnID,
+			"reason", reason,
+			"error", err.Error(),
+		)
+	}
 }
 
 func (a *CodexAppServerAdapter) markTurnForceCanceled(turn *codexAppServerActiveTurn) {

@@ -61,6 +61,7 @@ type scriptedAppServerConnection struct {
 	turnError                    map[string]any
 	holdTurn                     bool // do not finish the turn until released
 	ignoreInterrupt              bool // ack turn/interrupt but never complete the turn (wedged codex)
+	hangInterrupt                bool // never even acknowledge the turn/interrupt RPC (fully wedged codex)
 	turnStartEntered             chan struct{}
 	turnStartRelease             chan struct{}
 	commandApproval              bool
@@ -405,7 +406,12 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			c.mu.Lock()
 			c.turnStatus = "interrupted"
 			ignore := c.ignoreInterrupt
+			hang := c.hangInterrupt
 			c.mu.Unlock()
+			if hang {
+				// Fully wedged codex: never even acknowledge the interrupt RPC.
+				continue
+			}
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{}})
 			if ignore {
 				// Wedged codex: it acks the interrupt but never completes the turn.
@@ -1193,6 +1199,49 @@ func TestCodexAppServerAdapterCancelForceClosesWedgedTurn(t *testing.T) {
 		if failed := eventsOfType(events, activityshared.EventTurnFailed); len(failed) != 0 {
 			t.Fatalf("force-cancel must not surface as failed, got %#v", events)
 		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("Exec did not finish after force cancel")
+	}
+}
+
+func TestCodexAppServerAdapterCancelForceCloseIsBoundedByGrace(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.cancelGraceWindow = 150 * time.Millisecond
+	transport.conn.holdTurn = true
+	// Fully wedged: codex never even acknowledges the turn/interrupt RPC, so a
+	// synchronous interrupt call would block on its own ~10s timeout.
+	transport.conn.hangInterrupt = true
+
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "long task",
+		}}, "", "turn-local-1", nil, nil)
+		execDone <- events
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	cancelReturned := make(chan error, 1)
+	go func() {
+		_, err := adapter.Cancel(context.Background(), session, "user requested")
+		cancelReturned <- err
+	}()
+	// Time-to-force must be bounded by the grace window, not by the hung
+	// interrupt RPC's own timeout.
+	select {
+	case err := <-cancelReturned:
+		if err != nil {
+			t.Fatalf("Cancel: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("Cancel blocked on the hung interrupt RPC instead of bounding by grace")
+	}
+	select {
+	case <-execDone:
 	case <-time.After(2 * time.Second):
 		t.Fatalf("Exec did not finish after force cancel")
 	}

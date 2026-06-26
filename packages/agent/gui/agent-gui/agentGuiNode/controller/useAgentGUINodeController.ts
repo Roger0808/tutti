@@ -143,6 +143,7 @@ import {
 } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore";
 import { useAgentGuiConversationList } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
 import { useAgentGUIActivation } from "./useAgentGUIActivation";
+import { pendingInterruptActionForDisplayStatus } from "./pendingInterrupt";
 import {
   formatAgentMentionMarkdown,
   normalizeAgentSessionMentionTitle
@@ -6425,16 +6426,18 @@ export function useAgentGUINodeController({
     ]
   );
 
-  // Retry a cancel that raced session startup: once the (now connected) session
-  // reports a live turn, fire the interrupt the user already requested.
+  // A deferred cancel (armed when a cancel raced session startup) applies only
+  // to that startup turn. Fire it once the turn goes live; drop it once the
+  // session settles without a live turn, so it can never interrupt a later,
+  // unrelated turn in the same session.
   useEffect(() => {
     const agentSessionId = activeConversationId;
     if (!agentSessionId || !pendingInterruptSessionIds[agentSessionId]) {
       return;
     }
-    if (
-      (agentActivityDisplayStatuses.get(agentSessionId) ?? null) !== "working"
-    ) {
+    const status = agentActivityDisplayStatuses.get(agentSessionId) ?? null;
+    const action = pendingInterruptActionForDisplayStatus(status);
+    if (action === "wait") {
       return;
     }
     setPendingInterruptSessionIds((current) => {
@@ -6445,13 +6448,28 @@ export function useAgentGUINodeController({
       delete next[agentSessionId];
       return next;
     });
-    interruptCurrentTurn("");
+    if (action === "fire") {
+      interruptCurrentTurn("");
+    }
   }, [
     activeConversationId,
     agentActivityDisplayStatuses,
     pendingInterruptSessionIds,
     interruptCurrentTurn
   ]);
+
+  // Abandon a deferred cancel when the user switches away from its session, so
+  // it cannot fire against a different conversation later.
+  useEffect(() => {
+    const activeId = activeConversationId;
+    setPendingInterruptSessionIds((current) => {
+      const ids = Object.keys(current);
+      if (ids.length === 0 || (ids.length === 1 && ids[0] === activeId)) {
+        return current;
+      }
+      return activeId && current[activeId] ? { [activeId]: true } : {};
+    });
+  }, [activeConversationId]);
 
   const updateDraftContent = useCallback((draftContent: AgentComposerDraft) => {
     const agentSessionId = activeConversationIdRef.current;
