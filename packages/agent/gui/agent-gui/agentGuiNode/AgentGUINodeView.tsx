@@ -853,10 +853,7 @@ export function AgentGUINodeView({
       if (previewMode) {
         return emptyReferencePickResult;
       }
-      if (
-        (!workspaceFileReferenceAdapter && !referenceSourceAggregator) ||
-        !workspaceFileReferenceCopy
-      ) {
+      if (!workspaceFileReferenceAdapter && !referenceSourceAggregator) {
         return emptyReferencePickResult;
       }
       // 仅多源 picker(referenceSourceAggregator)支持定位;本地 picker 不支持。
@@ -3123,6 +3120,7 @@ function conversationSummariesRenderEqual(
     left.sortTimeUnixMs === right.sortTimeUnixMs &&
     left.updatedAtUnixMs === right.updatedAtUnixMs &&
     left.hasUnreadCompletion === right.hasUnreadCompletion &&
+    left.unreadCompletionKey === right.unreadCompletionKey &&
     conversationProjectsRenderEqual(left.project, right.project) &&
     conversationSyncStatesRenderEqual(left.syncState, right.syncState)
   );
