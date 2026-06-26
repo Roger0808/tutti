@@ -26,10 +26,13 @@ function readZIndexToken(source: string, token: string): number {
 
 test("button styling stays on the shared semantic token contract", () => {
   const source = readComponentSource("button.tsx");
+  const semanticSource = readStyleSource("semantic.css");
 
   assert.match(source, /bg-\[var\(--state-danger\)\]/);
   assert.match(source, /text-\[var\(--white-stationary\)\]/);
   assert.match(source, /rounded-md/);
+  assert.match(semanticSource, /--radius-md:\s*6px/);
+  assert.doesNotMatch(source, /bg-clip-padding/);
   assert.doesNotMatch(source, /shadow-soft/);
 });
 
@@ -82,8 +85,14 @@ test("badge styling stays subtle instead of using primary fills", () => {
 
 test("field controls use the shared transparency field surface", () => {
   const inputSource = readComponentSource("input.tsx");
+  const semanticSource = readStyleSource("semantic.css");
   assert.match(inputSource, /bg-\[var\(--transparency-block\)\]/);
-  assert.match(inputSource, /rounded-\[6px\]/);
+  assert.match(inputSource, /appearance-none/);
+  assert.match(inputSource, /default:\s*"h-8 rounded-md/);
+  assert.match(inputSource, /md:\s*"h-8 rounded-md/);
+  assert.match(inputSource, /sm:\s*"h-8 rounded-md/);
+  assert.match(semanticSource, /--radius-md:\s*6px/);
+  assert.doesNotMatch(inputSource, /bg-clip-padding/);
   assert.doesNotMatch(inputSource, /border border-input bg-transparent/);
 
   const menuSurfaceSource = readComponentSource("menu-surface.tsx");
