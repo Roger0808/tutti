@@ -18,15 +18,18 @@ func (f networkRoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error)
 	return f(r)
 }
 
-func networkProbeService(rt networkRoundTripFunc) Service {
+func networkProbeService(t *testing.T, rt networkRoundTripFunc) Service {
+	t.Helper()
+	home := t.TempDir()
 	return Service{
 		Environ:    func() []string { return nil },
 		HTTPClient: &http.Client{Transport: rt},
+		HomeDir:    func() (string, error) { return home, nil },
 	}
 }
 
 func TestProbeRegistryReachableReturnsOfficial(t *testing.T) {
-	svc := networkProbeService(func(r *http.Request) (*http.Response, error) {
+	svc := networkProbeService(t, func(r *http.Request) (*http.Response, error) {
 		if r.Method != http.MethodHead {
 			t.Fatalf("expected HEAD, got %s", r.Method)
 		}
@@ -40,7 +43,7 @@ func TestProbeRegistryReachableReturnsOfficial(t *testing.T) {
 
 func TestProbeRegistryReachableEvenOnHTTPError(t *testing.T) {
 	// A 405/404 still proves the host was reached — connectivity is fine.
-	svc := networkProbeService(func(*http.Request) (*http.Response, error) {
+	svc := networkProbeService(t, func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusMethodNotAllowed, Body: http.NoBody}, nil
 	})
 	if got := svc.probeRegistry(context.Background()); !got.Reachable {
@@ -49,7 +52,7 @@ func TestProbeRegistryReachableEvenOnHTTPError(t *testing.T) {
 }
 
 func TestProbeRegistryUnreachableReportsNetworkError(t *testing.T) {
-	svc := networkProbeService(func(*http.Request) (*http.Response, error) {
+	svc := networkProbeService(t, func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("dial tcp: connect: connection refused")
 	})
 	got := svc.probeRegistry(context.Background())
@@ -62,7 +65,7 @@ func TestProbeRegistryUnreachableReportsNetworkError(t *testing.T) {
 }
 
 func TestProbeRegistryFallsBackToMirror(t *testing.T) {
-	svc := networkProbeService(func(r *http.Request) (*http.Response, error) {
+	svc := networkProbeService(t, func(r *http.Request) (*http.Response, error) {
 		if strings.Contains(r.URL.Host, "registry.npmjs.org") {
 			return nil, errors.New("connection refused")
 		}
@@ -76,7 +79,7 @@ func TestProbeRegistryFallsBackToMirror(t *testing.T) {
 
 func TestProbeProviderAPIChecksCodexChatGPTEndpointFirst(t *testing.T) {
 	var probed string
-	svc := networkProbeService(func(r *http.Request) (*http.Response, error) {
+	svc := networkProbeService(t, func(r *http.Request) (*http.Response, error) {
 		probed = r.URL.String()
 		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 	})
@@ -92,7 +95,7 @@ func TestProbeProviderAPIChecksCodexChatGPTEndpointFirst(t *testing.T) {
 
 func TestProbeProviderAPICodexReachableViaOpenAIWhenChatGPTBlocked(t *testing.T) {
 	// chatgpt.com blocked but api.openai.com reachable → still reachable (either).
-	svc := networkProbeService(func(r *http.Request) (*http.Response, error) {
+	svc := networkProbeService(t, func(r *http.Request) (*http.Response, error) {
 		if strings.Contains(r.URL.Host, "chatgpt.com") {
 			return nil, errors.New("connection refused")
 		}
@@ -105,7 +108,7 @@ func TestProbeProviderAPICodexReachableViaOpenAIWhenChatGPTBlocked(t *testing.T)
 }
 
 func TestProbeProviderAPIUnreachableReportsNetworkError(t *testing.T) {
-	svc := networkProbeService(func(*http.Request) (*http.Response, error) {
+	svc := networkProbeService(t, func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("getaddrinfo ENOTFOUND api.anthropic.com")
 	})
 	got := svc.probeProviderAPI(context.Background(), agentprovider.ClaudeCode)
@@ -115,7 +118,7 @@ func TestProbeProviderAPIUnreachableReportsNetworkError(t *testing.T) {
 }
 
 func TestProbeProviderAPISkippedForUnknownProvider(t *testing.T) {
-	svc := networkProbeService(func(*http.Request) (*http.Response, error) {
+	svc := networkProbeService(t, func(*http.Request) (*http.Response, error) {
 		t.Fatal("should not probe a provider with no known endpoint")
 		return nil, nil
 	})
@@ -125,7 +128,7 @@ func TestProbeProviderAPISkippedForUnknownProvider(t *testing.T) {
 }
 
 func TestProbeProviderAPISkippedWhenCustomAPIKeyConfigured(t *testing.T) {
-	svc := networkProbeService(func(*http.Request) (*http.Response, error) {
+	svc := networkProbeService(t, func(*http.Request) (*http.Response, error) {
 		t.Fatal("should not probe the default endpoint when a custom key is set")
 		return nil, nil
 	})
