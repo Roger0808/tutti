@@ -61,6 +61,9 @@ export function workspaceFileDirectory(
   rootPath?: string | null
 ): string {
   const root = normalizeWorkspaceFilePath(rootPath);
+  const rawPath = String(path ?? "")
+    .trim()
+    .replaceAll("\\", "/");
   const normalized = normalizeWorkspaceFilePath(path, root);
   if (normalized === root) {
     return root;
@@ -73,7 +76,10 @@ export function workspaceFileDirectory(
   }
   const directory = `/${parts.join("/")}`;
   if (root !== workspaceFileManagerLogicalRoot) {
-    return isWorkspaceFilePathWithinRoot(directory, root) ? directory : root;
+    if (isWorkspaceFilePathWithinRoot(directory, root)) {
+      return directory;
+    }
+    return rawPath.startsWith("/") ? directory : root;
   }
   return directory;
 }

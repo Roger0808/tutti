@@ -62,6 +62,24 @@ test("derives logical parent directory", () => {
   );
 });
 
+test("derives external absolute parent directories outside the current root", () => {
+  assert.equal(
+    workspaceFileDirectory("/tmp/hello_world.md", "/Users/demo"),
+    "/tmp"
+  );
+  assert.equal(
+    workspaceFileDirectory(
+      "/var/folders/demo/T/codex-presentations/slides.pptx",
+      "/Users/demo"
+    ),
+    "/var/folders/demo/T/codex-presentations"
+  );
+  assert.equal(
+    workspaceFileDirectory("../../tmp/file.txt", "/Users/demo"),
+    "/Users/demo"
+  );
+});
+
 test("filters hidden directories and sorts directories first", () => {
   const entries: WorkspaceFileEntry[] = [
     entry("zeta.txt", "file"),

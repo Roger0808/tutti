@@ -125,6 +125,9 @@ export function resolveWorkspaceFilePathCandidate({
   }
 
   const normalizedPath = normalizeWorkspaceFilePath(rawPath);
+  if (isUnsupportedSpecialWorkspaceFilePath(normalizedPath)) {
+    return null;
+  }
   if (
     isAbsoluteLocalPath(normalizedPath) &&
     (isDirectAgentGeneratedMediaPath(normalizedPath) ||
@@ -142,6 +145,17 @@ export function resolveWorkspaceFilePathCandidate({
   const root = normalizeWorkspaceFilePath(workspaceRoot?.trim() ?? "");
   if (!root) {
     return null;
+  }
+  if (
+    isAbsoluteLocalPath(normalizedPath) &&
+    !isSyntheticWorkspacePathOutsideRoot(normalizedPath, root)
+  ) {
+    const directoryPath = dirname(normalizedPath);
+    return {
+      path: normalizedPath,
+      directoryPath,
+      workspaceRoot: root
+    };
   }
   const base = normalizeWorkspaceFilePath(basePath?.trim() || root);
   const resolvedPath = isAbsoluteLocalPath(normalizedPath)
@@ -336,6 +350,43 @@ function isAbsoluteLocalPath(path: string): boolean {
 
 function isWindowsAbsolutePath(path: string): boolean {
   return /^[A-Za-z]:\//.test(path);
+}
+
+function isSyntheticWorkspacePathOutsideRoot(
+  path: string,
+  root: string
+): boolean {
+  return (
+    root !== "/" && (path === "/workspace" || path.startsWith("/workspace/"))
+  );
+}
+
+function isUnsupportedSpecialWorkspaceFilePath(path: string): boolean {
+  const comparisonPath = cleanWorkspaceFilePathForComparison(path);
+  return (
+    comparisonPath === "/dev/null" ||
+    comparisonPath.split("/").some((segment) => {
+      const normalized = segment.trim().replace(/[. ]+$/g, "");
+      const deviceName = normalized.split(".", 1)[0]?.toUpperCase();
+      return deviceName === "NUL";
+    })
+  );
+}
+
+function cleanWorkspaceFilePathForComparison(path: string): string {
+  const normalized = path.replace(/\/+/g, "/");
+  const parts: string[] = [];
+  for (const part of normalized.split("/")) {
+    if (!part || part === ".") {
+      continue;
+    }
+    if (part === "..") {
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
+  return normalized.startsWith("/") ? `/${parts.join("/")}` : parts.join("/");
 }
 
 function decodeWorkspaceLinkPath(path: string): string {

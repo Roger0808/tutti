@@ -167,6 +167,43 @@ func (FileService) ResolveWorkspaceRoot(
 	}, nil
 }
 
+func (s FileService) ResolveWorkspaceRootForPath(
+	ctx context.Context,
+	workspaceID string,
+	path string,
+) (workspacefiles.WorkspaceRoot, error) {
+	root, err := s.ResolveWorkspaceRoot(ctx, workspaceID)
+	if err != nil {
+		return workspacefiles.WorkspaceRoot{}, err
+	}
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" || !filepath.IsAbs(trimmedPath) {
+		return root, nil
+	}
+	absolutePath, err := filepath.Abs(trimmedPath)
+	if err != nil {
+		return workspacefiles.WorkspaceRoot{}, err
+	}
+	if workspacefiles.IsPhysicalPathWithinRoot(root.PhysicalRoot, absolutePath) {
+		return root, nil
+	}
+
+	physicalRoot := filesystemRootForPath(absolutePath)
+	return workspacefiles.WorkspaceRoot{
+		WorkspaceID:  root.WorkspaceID,
+		LogicalRoot:  filepath.ToSlash(physicalRoot),
+		PhysicalRoot: physicalRoot,
+	}, nil
+}
+
+func filesystemRootForPath(path string) string {
+	volume := filepath.VolumeName(path)
+	if volume != "" {
+		return filepath.Clean(volume + string(filepath.Separator))
+	}
+	return string(filepath.Separator)
+}
+
 func (s FileService) domainService() workspacefiles.Service {
 	return workspacefiles.Service{
 		Resolver: s,

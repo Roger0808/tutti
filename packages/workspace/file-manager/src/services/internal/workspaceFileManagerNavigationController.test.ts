@@ -133,6 +133,34 @@ test("revealPath loads the parent directory and selects the requested file", asy
   assert.equal(store.isLoading, false);
 });
 
+test("revealPath loads external absolute parent directories outside the current root", async () => {
+  const store = createTestStore();
+  store.root = "/Users/demo";
+  store.currentDirectoryPath = "/Users/demo";
+  const controller = new WorkspaceFileManagerNavigationController({
+    host: {
+      async listDirectory(input) {
+        assert.equal(input.path, "/tmp");
+        return {
+          directoryPath: input.path,
+          entries: [createFileEntry("/tmp/hello_world.md")],
+          root: "/",
+          workspaceID: input.workspaceID
+        };
+      }
+    },
+    resolveErrorMessage: defaultResolveErrorMessage,
+    store
+  });
+
+  await controller.revealPath("/tmp/hello_world.md");
+
+  assert.equal(store.root, "/");
+  assert.equal(store.currentDirectoryPath, "/tmp");
+  assert.equal(store.selectedPath, "/tmp/hello_world.md");
+  assert.equal(store.isLoading, false);
+});
+
 test("revealPath includes hidden entries when parent path contains a hidden segment", async () => {
   const store = createTestStore();
   store.root = "/Users/demo";
