@@ -70,10 +70,12 @@ func turnLifecycleCompactValue(value *agentservice.TurnLifecycle) map[string]any
 	result := map[string]any{
 		"activeTurnId": nil,
 		"phase":        strings.TrimSpace(value.Phase),
-		"settling":     value.Settling,
 	}
 	if value.ActiveTurnID != nil {
 		result["activeTurnId"] = strings.TrimSpace(*value.ActiveTurnID)
+	}
+	if value.Settling {
+		result["settling"] = true
 	}
 	if value.Outcome != nil {
 		result["outcome"] = strings.TrimSpace(*value.Outcome)
@@ -91,10 +93,13 @@ func submitAvailabilityCompactValue(value *agentservice.SubmitAvailability) map[
 	if value == nil {
 		return nil
 	}
-	return map[string]any{
-		"state":  strings.TrimSpace(value.State),
-		"reason": strings.TrimSpace(value.Reason),
+	result := map[string]any{
+		"state": strings.TrimSpace(value.State),
 	}
+	if reason := strings.TrimSpace(value.Reason); reason != "" {
+		result["reason"] = reason
+	}
+	return result
 }
 
 func messageCompactValue(message agentservice.SessionMessage) map[string]any {

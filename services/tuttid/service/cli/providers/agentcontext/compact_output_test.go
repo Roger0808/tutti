@@ -118,6 +118,44 @@ func TestSessionInspectValueIncludesTurnLifecycleAndSubmitAvailability(t *testin
 	}
 }
 
+func TestSessionSummaryValueOmitsOptionalEmptyRuntimeProtocolFields(t *testing.T) {
+	value := sessionSummaryValue(agentservice.Session{
+		ID:       "SESSION-1",
+		Provider: "codex",
+		Status:   "ready",
+		TurnLifecycle: &agentservice.TurnLifecycle{
+			Phase:    " ready ",
+			Settling: false,
+		},
+		SubmitAvailability: &agentservice.SubmitAvailability{
+			State:  " available ",
+			Reason: " ",
+		},
+	})
+
+	lifecycle, ok := value["turnLifecycle"].(map[string]any)
+	if !ok {
+		t.Fatalf("turnLifecycle = %#v", value["turnLifecycle"])
+	}
+	if lifecycle["phase"] != "ready" {
+		t.Fatalf("turnLifecycle phase = %#v", lifecycle["phase"])
+	}
+	if _, ok := lifecycle["settling"]; ok {
+		t.Fatalf("false settling should be omitted: %#v", lifecycle)
+	}
+
+	availability, ok := value["submitAvailability"].(map[string]any)
+	if !ok {
+		t.Fatalf("submitAvailability = %#v", value["submitAvailability"])
+	}
+	if availability["state"] != "available" {
+		t.Fatalf("submitAvailability state = %#v", availability["state"])
+	}
+	if _, ok := availability["reason"]; ok {
+		t.Fatalf("blank reason should be omitted: %#v", availability)
+	}
+}
+
 func agentserviceSessionWithRuntime() agentservice.Session {
 	title := "Work"
 	return agentservice.Session{
