@@ -22,6 +22,7 @@ func (p Provider) newSkillBundleCommand() cliservice.Command {
 		Summary:     "Get Tutti CLI skill bundle",
 		Description: "Get a dynamically rendered Tutti skill bundle for an external agent runtime.",
 		Kind:        framework.KindGet,
+		Visibility:  cliservice.CapabilityVisibilityIntegration,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
 		Inputs:      framework.FromStruct[skillBundleInput](),

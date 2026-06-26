@@ -619,6 +619,9 @@ func TestSkillBundleCommandReturnsAgentACPKitShape(t *testing.T) {
 		strings.Join(command.Capability.Path, " ") != "agent tutti-cli-skill-bundle" {
 		t.Fatalf("command capability = %#v", command.Capability)
 	}
+	if command.Capability.Visibility != cliservice.CapabilityVisibilityIntegration {
+		t.Fatalf("visibility = %q, want integration", command.Capability.Visibility)
+	}
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
