@@ -1973,6 +1973,29 @@ func TestClaudeCodeAdapterExecPrependsMentionRoutingDirective(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeAdapterExecRoutesWorkspaceReferenceMention(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-workspace-reference-routing")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.PermissionModeID = "default"
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	prompt := "请读取 [@设计稿](mention://workspace-reference/app-1?source=app&workspaceId=workspace-1&groupId=group-1)"
+
+	if _, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-reference", func([]activityshared.Event) {}, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	text := firstPromptText(t, transport.conn.lastPromptParamsSnapshot)
+	if !strings.Contains(text, `Skill(skill="reference", args="mention://workspace-reference/app-1?source=app&workspaceId=workspace-1&groupId=group-1")`) ||
+		!strings.Contains(text, "User prompt:\n"+prompt) {
+		t.Fatalf("prompt text = %q, want workspace-reference routed to reference skill", text)
+	}
+}
+
 func TestStandardACPAdapterExecDoesNotPrependClaudeMentionRoutingForGemini(t *testing.T) {
 	t.Parallel()
 
