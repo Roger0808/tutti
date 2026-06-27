@@ -4578,7 +4578,7 @@ export type GetAgentProviderComposerOptionsError =
 
 export type GetAgentProviderComposerOptionsResponses = {
   /**
-   * Agent provider composer options with short-lived Claude Code discovery when needed
+   * Agent provider composer options with Claude Code live discovery when needed
    */
   200: AgentProviderComposerOptionsResponse;
 };

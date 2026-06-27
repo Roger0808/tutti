@@ -1737,6 +1737,40 @@ func TestServiceGetsComposerOptionsSkipsClaudeStaticModelCatalog(t *testing.T) {
 	}
 }
 
+func TestGetComposerOptionsClaudeCodeWithoutWorkspaceClearsUnverifiedSelectedModel(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "claude-code",
+		Cwd:      "/repo",
+		Settings: ComposerSettings{
+			Model: "claude-sonnet-4-20250514",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.EffectiveSettings.Model != "" {
+		t.Fatalf("effectiveSettings.model = %q, want empty without live model verification", options.EffectiveSettings.Model)
+	}
+	if options.RuntimeContext["model"] != nil {
+		t.Fatalf("runtime model = %#v, want nil without live model verification", options.RuntimeContext["model"])
+	}
+	if options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 0 {
+		t.Fatalf("modelConfig = %#v, want no unverified Claude model config", options.ModelConfig)
+	}
+	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) == 0 {
+		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
+	}
+	for _, option := range configOptions {
+		if option["id"] == "model" {
+			t.Fatalf("configOptions = %#v, want no unverified Claude model option", configOptions)
+		}
+	}
+}
+
 func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
@@ -1790,6 +1824,74 @@ func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
 	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
 	if !ok || len(configOptions) == 0 || configOptions[0]["id"] != "model" {
 		t.Fatalf("configOptions = %#v, want model option merged into runtime context", options.RuntimeContext["configOptions"])
+	}
+}
+
+func TestGetComposerOptionsClaudeCodeLiveModelsSanitizesUnsupportedSelectedModel(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	runtime := newFakeRuntime()
+	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
+		if input.Provider != "claude-code" {
+			return session
+		}
+		if input.Model != "" {
+			t.Fatalf("discovery start model = %q, want empty model", input.Model)
+		}
+		session.RuntimeContext = map[string]any{
+			"configOptions": []any{
+				map[string]any{
+					"id":           "model",
+					"currentValue": "default",
+					"options": []any{
+						map[string]any{"name": "Default", "value": "default"},
+						map[string]any{"name": "Sonnet", "value": "sonnet"},
+						map[string]any{"name": "Opus", "value": "opus"},
+						map[string]any{"name": "Haiku", "value": "haiku"},
+					},
+				},
+			},
+		}
+		return session
+	}
+	service := NewService(runtime)
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:    "claude-code",
+		WorkspaceID: "ws-1",
+		Cwd:         "/repo",
+		Settings: ComposerSettings{
+			Model: "claude-sonnet-4-20250514",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.EffectiveSettings.Model != "default" {
+		t.Fatalf("effectiveSettings.model = %q, want default", options.EffectiveSettings.Model)
+	}
+	if options.ModelConfig.CurrentValue != "default" || options.ModelConfig.DefaultValue != "default" {
+		t.Fatalf("modelConfig = %#v, want default current/default", options.ModelConfig)
+	}
+	for _, option := range options.ModelConfig.Options {
+		if option.Value == "claude-sonnet-4-20250514" {
+			t.Fatalf("modelConfig options = %#v, want no unsupported selected model", options.ModelConfig.Options)
+		}
+	}
+	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) == 0 || configOptions[0]["id"] != "model" {
+		t.Fatalf("configOptions = %#v, want model option merged into runtime context", options.RuntimeContext["configOptions"])
+	}
+	if configOptions[0]["currentValue"] != "default" {
+		t.Fatalf("model runtime option = %#v, want default currentValue", configOptions[0])
+	}
+	runtimeModelOptions, ok := configOptions[0]["options"].([]map[string]string)
+	if !ok {
+		t.Fatalf("runtime model options = %#v", configOptions[0]["options"])
+	}
+	for _, option := range runtimeModelOptions {
+		if option["value"] == "claude-sonnet-4-20250514" {
+			t.Fatalf("runtime model options = %#v, want no unsupported selected model", runtimeModelOptions)
+		}
 	}
 }
 
@@ -1887,49 +1989,144 @@ func TestGetComposerOptionsClaudeCodeLiveModelsFailedStartupReturnsQuickly(t *te
 		return session
 	}
 	service := NewService(runtime)
-	service.LiveModelDiscoveryTimeout = time.Second
 	startedAt := time.Now()
 
 	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
 		Provider:    "claude-code",
 		WorkspaceID: "ws-failed",
 		Cwd:         "/repo",
+		Settings: ComposerSettings{
+			Model: "claude-sonnet-4-20250514",
+		},
 	})
 	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
 	}
 	if elapsed := time.Since(startedAt); elapsed >= 400*time.Millisecond {
-		t.Fatalf("GetComposerOptions elapsed = %s, want failed discovery to return before polling timeout", elapsed)
+		t.Fatalf("GetComposerOptions elapsed = %s, want failed discovery to return quickly", elapsed)
 	}
 	if len(runtime.closeCalls) != 1 {
 		t.Fatalf("close calls = %d, want 1", len(runtime.closeCalls))
 	}
 	if options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 0 {
-		t.Fatalf("modelConfig = %#v, want untouched static fallback after failed discovery", options.ModelConfig)
+		t.Fatalf("modelConfig = %#v, want no unverified Claude model config after failed discovery", options.ModelConfig)
+	}
+	if options.EffectiveSettings.Model != "" {
+		t.Fatalf("effectiveSettings.model = %q, want empty after failed live model verification", options.EffectiveSettings.Model)
+	}
+	if options.RuntimeContext["model"] != nil {
+		t.Fatalf("runtime model = %#v, want nil after failed live model verification", options.RuntimeContext["model"])
 	}
 }
 
-func TestGetComposerOptionsClaudeCodeLiveModelsTimeoutDegradesGracefully(t *testing.T) {
+func TestGetComposerOptionsClaudeCodeLiveModelsPropagatesCallerCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	runtime := newFakeRuntime()
+	closed := make(chan struct{})
+	runtime.closeHook = func(RuntimeCloseInput) {
+		select {
+		case <-closed:
+		default:
+			close(closed)
+		}
+	}
+	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
+		if input.Provider == "claude-code" {
+			cancel()
+		}
+		return session
+	}
 	service := NewService(runtime)
-	service.LiveModelDiscoveryTimeout = 250 * time.Millisecond
 
-	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+	_, err := service.GetComposerOptions(ctx, ComposerOptionsInput{
 		Provider:    "claude-code",
-		WorkspaceID: "ws-timeout",
+		WorkspaceID: "ws-canceled",
 		Cwd:         "/repo",
 	})
-	if err != nil {
-		t.Fatalf("GetComposerOptions returned error: %v", err)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetComposerOptions error = %v, want context canceled", err)
 	}
 	if len(runtime.startCalls) != 1 {
 		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
 	}
-	if len(runtime.closeCalls) != 1 {
-		t.Fatalf("close calls = %d, want 1 even on timeout", len(runtime.closeCalls))
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("runtime close was not called after caller cancellation")
 	}
-	if options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 0 {
-		t.Fatalf("modelConfig = %#v, want untouched static fallback after timeout", options.ModelConfig)
+	if len(runtime.closeCalls) != 1 {
+		t.Fatalf("close calls = %d, want 1 even on caller cancellation", len(runtime.closeCalls))
+	}
+}
+
+func TestGetComposerOptionsClaudeCodeLiveModelsSharedDiscoveryHonorsCallerCancellation(t *testing.T) {
+	runtime := newFakeRuntime()
+	firstStarted := make(chan struct{})
+	firstClosed := make(chan struct{})
+	runtime.closeHook = func(RuntimeCloseInput) {
+		select {
+		case <-firstClosed:
+		default:
+			close(firstClosed)
+		}
+	}
+	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
+		if input.Provider == "claude-code" {
+			select {
+			case <-firstStarted:
+			default:
+				close(firstStarted)
+			}
+		}
+		return session
+	}
+	service := NewService(runtime)
+	firstCtx, cancelFirst := context.WithCancel(context.Background())
+	defer cancelFirst()
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := service.GetComposerOptions(firstCtx, ComposerOptionsInput{
+			Provider:    "claude-code",
+			WorkspaceID: "ws-shared-canceled",
+			Cwd:         "/repo",
+		})
+		firstDone <- err
+	}()
+
+	select {
+	case <-firstStarted:
+	case <-time.After(time.Second):
+		t.Fatal("first live model discovery did not start")
+	}
+
+	secondCtx, cancelSecond := context.WithCancel(context.Background())
+	cancelSecond()
+	_, err := service.GetComposerOptions(secondCtx, ComposerOptionsInput{
+		Provider:    "claude-code",
+		WorkspaceID: "ws-shared-canceled",
+		Cwd:         "/repo",
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetComposerOptions error = %v, want context canceled for shared caller", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want 1 shared live model discovery", len(runtime.startCalls))
+	}
+
+	cancelFirst()
+	select {
+	case err := <-firstDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("first GetComposerOptions error = %v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("first live model discovery did not stop after cancellation")
+	}
+	select {
+	case <-firstClosed:
+	case <-time.After(time.Second):
+		t.Fatal("shared live model discovery did not close after cancellation")
 	}
 }
 
@@ -3216,6 +3413,7 @@ type fakeRuntime struct {
 	startErr               error
 	startCalls             []RuntimeStartInput
 	startHook              func(RuntimeStartInput, RuntimeSession) RuntimeSession
+	closeHook              func(RuntimeCloseInput)
 	validateErr            error
 	validateCalls          []RuntimeExecInput
 }
@@ -3352,6 +3550,9 @@ func (f *fakeRuntime) Cancel(_ context.Context, input RuntimeCancelInput) (Runti
 
 func (f *fakeRuntime) Close(_ context.Context, input RuntimeCloseInput) error {
 	f.closeCalls = append(f.closeCalls, input)
+	if f.closeHook != nil {
+		f.closeHook(input)
+	}
 	if f.closeErr != nil {
 		return f.closeErr
 	}

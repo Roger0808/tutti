@@ -479,6 +479,66 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
   ]);
 });
 
+test("desktop agent activity adapter cancels composer options when caller aborts", async () => {
+  const controller = new AbortController();
+  let requestSignal: AbortSignal | undefined;
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async getAgentProviderComposerOptions(
+        _provider,
+        _request,
+        requestOptions
+      ) {
+        requestSignal = requestOptions?.signal ?? undefined;
+        return await new Promise(() => undefined);
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const load = adapter.loadComposerOptions({
+    workspaceId,
+    provider: "codex",
+    signal: controller.signal
+  });
+  assert.equal(requestSignal?.aborted, false);
+
+  controller.abort(new Error("caller cancelled"));
+
+  await assert.rejects(load, /caller cancelled/);
+  assert.equal(requestSignal?.aborted, true);
+});
+
+test("desktop agent activity adapter times out composer options requests", async () => {
+  let requestSignal: AbortSignal | undefined;
+  const adapter = createDesktopAgentActivityAdapter({
+    composerOptionsRequestTimeoutMs: 1,
+    tuttidClient: createTuttidClient({
+      async getAgentProviderComposerOptions(
+        _provider,
+        _request,
+        requestOptions
+      ) {
+        requestSignal = requestOptions?.signal ?? undefined;
+        return await new Promise(() => undefined);
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  await assert.rejects(
+    adapter.loadComposerOptions({
+      workspaceId,
+      provider: "claude-code"
+    }),
+    (error) =>
+      error instanceof Error &&
+      error.message === "Agent composer options request timed out." &&
+      (error as NodeJS.ErrnoException).code === "ETIMEDOUT"
+  );
+  assert.equal(requestSignal?.aborted, true);
+});
+
 test("desktop agent activity adapter sends plan mode when creating sessions", async () => {
   const calls: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
@@ -538,6 +598,39 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
       }
     ]
   ]);
+});
+
+test("desktop agent activity adapter times out create session requests", async () => {
+  let requestSignal: AbortSignal | undefined;
+  const adapter = createDesktopAgentActivityAdapter({
+    agentSessionCreateRequestTimeoutMs: 1,
+    tuttidClient: createTuttidClient({
+      async createWorkspaceAgentSession(
+        _workspaceId,
+        _request,
+        requestOptions
+      ) {
+        requestSignal = requestOptions?.signal ?? undefined;
+        return await new Promise(() => undefined);
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  await assert.rejects(
+    adapter.createSession({
+      agentSessionId: "22222222-2222-4222-8222-222222222222",
+      initialContent: [],
+      model: "claude-sonnet-4-20250514",
+      provider: "claude-code",
+      workspaceId
+    }),
+    (error) =>
+      error instanceof Error &&
+      error.message === "Agent session create request timed out." &&
+      (error as NodeJS.ErrnoException).code === "ETIMEDOUT"
+  );
+  assert.equal(requestSignal?.aborted, true);
 });
 
 test("desktop agent activity adapter rejects unuploaded file prompt blocks", async () => {

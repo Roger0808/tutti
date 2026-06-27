@@ -589,6 +589,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     cwd?: string | null;
     force?: boolean;
     provider?: string;
+    signal?: AbortSignal;
     settings?: Parameters<typeof normalizeComposerSettings>[0] | null;
     workspaceId: string;
   }): Promise<unknown> {
@@ -599,6 +600,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       provider,
       cwd: input.cwd,
       force: input.force,
+      signal: input.signal,
       settings: normalizeComposerSettings(input.settings)
     });
   }
