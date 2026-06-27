@@ -41,5 +41,6 @@ export type {
   ResolveWizardAutoStartInput,
   StageActionId,
   StageProblem,
+  StageDetailToken,
   StageRemediation
 } from "./agentEnvWizardFlow.ts";

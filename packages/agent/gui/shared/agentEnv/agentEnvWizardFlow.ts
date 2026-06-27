@@ -12,6 +12,11 @@ export type AgentSetupStageId =
   | "login"
   | "ready";
 
+export type StageDetailToken =
+  | { kind: "text"; text: string }
+  | { kind: "version-floor"; current: string; required: string }
+  | { kind: "version-mismatch"; current: string; required: string };
+
 // Whether an availability reason code means the CLI itself is on an unsupported
 // version — as opposed to an ADAPTER version mismatch. The adapter reason code
 // `acp_adapter_version_mismatch` also contains the substring "version", so a
@@ -29,7 +34,7 @@ export interface AgentSetupStage {
   id: AgentSetupStageId;
   label: string;
   status: CodexSetupStepStatus;
-  detail: string | null;
+  detail: StageDetailToken | null;
 }
 
 export interface AgentSetupStageLabels {
@@ -65,10 +70,10 @@ export interface DeriveAgentSetupStagesInput {
    * null is treated as "don't block".
    */
   networkReachable: boolean | null;
-  cliVersionDetail: string | null;
-  adapterDetail: string | null;
-  accountDetail: string | null;
-  networkDetail: string | null;
+  cliVersionDetail: StageDetailToken | null;
+  adapterDetail: StageDetailToken | null;
+  accountDetail: StageDetailToken | null;
+  networkDetail: StageDetailToken | null;
   labels: AgentSetupStageLabels;
 }
 
