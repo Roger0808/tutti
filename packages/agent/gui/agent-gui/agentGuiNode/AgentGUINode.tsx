@@ -183,7 +183,6 @@ export interface AgentGUINodeProps {
   composerFocusRequestSequence?: number | null;
   openSessionRequest?: AgentGUIOpenSessionRequest | null;
   prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
-  showProjectSelector?: boolean;
   isMuted?: boolean;
   newConversationRequestSequence?: number | null;
   onMinimize?: () => void;
@@ -497,7 +496,6 @@ function areAgentGUINodePropsEqual(
     previous.embedded === next.embedded &&
     previous.previewMode === next.previewMode &&
     previous.isActive === next.isActive &&
-    previous.showProjectSelector === next.showProjectSelector &&
     previous.composerFocusRequestSequence ===
       next.composerFocusRequestSequence &&
     previous.newConversationRequestSequence ===
@@ -539,7 +537,6 @@ export const AgentGUINode = memo(function AgentGUINode({
   newConversationRequestSequence = null,
   openSessionRequest = null,
   prefillPromptRequest = null,
-  showProjectSelector = true,
   isMuted = false,
   onMinimize,
   onToggleMaximize,
@@ -1323,7 +1320,6 @@ export const AgentGUINode = memo(function AgentGUINode({
               workspaceAgentProbes?.isLoadingUsage ?? false
             }
             previewMode={previewMode}
-            showProjectSelector={showProjectSelector}
             onLinkAction={handleLinkAction}
             capabilityMenuState={capabilityMenuState}
             onCapabilitySettingsRequest={onCapabilitySettingsRequest}

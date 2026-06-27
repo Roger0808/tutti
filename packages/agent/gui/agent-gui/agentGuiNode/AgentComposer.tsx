@@ -186,7 +186,6 @@ export interface AgentComposerProps {
   promptImagesSupported?: boolean;
   composerFocusRequestSequence?: number | null;
   layoutMode?: "dock" | "hero";
-  showProjectSelector?: boolean;
   labels: {
     send: string;
     modelLabel: string;
@@ -702,7 +701,6 @@ export function AgentComposer({
   promptImagesSupported = true,
   composerFocusRequestSequence = null,
   layoutMode = "dock",
-  showProjectSelector = true,
   labels,
   workspaceUserProjectI18n,
   onDraftContentChange,
@@ -2149,12 +2147,10 @@ export function AgentComposer({
   const showEdgeGlow = layoutMode === "hero" && !inputDisabled;
   const showPromptTips = layoutMode === "hero" && promptTips.length > 0;
   const activePromptTip = showPromptTips ? (promptTips[0] ?? null) : null;
-  const showHeroProjectSelector = layoutMode === "hero" && showProjectSelector;
-  const showProjectRow =
-    layoutMode === "hero" && (showHeroProjectSelector || activePromptTip);
+  const showHeroProjectSelector = layoutMode === "hero";
+  const showProjectRow = layoutMode === "hero";
   const showProjectMissingProbe =
     !showProjectRow &&
-    showProjectSelector &&
     Boolean(composerSettings.projectLocked) &&
     selectedProjectPath !== "";
   const activePromptTipId = activePromptTip?.id ?? null;

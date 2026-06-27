@@ -180,7 +180,6 @@ export function AgentProjectDropdown({
       )}
       selectedProjectPath={composerSettings.selectedProjectPath}
       service={agentHostApi.userProjects?.service ?? null}
-      showCreateProjectAction
       onProjectMissingChange={onProjectMissingChange}
       onProjectPathChange={onProjectPathChange}
     />

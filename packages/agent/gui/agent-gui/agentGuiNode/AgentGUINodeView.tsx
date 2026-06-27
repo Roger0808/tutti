@@ -416,7 +416,6 @@ interface AgentGUINodeViewProps {
   slashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading?: boolean;
   previewMode?: boolean;
-  showProjectSelector?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
   actions: {
     createConversation: (options?: { projectPath?: string | null }) => void;
@@ -788,7 +787,6 @@ export function AgentGUINodeView({
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
   previewMode = false,
-  showProjectSelector = true,
   onAgentProviderLogin,
   actions,
   conversationRailCollapsed,
@@ -1211,7 +1209,6 @@ export function AgentGUINodeView({
         labels,
         workspaceUserProjectI18n,
         uiLanguage,
-        showProjectSelector,
         previewMode,
         createConversationDisabled,
         openclawGateway,
@@ -1246,7 +1243,6 @@ export function AgentGUINodeView({
         requestDeleteConversation,
         retryOpenclawGateway,
         selectConversation,
-        showProjectSelector,
         toggleConversationPinned,
         uiLanguage,
         viewModel.activeConversationId,
@@ -1338,7 +1334,6 @@ export function AgentGUINodeView({
             isAgentProviderReady={isAgentProviderReady}
             slashStatusLimits={slashStatusLimits}
             slashStatusLimitsLoading={slashStatusLimitsLoading}
-            showProjectSelector={showProjectSelector}
             onLinkAction={onLinkAction}
             capabilityMenuState={capabilityMenuState}
             onCapabilitySettingsRequest={onCapabilitySettingsRequest}
@@ -1399,7 +1394,6 @@ interface AgentGUIDetailPaneProps {
   isAgentProviderReady: boolean;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
-  showProjectSelector: boolean;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
   onCapabilitySettingsRequest?: AgentComposerProps["onCapabilitySettingsRequest"];
@@ -1493,7 +1487,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   isAgentProviderReady,
   slashStatusLimits,
   slashStatusLimitsLoading,
-  showProjectSelector,
   onLinkAction,
   capabilityMenuState,
   onCapabilitySettingsRequest,
@@ -2075,7 +2068,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       composerFocusRequestSequence,
       isActive,
       promptImagesSupported: viewModel.promptImagesSupported,
-      showProjectSelector,
       isInterrupting: viewModel.isInterrupting,
       isSendingTurn: isComposerSending,
       isSubmittingPrompt: viewModel.isRespondingApproval,
@@ -2119,7 +2111,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       removeQueuedPrompt,
       sendQueuedPromptNext,
       showPromptImagesUnsupported,
-      showProjectSelector,
       showStopButton,
       slashStatus,
       submitDisabled,
@@ -2858,7 +2849,6 @@ interface AgentGUIConversationRailPaneProps {
   labels: AgentGUIViewLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   uiLanguage: UiLanguage;
-  showProjectSelector: boolean;
   previewMode: boolean;
   createConversationDisabled: boolean;
   openclawGateway: OpenclawGatewayViewModel | null;
@@ -2939,7 +2929,6 @@ function agentGUIConversationRailStoreSnapshotsEqual(
     current.labels === next.labels &&
     current.workspaceUserProjectI18n === next.workspaceUserProjectI18n &&
     current.uiLanguage === next.uiLanguage &&
-    current.showProjectSelector === next.showProjectSelector &&
     current.previewMode === next.previewMode &&
     current.createConversationDisabled === next.createConversationDisabled &&
     current.openclawGateway === next.openclawGateway &&
@@ -3146,7 +3135,6 @@ const AgentGUIConversationRailPane = memo(
     labels,
     workspaceUserProjectI18n,
     uiLanguage,
-    showProjectSelector,
     previewMode,
     createConversationDisabled,
     openclawGateway,
@@ -3353,7 +3341,6 @@ const AgentGUIConversationRailPane = memo(
                 section.kind === "project" ? section.label : "";
               const isProjectSection = section.kind === "project";
               const showProjectRailHeader =
-                showProjectSelector &&
                 !conversationQuery.trim() &&
                 section.kind !== "pinned" &&
                 (sectionIndex === 0 ||
