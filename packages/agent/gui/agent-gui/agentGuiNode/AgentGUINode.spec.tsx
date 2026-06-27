@@ -490,7 +490,7 @@ vi.mock("../../i18n/index", () => ({
       return "错误";
     }
     const mentionLabels: Record<string, string> = {
-      "agentHost.roomIssueNode.issueStatusNotStarted": "未启动",
+      "agentHost.roomIssueNode.issueStatusNotStarted": "待开始",
       "agentHost.roomIssueNode.issueStatusRunning": "执行中",
       "agentHost.roomIssueNode.issueStatusPendingAcceptance": "待验收",
       "agentHost.roomIssueNode.issueStatusCompleted": "已完成",
@@ -5322,7 +5322,7 @@ describe("AgentGUINode", () => {
       within(firstTaskOption as HTMLButtonElement).getByText("执行中")
     ).toBeTruthy();
     expect(
-      within(secondTaskOption as HTMLButtonElement).getByText("未启动")
+      within(secondTaskOption as HTMLButtonElement).getByText("待开始")
     ).toBeTruthy();
     expect(within(palette).queryByText("已退出")).toBeNull();
     expect(firstTaskOption).toHaveAttribute("aria-selected", "true");
