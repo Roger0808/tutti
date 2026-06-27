@@ -50,6 +50,10 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing
 		"Do not use `app open` by default",
 		"do not ask for a missing model",
 		"if it is `issue-manager` and the user asks issue/task work",
+		"The Claude Code `Monitor` tool is disabled in Tutti AgentGUI sessions",
+		"prefer one self-contained Bash command or script",
+		"checks the CLI first",
+		"polls with bounded sleeps",
 	} {
 		if !strings.Contains(policy, want) {
 			t.Fatalf("tutti CLI policy missing %q: %q", want, policy)

@@ -687,6 +687,10 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "If no matching skill is visible") ||
 		!strings.Contains(string(systemPrompt), "`mention://workspace-issue/<issueId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") ||
+		!strings.Contains(string(systemPrompt), "The Claude Code `Monitor` tool is disabled in Tutti AgentGUI sessions") ||
+		!strings.Contains(string(systemPrompt), "prefer one self-contained Bash command or script") ||
+		!strings.Contains(string(systemPrompt), "checks the CLI first") ||
+		!strings.Contains(string(systemPrompt), "polls with bounded sleeps") ||
 		!strings.Contains(string(systemPrompt), "`mention://agent-session/<sessionId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") {
 		t.Fatalf("claude system prompt content = %q, want mention handoff fallback guidance", string(systemPrompt))

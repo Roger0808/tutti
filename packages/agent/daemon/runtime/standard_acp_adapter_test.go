@@ -511,6 +511,62 @@ func TestClaudeCodeAdapterExecWaitsForPermissionAndStreamsUpdates(t *testing.T) 
 	}
 }
 
+func TestClaudeCodeAdapterSessionLevelMessageReusesRecentTurnID(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-1")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "claude-session-1"
+
+	var mu sync.Mutex
+	var sinkEvents []activityshared.Event
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		if agentSessionID != session.AgentSessionID {
+			return
+		}
+		mu.Lock()
+		sinkEvents = append(sinkEvents, events...)
+		mu.Unlock()
+	})
+
+	if _, err := adapter.Exec(context.Background(), session, textPrompt("monitor a job"), "", "turn-monitor", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	transport.conn.sendJSON(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  acpMethodUpdate,
+		"params": map[string]any{
+			"sessionId": "claude-session-1",
+			"update": map[string]any{
+				"sessionUpdate": "tool_call_update",
+				"toolCallId":    "monitor-result",
+				"title":         "Bash",
+				"kind":          "execute",
+				"status":        "completed",
+				"rawOutput": map[string]any{
+					"stdout": `{"job":{"status":"succeeded"}}`,
+				},
+			},
+		},
+	})
+
+	waitForCondition(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, event := range sinkEvents {
+			if event.Payload.CallID == "monitor-result" && event.Payload.TurnID == "turn-monitor" {
+				return true
+			}
+		}
+		return false
+	})
+}
+
 func TestClaudeCodeAdapterAllowsImagePromptWithoutInitializeCapability(t *testing.T) {
 	t.Parallel()
 
@@ -1682,6 +1738,14 @@ func TestClaudeCodeAdapterStartAppliesPlanMode(t *testing.T) {
 	instructions, ok := options["planModeInstructions"].(string)
 	if !ok || !strings.Contains(instructions, "do not edit files") || !strings.Contains(instructions, "implementation plan") {
 		t.Fatalf("planModeInstructions = %#v, want Tutti plan workflow instructions", options["planModeInstructions"])
+	}
+	disallowedTools, ok := options["disallowedTools"].([]any)
+	monitorDisallowed := false
+	for _, tool := range disallowedTools {
+		monitorDisallowed = monitorDisallowed || asString(tool) == "Monitor"
+	}
+	if !ok || !monitorDisallowed {
+		t.Fatalf("disallowedTools = %#v, want Monitor disabled", options["disallowedTools"])
 	}
 }
 

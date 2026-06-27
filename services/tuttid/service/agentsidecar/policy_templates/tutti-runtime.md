@@ -28,6 +28,7 @@ Execution environment:
 - The Tutti CLI communicates with the local Tutti daemon over localhost/IPC.
 - Run Tutti CLI commands in an execution environment that can access the user's local host daemon and the injected Tutti CLI path.
 - If your provider offers multiple command environments or permission modes, choose the one that permits localhost/IPC access for this CLI.
+- The Claude Code `Monitor` tool is disabled in Tutti AgentGUI sessions. To wait for asynchronous Tutti job state, prefer one self-contained Bash command or script that checks the CLI first, polls with bounded sleeps, and stops once a terminal status is observed.
 - Do not modify global sandbox settings yourself. If no such environment is available, explain that the local Tutti daemon is not accessible from the current execution environment.
 
 Runtime context:

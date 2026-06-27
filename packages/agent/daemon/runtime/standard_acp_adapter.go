@@ -55,9 +55,13 @@ type standardACPSession struct {
 	promptImage       bool
 	acpLiveState
 	pendingApprovals map[string]*pendingACPApproval
+	recentTurnID     string
+	recentTurnExpiry time.Time
 }
 
 type pendingACPApproval = pendingACPRequest
+
+const standardACPRecentTurnTTL = 10 * time.Minute
 
 const acpMethodSetConfigOption = "session/set_config_option"
 const claudeSystemPromptFileEnv = "TUTTI_CLAUDE_SYSTEM_PROMPT_FILE"
@@ -222,6 +226,7 @@ func (a *standardACPAdapter) applyProviderSessionMeta(params map[string]any, ses
 		}
 		claudeOptions := map[string]any{
 			"planModeInstructions": claudePlanModeInstructions,
+			"disallowedTools":      []string{"Monitor"},
 		}
 		extraArgs := map[string]string{}
 		if pluginDir != "" {
@@ -715,7 +720,12 @@ func (a *standardACPAdapter) startInitializedClient(
 	})
 	client := newACPClientWithStderrMessageMapper(conn, standardACPStderrMessageMapper(a.config.provider))
 	client.SetMessageHandler(func(ctx context.Context, message acpMessage) error {
-		_, err := a.handleACPMessage(ctx, client, session, "", message, nil, nil, nil)
+		turnSession := session
+		turnID := a.sessionRecentTurnID(session.AgentSessionID)
+		if acpSession := a.getSession(session.AgentSessionID); acpSession != nil {
+			turnSession.ProviderSessionID = firstNonEmptyString(acpSession.providerSessionID, turnSession.ProviderSessionID)
+		}
+		_, err := a.handleACPMessage(ctx, client, turnSession, turnID, message, nil, nil, nil)
 		return err
 	})
 	started := false
@@ -799,6 +809,7 @@ func (a *standardACPAdapter) Exec(
 		return nil, ErrSessionDisconnected
 	}
 	session.ProviderSessionID = acpSession.providerSessionID
+	a.rememberSessionTurn(session.AgentSessionID, turnID)
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
 	routedContent, mentionRoutingApplied, mentionRoutingSkills := claudeCodePromptContentWithMentionRouting(a.config.provider, content, visibleText)
 	acpPromptContent := promptContentForACP(routedContent)
@@ -2218,6 +2229,39 @@ func (a *standardACPAdapter) getSession(agentSessionID string) *standardACPSessi
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.sessions[agentSessionID]
+}
+
+func (a *standardACPAdapter) rememberSessionTurn(agentSessionID string, turnID string) {
+	turnID = strings.TrimSpace(turnID)
+	if a == nil || turnID == "" {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	acpSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if acpSession == nil {
+		return
+	}
+	acpSession.recentTurnID = turnID
+	acpSession.recentTurnExpiry = time.Now().Add(standardACPRecentTurnTTL)
+}
+
+func (a *standardACPAdapter) sessionRecentTurnID(agentSessionID string) string {
+	if a == nil {
+		return ""
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	acpSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if acpSession == nil || strings.TrimSpace(acpSession.recentTurnID) == "" {
+		return ""
+	}
+	if !acpSession.recentTurnExpiry.IsZero() && time.Now().After(acpSession.recentTurnExpiry) {
+		acpSession.recentTurnID = ""
+		acpSession.recentTurnExpiry = time.Time{}
+		return ""
+	}
+	return strings.TrimSpace(acpSession.recentTurnID)
 }
 
 func (a *standardACPAdapter) sessionConfigOptionMatches(agentSessionID string, configID string, value string) bool {
