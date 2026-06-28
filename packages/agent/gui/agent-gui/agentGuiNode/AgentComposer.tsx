@@ -456,7 +456,8 @@ function AgentUsageChip({
   labels,
   tooltipsEnabled = true,
   onCompact,
-  compactEnabled
+  compactSupported,
+  compactDisabled
 }: {
   percentUsed: number;
   usedTokens: number | null;
@@ -464,7 +465,8 @@ function AgentUsageChip({
   limits: readonly AgentComposerSlashStatusLimit[];
   tooltipsEnabled?: boolean;
   onCompact?: () => void;
-  compactEnabled?: boolean;
+  compactSupported?: boolean;
+  compactDisabled?: boolean;
   labels: Pick<
     AgentComposerProps["labels"],
     | "usageChipLabel"
@@ -551,11 +553,12 @@ function AgentUsageChip({
               ))}
             </div>
           ) : null}
-          {compactEnabled && onCompact ? (
+          {compactSupported && onCompact ? (
             <button
               type="button"
               data-testid="agent-gui-compact-button"
-              className="nodrag inline-flex items-center justify-center rounded-[6px] bg-[var(--transparency-block)] px-2 py-1 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:bg-background-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [-webkit-app-region:no-drag]"
+              disabled={compactDisabled}
+              className="nodrag inline-flex items-center justify-center rounded-[6px] bg-[var(--transparency-block)] px-2 py-1 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:bg-background-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[var(--transparency-block)] [-webkit-app-region:no-drag]"
               onClick={onCompact}
             >
               {labels.usageCompactAction}
@@ -2776,10 +2779,9 @@ export function AgentComposer({
                   totalTokens={usage.totalTokens}
                   limits={slashStatus?.limits ?? []}
                   tooltipsEnabled={!previewMode}
-                  compactEnabled={
-                    (compactSupported ?? false) &&
-                    hasCompactableContext &&
-                    !settingsControlsDisabled
+                  compactSupported={compactSupported ?? false}
+                  compactDisabled={
+                    !hasCompactableContext || settingsControlsDisabled
                   }
                   onCompact={() => onSubmit(textPromptContent("/compact"))}
                   labels={{
