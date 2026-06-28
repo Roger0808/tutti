@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -14,6 +15,7 @@ import {
   workspaceUserProjectI18nResources
 } from "@tutti-os/workspace-user-project/i18n";
 import { AgentComposer } from "./AgentComposer";
+import { textPromptContent } from "./controller/agentGuiController.promptHelpers";
 import {
   resetAgentActivityRuntimeForTests,
   setAgentActivityRuntimeForTests,
@@ -36,6 +38,7 @@ const { mockProjectMissingState } = vi.hoisted(() => ({
 afterEach(() => {
   mockProjectMissingState.current = false;
   resetAgentActivityRuntimeForTests();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -424,6 +427,53 @@ describe("AgentComposer", () => {
     expect(
       screen.queryByRole("button", { name: "完全访问权限" })
     ).not.toBeInTheDocument();
+  });
+
+  it("wraps composer draft images in a right-click copy menu", () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("", [
+          {
+            id: "img-1",
+            name: "earth.png",
+            mimeType: "image/png",
+            previewUrl: "blob:preview-1",
+            uploading: false
+          }
+        ])}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const drafts = screen.getByTestId("agent-gui-composer-image-drafts");
+    expect(
+      drafts.querySelector('[data-slot="context-menu-trigger"]')
+    ).not.toBeNull();
   });
 
   it("hides the permission dropdown and the plan badge when only plan mode is supported and inactive", () => {
@@ -1660,7 +1710,9 @@ describe("AgentComposer", () => {
     );
   });
 
-  it("renders context usage immediately before the permission menu", async () => {
+  it("opens context usage details after hovering the usage chip", async () => {
+    vi.useFakeTimers();
+
     const { container } = render(
       <AgentComposer
         workspaceId="workspace-1"
@@ -1723,23 +1775,36 @@ describe("AgentComposer", () => {
     expect(usageChip.tagName).toBe("BUTTON");
     expect(usageChip).toHaveClass("size-4");
     expect(usageChip).toHaveClass("mr-2");
+    expect(usageChip).toHaveClass("cursor-pointer");
     expect(usageChip).not.toHaveAttribute("data-slot", "badge");
+    expect(screen.queryByTestId("agent-gui-usage-popover")).toBeNull();
 
-    fireEvent.pointerMove(usageChip, { pointerType: "mouse" });
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("上下文用量");
+    fireEvent.pointerOver(usageChip, { pointerType: "mouse" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(119);
+    });
+    expect(screen.queryByTestId("agent-gui-usage-popover")).toBeNull();
 
-    fireEvent.click(usageChip);
-    await waitFor(() =>
-      expect(screen.getByTestId("agent-gui-usage-popover")).toBeVisible()
-    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByTestId("agent-gui-usage-popover")).toBeVisible();
     expect(
       screen.getByTestId("agent-gui-usage-context-meter")
     ).toHaveTextContent("上下文窗口");
     expect(
       screen.getByTestId("agent-gui-usage-context-meter")
     ).toHaveTextContent("50,000 / 200,000 (25%)");
-    expect(screen.getByText("7d limit")).toBeInTheDocument();
-    expect(screen.getByText("96% left")).toBeInTheDocument();
+    // Plan limits moved out of the usage popover into the rail config menu.
+    expect(screen.queryByText("7d limit")).toBeNull();
+    expect(screen.queryByText("96% left")).toBeNull();
+
+    fireEvent.pointerOut(usageChip, { pointerType: "mouse" });
+    expect(screen.getByTestId("agent-gui-usage-popover")).toBeVisible();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(140);
+    });
+    expect(screen.queryByTestId("agent-gui-usage-popover")).toBeNull();
   });
 
   it.each([
@@ -1783,6 +1848,227 @@ describe("AgentComposer", () => {
       "data-usage-level",
       level
     );
+  });
+
+  it("shows compact context button in usage popover when compactSupported and hasCompactableContext", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        usage={{ usedTokens: 50_000, totalTokens: 200_000, percentUsed: 25 }}
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        compactSupported={true}
+        hasCompactableContext={true}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    // Open the usage popover before asserting/clicking the compact button
+    const usageChip = screen.getByTestId("agent-gui-usage-chip");
+    fireEvent.click(usageChip);
+
+    const compactButton = screen.queryByTestId("agent-gui-compact-button");
+    expect(compactButton).toBeInTheDocument();
+    fireEvent.click(compactButton!);
+    expect(onSubmit).toHaveBeenCalledWith(textPromptContent("/compact"));
+  });
+
+  it("does not show compact context button when compactSupported is false", () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        usage={{ usedTokens: 50_000, totalTokens: 200_000, percentUsed: 25 }}
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        compactSupported={false}
+        hasCompactableContext={true}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.queryByTestId("agent-gui-compact-button")
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the compact context button disabled while busy (showStopButton=true)", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        usage={{ usedTokens: 50_000, totalTokens: 200_000, percentUsed: 25 }}
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={true}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        compactSupported={true}
+        hasCompactableContext={true}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("agent-gui-usage-chip"));
+    const compactButton = screen.getByTestId("agent-gui-compact-button");
+    expect(compactButton).toBeInTheDocument();
+    expect(compactButton).toBeDisabled();
+    fireEvent.click(compactButton);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("shows the compact context button disabled when no user message has been sent", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        usage={{ usedTokens: 50_000, totalTokens: 200_000, percentUsed: 25 }}
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        compactSupported={true}
+        hasCompactableContext={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("agent-gui-usage-chip"));
+    const compactButton = screen.getByTestId("agent-gui-compact-button");
+    expect(compactButton).toBeDisabled();
+    fireEvent.click(compactButton);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("shows the compact context button disabled when the composer is blocked (read-only)", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        usage={{ usedTokens: 50_000, totalTokens: 200_000, percentUsed: 25 }}
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={true}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        compactSupported={true}
+        hasCompactableContext={true}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("agent-gui-usage-chip"));
+    const compactButton = screen.getByTestId("agent-gui-compact-button");
+    expect(compactButton).toBeDisabled();
+    fireEvent.click(compactButton);
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("does not render the project dropdown below the dock input shell", () => {
@@ -3233,6 +3519,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     modelContextWindowSuffix: "上下文窗口",
     modelTooltipVersionLabel: "版本",
     defaultModel: "默认模型",
+    loadingOptions: "正在加载",
     inheritedUnavailable: "不可用",
     loadingConversation: "加载会话中",
     reasoningLabel: "推理",
@@ -3315,6 +3602,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     usageContextWindowLabel: "上下文窗口",
     usageTokensLabel: "Token 用量",
     usageLimitsLabel: "限额",
+    usageCompactAction: "压缩",
     approvalLead: "审批",
     planLead: "计划",
     planModes: [],

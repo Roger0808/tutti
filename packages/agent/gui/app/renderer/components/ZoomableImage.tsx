@@ -1,5 +1,6 @@
 import {
   cloneElement,
+  isValidElement,
   type ComponentPropsWithoutRef,
   type JSX,
   type MouseEvent,
@@ -13,6 +14,8 @@ import { CopyIcon, DownloadIcon } from "lucide-react";
 import Zoom from "react-medium-image-zoom";
 import { useTranslation } from "../../../i18n/index";
 import { cn } from "../lib/utils";
+import { ConversationImageContextMenu } from "../../../shared/agentConversation/components/ConversationImageContextMenu";
+import { copyImageToClipboard } from "../../../shared/agentConversation/lib/copyImageToClipboard";
 
 interface ZoomableImageProps extends ComponentPropsWithoutRef<"img"> {
   downloadName?: string;
@@ -30,6 +33,7 @@ export function ZoomableImage({
   const { t } = useTranslation();
   const actionSource =
     typeof src === "string" && src.trim() ? src.trim() : null;
+  const hasImageActions = Boolean(actionSource && downloadName !== undefined);
   const resolvedDownloadName = useMemo(
     () => resolveImageDownloadName(downloadName, actionSource),
     [actionSource, downloadName]
@@ -59,13 +63,13 @@ export function ZoomableImage({
   const handleContextMenu = useCallback(
     (event: MouseEvent<HTMLImageElement>): void => {
       onContextMenu?.(event);
-      if (event.defaultPrevented || !actionSource) {
+      if (event.defaultPrevented || !actionSource || !hasImageActions) {
         return;
       }
       event.preventDefault();
       setContextMenuPosition({ x: event.clientX, y: event.clientY });
     },
-    [actionSource, onContextMenu]
+    [actionSource, hasImageActions, onContextMenu]
   );
 
   const handleCopyImage = useCallback(async (): Promise<void> => {
@@ -88,7 +92,7 @@ export function ZoomableImage({
     downloadImage(actionSource, resolvedDownloadName);
   }, [actionSource, closeContextMenu, resolvedDownloadName]);
 
-  const actionButtons = actionSource ? (
+  const actionButtons = hasImageActions ? (
     <ImageActionButtons
       copyLabel={t("common.copyImage")}
       downloadLabel={t("common.downloadImage")}
@@ -103,22 +107,39 @@ export function ZoomableImage({
   }: {
     buttonUnzoom: ReactElement<HTMLButtonElement>;
     img: ReactElement | null;
-  }): JSX.Element => (
-    <>
-      {img}
-      {actionButtons ? (
-        <div className="tsh-zoom-dialog__image-actions nodrag tsh-desktop-no-drag">
-          {actionButtons}
-        </div>
-      ) : null}
-      {cloneElement(buttonUnzoom, {
-        className: cn(
-          buttonUnzoom.props.className,
-          "nodrag tsh-desktop-no-drag"
-        )
-      })}
-    </>
-  );
+  }): JSX.Element => {
+    const zoomSrc =
+      isValidElement(img) &&
+      typeof (img.props as { src?: unknown }).src === "string"
+        ? (img.props as { src: string }).src
+        : null;
+    return (
+      <>
+        {!actionButtons && img && zoomSrc ? (
+          <ConversationImageContextMenu
+            src={zoomSrc}
+            asChild
+            contentStyle={{ zIndex: "var(--z-dialog-popover)" }}
+          >
+            {img}
+          </ConversationImageContextMenu>
+        ) : (
+          img
+        )}
+        {actionButtons ? (
+          <div className="tsh-zoom-dialog__image-actions nodrag tsh-desktop-no-drag">
+            {actionButtons}
+          </div>
+        ) : null}
+        {cloneElement(buttonUnzoom, {
+          className: cn(
+            buttonUnzoom.props.className,
+            "nodrag tsh-desktop-no-drag"
+          )
+        })}
+      </>
+    );
+  };
 
   return (
     <>
@@ -133,7 +154,7 @@ export function ZoomableImage({
         <img
           {...props}
           src={src}
-          onContextMenu={handleContextMenu}
+          onContextMenu={hasImageActions ? handleContextMenu : onContextMenu}
           className={cn("nodrag tsh-desktop-no-drag cursor-zoom-in", className)}
         />
       </Zoom>
@@ -190,34 +211,6 @@ function ImageActionButtons({
       </button>
     </>
   );
-}
-
-async function copyImageToClipboard(src: string): Promise<void> {
-  const clipboard = navigator.clipboard;
-  const ClipboardItemConstructor = globalThis.ClipboardItem;
-  if (
-    !clipboard ||
-    typeof clipboard.write !== "function" ||
-    typeof ClipboardItemConstructor !== "function"
-  ) {
-    return;
-  }
-
-  const blob = await loadImageBlob(src);
-  await clipboard.write([
-    new ClipboardItemConstructor({
-      [blob.type || "image/png"]: blob
-    })
-  ]);
-}
-
-async function loadImageBlob(src: string): Promise<Blob> {
-  const response = await fetch(src);
-  const blob = await response.blob();
-  if (blob.type) {
-    return blob;
-  }
-  return new Blob([await blob.arrayBuffer()], { type: "image/png" });
 }
 
 function downloadImage(src: string, name: string): void {

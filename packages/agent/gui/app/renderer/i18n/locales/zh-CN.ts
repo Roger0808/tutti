@@ -335,6 +335,7 @@ export const zhCN = {
       modelLabel: "模型",
       modelSelectionLabel: "模型选择",
       defaultModel: "默认模型",
+      loadingOptions: "正在加载",
       inheritedUnavailable: "继承 / 不可用",
       reasoningLabel: "推理强度",
       reasoningDegreeLabel: "推理程度",
@@ -495,6 +496,7 @@ export const zhCN = {
       planImplementationSkip: "留在计划模式",
       noRunningResponse: "当前没有正在运行的回复。",
       copyMessage: "复制消息",
+      copyImage: "复制图片",
       messageCopied: "已复制",
       promptTipsPrefix: "Tips：",
       reviewPicker: {
@@ -544,6 +546,7 @@ export const zhCN = {
       empty: "需要 {{provider}} 帮你做些什么？",
       conversations: "会话",
       newConversation: "新建会话",
+      agentConfig: "配置",
       agentEnvSetup: "环境检测",
       noConversations: "还没有会话",
       emptyProjectConversations: "暂无对话",

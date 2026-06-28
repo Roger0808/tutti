@@ -364,6 +364,7 @@ export const en = {
       modelLabel: "Model",
       modelSelectionLabel: "Model selection",
       defaultModel: "Default model",
+      loadingOptions: "Loading…",
       inheritedUnavailable: "Inherited / unavailable",
       reasoningLabel: "Reasoning",
       reasoningDegreeLabel: "Reasoning level",
@@ -540,6 +541,7 @@ export const en = {
       planImplementationSkip: "Stay in Plan Mode",
       noRunningResponse: "No running response to stop.",
       copyMessage: "Copy message",
+      copyImage: "Copy image",
       messageCopied: "Copied",
       promptTipsPrefix: "Tips: ",
       reviewPicker: {
@@ -594,6 +596,7 @@ export const en = {
       empty: "What can {{provider}} help you with?",
       conversations: "Sessions",
       newConversation: "New session",
+      agentConfig: "Settings",
       agentEnvSetup: "Environment check",
       noConversations: "No sessions yet",
       emptyProjectConversations: "No chats yet",
