@@ -3099,7 +3099,7 @@ export function AgentComposer({
                   data-agent-plan-mode-badge="true"
                   className={cn(
                     styles.composerMenuTrigger,
-                    "w-auto",
+                    "group w-auto",
                     "disabled:cursor-not-allowed disabled:opacity-60"
                   )}
                   onClick={() => onSettingsChange({ planMode: false })}
@@ -3109,6 +3109,10 @@ export function AgentComposer({
                     <span className="min-w-0 truncate">
                       {labels.planModeLabel}
                     </span>
+                    <X
+                      aria-hidden
+                      className="size-3 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-disabled:opacity-0"
+                    />
                   </span>
                 </button>
               ) : null}
@@ -3121,7 +3125,7 @@ export function AgentComposer({
                   data-agent-goal-badge="true"
                   className={cn(
                     styles.composerMenuTrigger,
-                    "w-auto",
+                    "group w-auto",
                     "disabled:cursor-not-allowed disabled:opacity-60"
                   )}
                   onClick={clearGoalModeBadge}
@@ -3129,6 +3133,10 @@ export function AgentComposer({
                   <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
                     <Target aria-hidden className="size-3.5 shrink-0" />
                     <span className="min-w-0 truncate">{labels.goalLabel}</span>
+                    <X
+                      aria-hidden
+                      className="size-3 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-disabled:opacity-0"
+                    />
                   </span>
                 </button>
               ) : null}

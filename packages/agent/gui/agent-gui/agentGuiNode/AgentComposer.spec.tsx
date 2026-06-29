@@ -835,7 +835,13 @@ describe("AgentComposer", () => {
     fireEvent.click(screen.getByRole("button", { name: "目标" }));
 
     expect(onDraftContentChange).toHaveBeenCalledWith(createDraft("/goal"));
-    expect(screen.getByRole("button", { name: "目标" })).toBeInTheDocument();
+    const goalBadge = screen.getByRole("button", { name: "目标" });
+    expect(goalBadge).toBeInTheDocument();
+    // Hovering the badge reveals a cancel affordance hinting it is clickable.
+    expect(goalBadge).toHaveClass("group");
+    expect(
+      goalBadge.querySelector(".group-hover\\:opacity-100")
+    ).toBeTruthy();
     expect(screen.getByRole("textbox")).toHaveValue("");
 
     fireEvent.change(screen.getByRole("textbox"), {
