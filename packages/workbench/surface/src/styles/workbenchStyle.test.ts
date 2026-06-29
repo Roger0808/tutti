@@ -69,6 +69,10 @@ test("mission control overlay lets layout controls sit above dialog overlays", (
     source,
     /className="workbench-mission-control__layout-dock desktop-dock-plate pointer-events-auto"/
   );
+  assert.match(
+    css,
+    /\.desktop-dock-plate\.workbench-mission-control__layout-dock\s*{[^}]*pointer-events:\s*auto;/s
+  );
 });
 
 test("dialog popover node layer sits above dialog overlays and remains clickable", () => {
