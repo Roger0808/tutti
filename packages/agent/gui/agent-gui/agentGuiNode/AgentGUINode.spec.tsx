@@ -6311,8 +6311,8 @@ describe("AgentGUINode", () => {
     expect(css).toMatch(
       /\.workspace-agents-status-panel__conversation-timeline\.agent-gui-node__timeline\s*{[^}]*padding-right:\s*28px[^}]*padding-left:\s*28px/s
     );
-    expect(css).not.toMatch(
-      /\.agent-gui-node__timeline-with-composer\s*{[^}]*(?:-webkit-)?mask-image/s
+    expect(css).toMatch(
+      /\.agent-gui-node__timeline-with-composer\s*{[^}]*-webkit-mask-image:\s*linear-gradient[^}]*mask-image:\s*linear-gradient/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__bottom-dock\s*{[^}]*width:\s*min\(\s*100%,\s*calc\(\s*var\(--agent-gui-detail-flow-max-width\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\)\s*\)/s
@@ -6321,7 +6321,16 @@ describe("AgentGUINode", () => {
       /\.agent-gui-node__bottom-dock\s*{[^}]*margin-right:\s*auto[^}]*margin-left:\s*auto/s
     );
     expect(css).toMatch(
+      /\.agent-gui-node__bottom-dock\s*{[^}]*pointer-events:\s*none/s
+    );
+    expect(css).toMatch(
       /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-node__composer\s*{[^}]*padding-right:\s*12px[^}]*padding-left:\s*12px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-node__composer\s*{[^}]*pointer-events:\s*none/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome,[\s\S]*?\.agent-gui-node__composer-input-shell\s*{[^}]*pointer-events:\s*auto/s
     );
   });
 
