@@ -266,6 +266,10 @@ function compareMessagesByDisplayOrder(
   left: WorkspaceAgentActivityMessage,
   right: WorkspaceAgentActivityMessage
 ): number {
+  // This comparator decides the rendered message position. startedAt is the
+  // start time for long-running items, occurredAt is the append time for plain
+  // messages, and completedAt is only a last fallback; version/id are stable
+  // tie-breakers when two messages share the same display time.
   return (
     messageDisplayOrderTime(left) - messageDisplayOrderTime(right) ||
     normalizedPositiveNumber(left.version) -
