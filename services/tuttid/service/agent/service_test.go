@@ -62,6 +62,39 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 	}
 }
 
+func TestServiceCreatePassesNormalizedWorkModeToRuntime(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mode string
+		want string
+	}{
+		{name: "empty defaults to coding", mode: "", want: "coding"},
+		{name: "general is preserved", mode: "general", want: "general"},
+		{name: "invalid defaults to coding", mode: "daily", want: "coding"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime := newFakeRuntime()
+			service := NewService(runtime)
+
+			_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+				AgentSessionID: "session-" + strings.ReplaceAll(tc.name, " ", "-"),
+				Provider:       "codex",
+				WorkMode:       tc.mode,
+				InitialContent: TextPromptContent("hello"),
+			})
+			if err != nil {
+				t.Fatalf("Create returned error: %v", err)
+			}
+			if len(runtime.startCalls) != 1 {
+				t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+			}
+			if got := runtime.startCalls[0].WorkMode; got != tc.want {
+				t.Fatalf("runtime workMode = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestServiceCreateReportsNodeResults(t *testing.T) {
 	runtime := newFakeRuntime()
 	reporter := &recordingAgentAnalyticsReporter{}
@@ -4191,6 +4224,7 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Runtime
 			PermissionModeID: input.PermissionModeID,
 			PlanMode:         input.PlanMode,
 			ReasoningEffort:  input.ReasoningEffort,
+			WorkMode:         input.WorkMode,
 		},
 		Status:          "ready",
 		Title:           input.Title,

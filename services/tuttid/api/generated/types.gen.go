@@ -520,6 +520,24 @@ func (e CliOutputMode) Valid() bool {
 	}
 }
 
+// Defines values for DesktopAgentWorkMode.
+const (
+	Coding  DesktopAgentWorkMode = "coding"
+	General DesktopAgentWorkMode = "general"
+)
+
+// Valid indicates whether the value is a known member of the DesktopAgentWorkMode enum.
+func (e DesktopAgentWorkMode) Valid() bool {
+	switch e {
+	case Coding:
+		return true
+	case General:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DesktopAppCatalogChannel.
 const (
 	Production DesktopAppCatalogChannel = "production"
@@ -2328,6 +2346,9 @@ type DesktopAgentGuiConversationRailCollapsedByProvider struct {
 	Openclaw   *bool `json:"openclaw,omitempty"`
 }
 
+// DesktopAgentWorkMode defines model for DesktopAgentWorkMode.
+type DesktopAgentWorkMode string
+
 // DesktopAppCatalogChannel defines model for DesktopAppCatalogChannel.
 type DesktopAppCatalogChannel string
 
@@ -2356,6 +2377,7 @@ type DesktopMinimizeAnimation string
 type DesktopPreferences struct {
 	AgentComposerDefaultsByProvider             DesktopAgentComposerDefaultsByProvider             `json:"agentComposerDefaultsByProvider"`
 	AgentGuiConversationRailCollapsedByProvider DesktopAgentGuiConversationRailCollapsedByProvider `json:"agentGuiConversationRailCollapsedByProvider"`
+	AgentWorkMode                               DesktopAgentWorkMode                               `json:"agentWorkMode"`
 	AppCatalogChannel                           DesktopAppCatalogChannel                           `json:"appCatalogChannel"`
 	BrowserUseConnectionMode                    *DesktopBrowserUseConnectionMode                   `json:"browserUseConnectionMode,omitempty"`
 	DefaultAgentProvider                        WorkspaceAgentProvider                             `json:"defaultAgentProvider"`

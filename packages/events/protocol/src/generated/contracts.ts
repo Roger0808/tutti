@@ -80,6 +80,7 @@ export interface PreferencesDesktopPreferencesV1 {
     hermes?: boolean;
     openclaw?: boolean;
   };
+  agentWorkMode: "coding" | "general";
   appCatalogChannel: "production" | "staging";
   browserUseConnectionMode?: "isolated" | "autoConnect";
   defaultAgentProvider:

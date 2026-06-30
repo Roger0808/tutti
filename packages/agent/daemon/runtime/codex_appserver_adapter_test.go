@@ -2570,6 +2570,9 @@ func TestCodexAppServerAdapterSendsCollaborationModeForPlanTurns(t *testing.T) {
 	if asString(exitSettings["model"]) != "gpt-5.1-codex" {
 		t.Fatalf("default collaborationMode settings = %#v, want default model", exitSettings)
 	}
+	if instructions := asString(exitSettings["developer_instructions"]); !strings.Contains(instructions, "strongly prefer making reasonable assumptions and executing") {
+		t.Fatalf("default collaborationMode developer_instructions = %q, want coding work mode guidance", instructions)
+	}
 
 	session.Settings = &SessionSettings{PlanMode: true, Model: "gpt-5.1-codex-mini", ReasoningEffort: "low"}
 	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
@@ -2583,6 +2586,32 @@ func TestCodexAppServerAdapterSendsCollaborationModeForPlanTurns(t *testing.T) {
 	overrideSettings, _ := overrideMode["settings"].(map[string]any)
 	if asString(overrideSettings["model"]) != "gpt-5.1-codex-mini" || asString(overrideSettings["reasoning_effort"]) != "low" {
 		t.Fatalf("collaborationMode settings = %#v, want session overrides", overrideSettings)
+	}
+	if value, ok := overrideSettings["developer_instructions"]; !ok || value != nil {
+		t.Fatalf("plan collaborationMode settings = %#v, want explicit null developer_instructions", overrideSettings)
+	}
+}
+
+func TestCodexAppServerAdapterSendsGeneralWorkModeInstructions(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	session.Settings = &SessionSettings{WorkMode: AgentWorkModeGeneral}
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "summarize this",
+	}}, "", "turn-general-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	collaborationMode, _ := turnStart["collaborationMode"].(map[string]any)
+	if asString(collaborationMode["mode"]) != "default" {
+		t.Fatalf("turn/start collaborationMode = %#v, want default mode", turnStart["collaborationMode"])
+	}
+	settings, _ := collaborationMode["settings"].(map[string]any)
+	instructions := asString(settings["developer_instructions"])
+	if !strings.Contains(instructions, "everyday work mode") ||
+		!strings.Contains(instructions, "less technical detail") {
+		t.Fatalf("developer_instructions = %q, want general work mode guidance", instructions)
 	}
 }
 

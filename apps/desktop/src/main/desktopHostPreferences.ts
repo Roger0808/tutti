@@ -7,9 +7,11 @@ import type {
 import {
   defaultDesktopBrowserUseConnectionMode,
   defaultDesktopAppCatalogChannel,
+  defaultDesktopAgentWorkMode,
   desktopAgentComposerDefaultsByProviderEqual,
   desktopAgentGuiConversationRailCollapsedByProviderEqual,
   isDesktopBrowserUseConnectionMode,
+  normalizeDesktopAgentWorkMode,
   normalizeDesktopAgentComposerDefaultsByProvider,
   normalizeDesktopAgentGuiConversationRailCollapsedByProvider,
   type DesktopAgentComposerDefaultsByProvider,
@@ -28,6 +30,7 @@ import {
   normalizeDesktopWorkbenchWindowSnapping,
   desktopWorkbenchWindowSnappingEqual,
   type DesktopAgentProvider,
+  type DesktopAgentWorkMode,
   type DesktopAppCatalogChannel,
   type DesktopBrowserUseConnectionMode,
   type DesktopDockIconStyle,
@@ -52,6 +55,7 @@ const updateChannelDefaultMigrationID = "desktop-update-channel-default-rc-v1";
 export interface DesktopHostPreferencesState {
   getAgentComposerDefaultsByProvider(): DesktopAgentComposerDefaultsByProvider;
   getAgentGUIConversationRailCollapsedByProvider(): DesktopAgentGuiConversationRailCollapsedByProvider;
+  getAgentWorkMode(): DesktopAgentWorkMode;
   getAppCatalogChannel(): DesktopAppCatalogChannel;
   getBrowserUseConnectionMode(): DesktopBrowserUseConnectionMode;
   getDefaultAgentProvider(): DesktopAgentProvider;
@@ -69,6 +73,7 @@ export interface DesktopHostPreferencesState {
   sync(input: {
     agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
     agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
+    agentWorkMode?: DesktopAgentWorkMode;
     appCatalogChannel?: DesktopAppCatalogChannel;
     browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
     defaultAgentProvider?: DesktopAgentProvider;
@@ -107,6 +112,9 @@ export async function createDesktopHostPreferencesState(
     normalizeDesktopAgentGuiConversationRailCollapsedByProvider(
       initialPreferences.agentGuiConversationRailCollapsedByProvider
     );
+  let agentWorkMode = normalizeDesktopAgentWorkMode(
+    initialPreferences.agentWorkMode
+  );
   let appCatalogChannel =
     initialPreferences.appCatalogChannel ?? defaultDesktopAppCatalogChannel;
   let browserUseConnectionMode = isDesktopBrowserUseConnectionMode(
@@ -141,6 +149,9 @@ export async function createDesktopHostPreferencesState(
     },
     getAgentGUIConversationRailCollapsedByProvider() {
       return agentGUIConversationRailCollapsedByProvider;
+    },
+    getAgentWorkMode() {
+      return agentWorkMode;
     },
     getAppCatalogChannel() {
       return appCatalogChannel;
@@ -192,6 +203,7 @@ export async function createDesktopHostPreferencesState(
         agentComposerDefaultsByProvider;
       const previousAgentGUIConversationRailCollapsedByProvider =
         agentGUIConversationRailCollapsedByProvider;
+      const previousAgentWorkMode = agentWorkMode;
       const previousAppCatalogChannel = appCatalogChannel;
       const previousBrowserUseConnectionMode = browserUseConnectionMode;
       const previousDefaultAgentProvider = defaultAgentProvider;
@@ -234,6 +246,9 @@ export async function createDesktopHostPreferencesState(
           agentGUIConversationRailCollapsedByProvider =
             nextAgentGUIConversationRailCollapsedByProvider;
         }
+      }
+      if (input.agentWorkMode) {
+        agentWorkMode = normalizeDesktopAgentWorkMode(input.agentWorkMode);
       }
       if (input.browserUseConnectionMode) {
         browserUseConnectionMode = input.browserUseConnectionMode;
@@ -299,6 +314,7 @@ export async function createDesktopHostPreferencesState(
           previousAgentComposerDefaultsByProvider ||
         agentGUIConversationRailCollapsedByProvider !==
           previousAgentGUIConversationRailCollapsedByProvider ||
+        agentWorkMode !== previousAgentWorkMode ||
         appCatalogChannel !== previousAppCatalogChannel ||
         browserUseConnectionMode !== previousBrowserUseConnectionMode ||
         defaultAgentProvider !== previousDefaultAgentProvider ||
@@ -342,6 +358,7 @@ async function resolveInitialDesktopPreferences(
         preferences: {
           agentComposerDefaultsByProvider: {},
           agentGuiConversationRailCollapsedByProvider: {},
+          agentWorkMode: defaultDesktopAgentWorkMode,
           appCatalogChannel: defaultDesktopAppCatalogChannel,
           browserUseConnectionMode: defaultDesktopBrowserUseConnectionMode,
           defaultAgentProvider: defaultDesktopAgentProvider,
@@ -366,6 +383,7 @@ async function resolveInitialDesktopPreferences(
     return {
       agentComposerDefaultsByProvider: {},
       agentGuiConversationRailCollapsedByProvider: {},
+      agentWorkMode: defaultDesktopAgentWorkMode,
       appCatalogChannel: defaultDesktopAppCatalogChannel,
       browserUseConnectionMode: defaultDesktopBrowserUseConnectionMode,
       defaultAgentProvider: defaultDesktopAgentProvider,
@@ -393,26 +411,37 @@ async function migrateInitializedDesktopPreferences(
   )
     ? preferences.minimizeAnimation
     : defaultDesktopMinimizeAnimation;
+  const normalizedAgentWorkMode = normalizeDesktopAgentWorkMode(
+    preferences.agentWorkMode
+  );
   if (
     preferences.updateChannel !== "stable" ||
     defaultDesktopUpdateChannel !== "rc"
   ) {
-    if (preferences.minimizeAnimation === normalizedMinimizeAnimation) {
+    if (
+      preferences.minimizeAnimation === normalizedMinimizeAnimation &&
+      preferences.agentWorkMode === normalizedAgentWorkMode
+    ) {
       return preferences;
     }
     return {
       ...preferences,
+      agentWorkMode: normalizedAgentWorkMode,
       minimizeAnimation: normalizedMinimizeAnimation
     };
   }
 
   const markerPath = resolveUpdateChannelDefaultMigrationMarkerPath(options);
   if (await hasMigrationMarker(markerPath)) {
-    if (preferences.minimizeAnimation === normalizedMinimizeAnimation) {
+    if (
+      preferences.minimizeAnimation === normalizedMinimizeAnimation &&
+      preferences.agentWorkMode === normalizedAgentWorkMode
+    ) {
       return preferences;
     }
     return {
       ...preferences,
+      agentWorkMode: normalizedAgentWorkMode,
       minimizeAnimation: normalizedMinimizeAnimation
     };
   }
@@ -421,6 +450,7 @@ async function migrateInitializedDesktopPreferences(
     const response = await options.tuttidClient.putDesktopPreferences({
       preferences: {
         ...preferences,
+        agentWorkMode: normalizedAgentWorkMode,
         minimizeAnimation: normalizedMinimizeAnimation,
         updateChannel: defaultDesktopUpdateChannel
       }
@@ -433,6 +463,7 @@ async function migrateInitializedDesktopPreferences(
     });
     return {
       ...preferences,
+      agentWorkMode: normalizedAgentWorkMode,
       minimizeAnimation: normalizedMinimizeAnimation
     };
   }

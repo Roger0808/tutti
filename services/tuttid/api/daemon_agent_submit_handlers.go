@@ -46,6 +46,7 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		Speed:                request.Body.Speed,
 		Title:                request.Body.Title,
 		Visible:              request.Body.Visible,
+		WorkMode:             api.agentWorkMode(ctx),
 	})
 	if err != nil {
 		logCreateAgentSubmitTrace("api.create.failed", string(request.WorkspaceID), agentSessionID, metadata, "", "", err)

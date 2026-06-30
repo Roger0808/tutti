@@ -58,6 +58,12 @@ export const defaultDesktopAppCatalogChannel: DesktopAppCatalogChannel =
 
 export const defaultDesktopShowAppDeveloperSources = false;
 
+export const desktopAgentWorkModes = ["coding", "general"] as const;
+
+export type DesktopAgentWorkMode = (typeof desktopAgentWorkModes)[number];
+
+export const defaultDesktopAgentWorkMode: DesktopAgentWorkMode = "coding";
+
 export function readInitialDockPlacementFromLocation(
   locationSearch?: string
 ): DesktopDockPlacement {
@@ -127,6 +133,21 @@ export function isDesktopAppCatalogChannel(
     typeof value === "string" &&
     desktopAppCatalogChannels.includes(value as DesktopAppCatalogChannel)
   );
+}
+
+export function isDesktopAgentWorkMode(
+  value: unknown
+): value is DesktopAgentWorkMode {
+  return (
+    typeof value === "string" &&
+    desktopAgentWorkModes.includes(value as DesktopAgentWorkMode)
+  );
+}
+
+export function normalizeDesktopAgentWorkMode(
+  value: unknown
+): DesktopAgentWorkMode {
+  return isDesktopAgentWorkMode(value) ? value : defaultDesktopAgentWorkMode;
 }
 
 export const desktopAgentProviders = [

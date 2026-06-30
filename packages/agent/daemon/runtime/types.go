@@ -135,6 +135,7 @@ type SessionSettings struct {
 	BrowserUse       *bool  `json:"browserUse,omitempty"`
 	ComputerUse      *bool  `json:"computerUse,omitempty"`
 	PermissionModeID string `json:"permissionModeId,omitempty"`
+	WorkMode         string `json:"workMode,omitempty"`
 }
 
 type SessionSettingsPatch struct {

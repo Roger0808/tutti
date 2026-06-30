@@ -5,8 +5,10 @@ import type {
   PutDesktopPreferencesRequest
 } from "@tutti-os/client-tuttid-ts";
 import {
+  defaultDesktopAgentWorkMode,
   defaultDesktopMinimizeAnimation,
   desktopWorkbenchWindowSnappingEqual,
+  normalizeDesktopAgentWorkMode,
   normalizeDesktopWorkbenchWindowSnapping
 } from "../../../../../../../shared/preferences/index.ts";
 
@@ -231,6 +233,7 @@ function createPreferencesKey(
     stableAgentGuiConversationRailCollapsedByProviderKey(
       preferences.agentGuiConversationRailCollapsedByProvider
     ),
+    normalizeDesktopAgentWorkMode(preferences.agentWorkMode),
     preferences.appCatalogChannel,
     preferences.browserUseConnectionMode ?? "isolated",
     preferences.defaultAgentProvider,
@@ -263,6 +266,10 @@ function preferencesEqual(
     ) ===
       stableAgentGuiConversationRailCollapsedByProviderKey(
         right.agentGuiConversationRailCollapsedByProvider
+      ) &&
+    normalizeDesktopAgentWorkMode(left.agentWorkMode) ===
+      normalizeDesktopAgentWorkMode(
+        right.agentWorkMode ?? defaultDesktopAgentWorkMode
       ) &&
     (left.browserUseConnectionMode ?? "isolated") ===
       (right.browserUseConnectionMode ?? "isolated") &&

@@ -208,6 +208,7 @@ func (a *standardACPAdapter) applyProviderSessionMeta(params map[string]any, ses
 			)
 			return err
 		}
+		systemPrompt = joinPromptSections(systemPrompt, agentWorkModePromptAppend(session.SettingsValue()))
 		pluginDir, err := claudePluginDir(session.Env)
 		if err != nil {
 			slog.Warn("agent session ACP claude provider meta plugin dir failed",
@@ -346,6 +347,16 @@ func claudeSystemPromptAppend(env []string) (string, error) {
 		return "", fmt.Errorf("read claude system prompt: %w", err)
 	}
 	return string(content), nil
+}
+
+func joinPromptSections(sections ...string) string {
+	nonEmpty := make([]string, 0, len(sections))
+	for _, section := range sections {
+		if trimmed := strings.TrimSpace(section); trimmed != "" {
+			nonEmpty = append(nonEmpty, trimmed)
+		}
+	}
+	return strings.Join(nonEmpty, "\n\n")
 }
 
 func claudePluginDir(env []string) (string, error) {

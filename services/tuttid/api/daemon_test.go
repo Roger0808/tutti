@@ -543,6 +543,7 @@ func (s stubPreferencesService) Get(ctx context.Context) (preferencesbiz.Desktop
 func (s stubPreferencesService) Put(ctx context.Context, input preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error) {
 	if s.putFn == nil {
 		return preferencesbiz.DesktopPreferences{
+			AgentWorkMode:        input.AgentWorkMode,
 			DefaultAgentProvider: input.DefaultAgentProvider,
 
 			DockIconStyle:       "default",
@@ -950,6 +951,9 @@ func TestDaemonAPIGeneratedRoutesCreateAgentSession(t *testing.T) {
 				if input.AgentSessionID != "11111111-1111-4111-8111-111111111111" {
 					t.Fatalf("agent session id = %q", input.AgentSessionID)
 				}
+				if input.WorkMode != preferencesbiz.DesktopAgentWorkModeGeneral {
+					t.Fatalf("work mode = %q, want %q", input.WorkMode, preferencesbiz.DesktopAgentWorkModeGeneral)
+				}
 				if input.ProviderTargetRef["kind"] != "sharedAgent" || input.ProviderTargetRef["sharedAgentId"] != "agent-1" {
 					t.Fatalf("provider target ref = %#v, want shared agent ref", input.ProviderTargetRef)
 				}
@@ -958,6 +962,14 @@ func TestDaemonAPIGeneratedRoutesCreateAgentSession(t *testing.T) {
 					Provider:  "codex",
 					Status:    "created",
 					CreatedAt: createdAt,
+				}, nil
+			},
+		},
+		PreferencesService: stubPreferencesService{
+			getFn: func(context.Context) (preferencesbiz.DesktopPreferences, error) {
+				return preferencesbiz.DesktopPreferences{
+					AgentWorkMode: preferencesbiz.DesktopAgentWorkModeGeneral,
+					Initialized:   true,
 				}, nil
 			},
 		},
@@ -1509,6 +1521,7 @@ func TestDaemonAPIGeneratedRoutesGetDesktopPreferences(t *testing.T) {
 		PreferencesService: stubPreferencesService{
 			getFn: func(context.Context) (preferencesbiz.DesktopPreferences, error) {
 				return preferencesbiz.DesktopPreferences{
+					AgentWorkMode:        "general",
 					DefaultAgentProvider: "claude-code",
 
 					DockIconStyle:       "default",
@@ -1544,6 +1557,9 @@ func TestDaemonAPIGeneratedRoutesGetDesktopPreferences(t *testing.T) {
 	if response.Preferences.DefaultAgentProvider != tuttigenerated.ClaudeCode {
 		t.Fatalf("defaultAgentProvider = %q, want %q", response.Preferences.DefaultAgentProvider, tuttigenerated.ClaudeCode)
 	}
+	if response.Preferences.AgentWorkMode != tuttigenerated.General {
+		t.Fatalf("agentWorkMode = %q, want %q", response.Preferences.AgentWorkMode, tuttigenerated.General)
+	}
 	if response.Preferences.ThemeSource != tuttigenerated.Dark {
 		t.Fatalf("themeSource = %q, want %q", response.Preferences.ThemeSource, tuttigenerated.Dark)
 	}
@@ -1567,6 +1583,7 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 				captured = input
 				return preferencesbiz.DesktopPreferences{
 					AgentGUIConversationRailCollapsedByProvider: input.AgentGUIConversationRailCollapsedByProvider,
+					AgentWorkMode:        input.AgentWorkMode,
 					AppCatalogChannel:    input.AppCatalogChannel,
 					DefaultAgentProvider: input.DefaultAgentProvider,
 					DockIconStyle:        input.DockIconStyle,
@@ -1589,6 +1606,7 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 				"claude-code": false,
 				"codex":       true,
 			},
+			"agentWorkMode":        "general",
 			"defaultAgentProvider": "codex",
 			"appCatalogChannel":    "staging",
 			"dockIconStyle":        "default",
@@ -1613,6 +1631,9 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 	if captured.AppCatalogChannel != "staging" {
 		t.Fatalf("captured appCatalogChannel = %q, want staging", captured.AppCatalogChannel)
 	}
+	if captured.AgentWorkMode != "general" {
+		t.Fatalf("captured agentWorkMode = %q, want general", captured.AgentWorkMode)
+	}
 	var response tuttigenerated.DesktopPreferencesStateResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
 	if response.Preferences.AgentGuiConversationRailCollapsedByProvider.Codex == nil ||
@@ -1622,6 +1643,9 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 	if response.Preferences.AgentGuiConversationRailCollapsedByProvider.ClaudeCode == nil ||
 		*response.Preferences.AgentGuiConversationRailCollapsedByProvider.ClaudeCode {
 		t.Fatalf("response rail claude-code = %#v, want false", response.Preferences.AgentGuiConversationRailCollapsedByProvider.ClaudeCode)
+	}
+	if response.Preferences.AgentWorkMode != tuttigenerated.General {
+		t.Fatalf("response agentWorkMode = %q, want general", response.Preferences.AgentWorkMode)
 	}
 	if response.Preferences.AppCatalogChannel != tuttigenerated.Staging {
 		t.Fatalf("response appCatalogChannel = %q, want staging", response.Preferences.AppCatalogChannel)

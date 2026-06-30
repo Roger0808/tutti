@@ -38,6 +38,7 @@ func agentRuntimeSessionSettings(settings agentservice.ComposerSettings) *agentr
 		Speed:            settings.Speed,
 		PlanMode:         settings.PlanMode,
 		PermissionModeID: settings.PermissionModeID,
+		WorkMode:         settings.WorkMode,
 	}
 	if settings.BrowserUse != nil {
 		value := *settings.BrowserUse
@@ -267,6 +268,7 @@ func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.Runti
 			PlanMode:         input.PlanMode,
 			BrowserUse:       cloneOptionalBool(input.BrowserUse),
 			PermissionModeID: input.PermissionModeID,
+			WorkMode:         input.WorkMode,
 		},
 		Visible: input.Visible,
 	})
@@ -370,6 +372,7 @@ func agentRuntimeComposerSettings(settings *agentruntime.SessionSettings) *agent
 		BrowserUse:       cloneOptionalBool(settings.BrowserUse),
 		ReasoningEffort:  settings.ReasoningEffort,
 		Speed:            settings.Speed,
+		WorkMode:         settings.WorkMode,
 	}
 }
 

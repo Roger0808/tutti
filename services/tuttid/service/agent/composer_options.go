@@ -59,6 +59,7 @@ type ComposerSettings struct {
 	ComputerUse     *bool
 	ReasoningEffort string
 	Speed           string
+	WorkMode        string
 }
 
 type ComposerOptionsInput struct {
@@ -361,6 +362,7 @@ func normalizeComposerSettingsForProvider(provider string, settings ComposerSett
 	settings.PermissionModeID = normalizePermissionModeIDForProvider(provider, settings.PermissionModeID)
 	settings.ReasoningEffort = normalizeReasoningEffortForProvider(provider, settings.ReasoningEffort)
 	settings.Speed = normalizeSpeedForProvider(provider, settings.Speed)
+	settings.WorkMode = preferencesbiz.NormalizeDesktopAgentWorkMode(settings.WorkMode)
 	settings.Model = clampComposerModelForProvider(provider, settings.Model)
 	settings.Model = normalizeComposerModelForProvider(provider, settings.Model)
 	settings.PlanMode = clampComposerPlanModeForProvider(provider, settings.PlanMode)

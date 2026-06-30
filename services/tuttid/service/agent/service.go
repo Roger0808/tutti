@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 )
 
@@ -94,6 +95,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		return Session{}, ErrInvalidArgument
 	}
 	input.Provider = provider
+	input.WorkMode = preferencesbiz.NormalizeDesktopAgentWorkMode(input.WorkMode)
 	if normalizedPermissionModeID := normalizePermissionModeIDForProvider(
 		provider,
 		value(input.PermissionModeID),
@@ -188,7 +190,8 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 			provider,
 			value(input.Speed),
 		),
-		Visible: input.Visible,
+		WorkMode: input.WorkMode,
+		Visible:  input.Visible,
 	})
 	if err != nil {
 		normalizedErr := normalizeRuntimeError(err)

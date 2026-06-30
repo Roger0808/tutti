@@ -179,6 +179,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 		Speed:                optionalStringPointer(input.Speed),
 		Title:                optionalStringPointer(input.Title),
 		Visible:              boolPointer(visible),
+		WorkMode:             defaults.WorkMode,
 	})
 	if err != nil {
 		return nil, err

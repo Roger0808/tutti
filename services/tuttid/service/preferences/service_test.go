@@ -111,6 +111,7 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 			"claude":  false,
 			"unknown": true,
 		},
+		AgentWorkMode:        " general ",
 		DefaultAgentProvider: " claude ",
 
 		BrowserUseConnectionMode: " autoConnect ",
@@ -144,6 +145,9 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	}
 	if store.putInput.DefaultAgentProvider != "claude-code" {
 		t.Fatalf("stored defaultAgentProvider = %q, want claude-code", store.putInput.DefaultAgentProvider)
+	}
+	if store.putInput.AgentWorkMode != "general" {
+		t.Fatalf("stored agentWorkMode = %q, want general", store.putInput.AgentWorkMode)
 	}
 	if store.putInput.ThemeSource != "dark" {
 		t.Fatalf("stored themeSource = %q, want dark", store.putInput.ThemeSource)
@@ -189,12 +193,57 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	if publisher.published[0].DockPlacement != "left" ||
 		publisher.published[0].Locale != "zh-CN" ||
 		publisher.published[0].DefaultAgentProvider != "claude-code" ||
+		publisher.published[0].AgentWorkMode != "general" ||
 		publisher.published[0].ThemeSource != "dark" ||
 		publisher.published[0].SleepPreventionMode != "whileAgentRunning" ||
 		publisher.published[0].BrowserUseConnectionMode != "autoConnect" ||
 		publisher.published[0].UpdateChannel != "rc" ||
 		publisher.published[0].UpdatePolicy != "auto" {
 		t.Fatalf("published preferences = %#v, want left/zh-CN/dark/prevent-sleep/autoConnect/rc/auto", publisher.published[0])
+	}
+}
+
+func TestServicePutNormalizesAgentWorkMode(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "empty", input: "", want: "coding"},
+		{name: "invalid", input: "daily", want: "coding"},
+		{name: "coding", input: "coding", want: "coding"},
+		{name: "general", input: "general", want: "general"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := &preferencesStoreStub{}
+			service := Service{Store: store}
+			preferences, err := service.Put(context.Background(), PutInput{
+				AgentWorkMode:        tc.input,
+				AppCatalogChannel:    "production",
+				DefaultAgentProvider: "codex",
+				DockIconStyle:        "default",
+				DockPlacement:        "bottom",
+				Locale:               "en",
+				MinimizeAnimation:    "scale",
+				SleepPreventionMode:  "never",
+				ThemeSource:          "dark",
+				UpdateChannel:        "rc",
+				UpdatePolicy:         "prompt",
+			})
+			if err != nil {
+				t.Fatalf("Put() error = %v", err)
+			}
+			if preferences.AgentWorkMode != tc.want {
+				t.Fatalf("Put() agentWorkMode = %q, want %q", preferences.AgentWorkMode, tc.want)
+			}
+			if store.putInput.AgentWorkMode != tc.want {
+				t.Fatalf("stored agentWorkMode = %q, want %q", store.putInput.AgentWorkMode, tc.want)
+			}
+		})
 	}
 }
 

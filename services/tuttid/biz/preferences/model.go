@@ -7,7 +7,11 @@ import (
 )
 
 const (
+	DesktopAgentWorkModeCoding  = "coding"
+	DesktopAgentWorkModeGeneral = "general"
+
 	DefaultDesktopAppCatalogChannel        = "production"
+	DefaultDesktopAgentWorkMode            = DesktopAgentWorkModeCoding
 	DefaultDesktopDefaultAgentProvider     = agentproviderbiz.Codex
 	DefaultDesktopDockIconStyle            = "default"
 	DefaultDesktopDockPlacement            = "bottom"
@@ -26,6 +30,7 @@ const (
 type DesktopPreferences struct {
 	AgentComposerDefaultsByProvider             map[string]AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
+	AgentWorkMode                               string
 	AppCatalogChannel                           string
 	BrowserUseConnectionMode                    string
 	DefaultAgentProvider                        string
@@ -54,11 +59,12 @@ func DefaultDesktopPreferences() DesktopPreferences {
 	return DesktopPreferences{
 		AgentComposerDefaultsByProvider:             map[string]AgentComposerDefaults{},
 		AgentGUIConversationRailCollapsedByProvider: map[string]bool{},
-		AppCatalogChannel:                           DefaultDesktopAppCatalogChannel,
-		BrowserUseConnectionMode:                    DefaultDesktopBrowserUseConnectionMode,
-		DefaultAgentProvider:                        DefaultDesktopDefaultAgentProvider,
-		DockIconStyle:                               DefaultDesktopDockIconStyle,
-		DockPlacement:                               DefaultDesktopDockPlacement,
+		AgentWorkMode:            DefaultDesktopAgentWorkMode,
+		AppCatalogChannel:        DefaultDesktopAppCatalogChannel,
+		BrowserUseConnectionMode: DefaultDesktopBrowserUseConnectionMode,
+		DefaultAgentProvider:     DefaultDesktopDefaultAgentProvider,
+		DockIconStyle:            DefaultDesktopDockIconStyle,
+		DockPlacement:            DefaultDesktopDockPlacement,
 		FileDefaultOpenersByExtension: map[string]string{
 			"htm":   "appBrowser",
 			"html":  "appBrowser",
@@ -75,6 +81,23 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		UpdatePolicy:                 DefaultDesktopUpdatePolicy,
 		WindowSnappingEnabled:        DefaultDesktopWindowSnappingEnabled,
 		WindowSnappingShortcutPreset: DefaultDesktopWindowSnappingShortcut,
+	}
+}
+
+func NormalizeDesktopAgentWorkMode(value string) string {
+	normalized := strings.TrimSpace(value)
+	if IsDesktopAgentWorkMode(normalized) {
+		return normalized
+	}
+	return DefaultDesktopAgentWorkMode
+}
+
+func IsDesktopAgentWorkMode(value string) bool {
+	switch value {
+	case "coding", "general":
+		return true
+	default:
+		return false
 	}
 }
 

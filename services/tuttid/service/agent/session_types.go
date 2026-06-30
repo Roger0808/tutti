@@ -196,6 +196,7 @@ type RuntimeStartInput struct {
 	ProviderTargetRef map[string]any
 	ReasoningEffort   string
 	Speed             string
+	WorkMode          string
 	Visible           *bool
 }
 
@@ -322,6 +323,7 @@ type CreateSessionInput struct {
 	ProviderTargetRef    map[string]any
 	ReasoningEffort      *string
 	Speed                *string
+	WorkMode             string
 	Visible              *bool
 	ExtraSkills          []SessionSkillBundle
 }

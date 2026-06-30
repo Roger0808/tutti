@@ -649,6 +649,7 @@ func TestStartCommandUsesComposerDefaults(t *testing.T) {
 		sessions,
 		nil,
 		fakeDesktopPreferencesReader{preferences: preferencesbiz.DesktopPreferences{
+			AgentWorkMode: preferencesbiz.DesktopAgentWorkModeGeneral,
 			AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
 				"codex": {
 					Model:            "gpt-5.5",
@@ -672,6 +673,9 @@ func TestStartCommandUsesComposerDefaults(t *testing.T) {
 	}
 	if sessions.createInput.ReasoningEffort == nil || *sessions.createInput.ReasoningEffort != "high" {
 		t.Fatalf("ReasoningEffort = %#v, want composer default", sessions.createInput.ReasoningEffort)
+	}
+	if sessions.createInput.WorkMode != preferencesbiz.DesktopAgentWorkModeGeneral {
+		t.Fatalf("WorkMode = %q, want general", sessions.createInput.WorkMode)
 	}
 }
 
@@ -804,6 +808,7 @@ func TestComposerOptionsCommandUsesComposerDefaultsFromPreferences(t *testing.T)
 						ReasoningEffort:  "high",
 					},
 				},
+				AgentWorkMode: preferencesbiz.DesktopAgentWorkModeGeneral,
 			},
 		},
 	).newComposerOptionsCommand()
@@ -818,7 +823,8 @@ func TestComposerOptionsCommandUsesComposerDefaultsFromPreferences(t *testing.T)
 	}
 	if sessions.composerInput.Settings.Model != "gpt-5" ||
 		sessions.composerInput.Settings.PermissionModeID != "full-access" ||
-		sessions.composerInput.Settings.ReasoningEffort != "high" {
+		sessions.composerInput.Settings.ReasoningEffort != "high" ||
+		sessions.composerInput.Settings.WorkMode != preferencesbiz.DesktopAgentWorkModeGeneral {
 		t.Fatalf("composer input = %#v", sessions.composerInput)
 	}
 }
@@ -1391,6 +1397,7 @@ func TestProviderStartCommandUsesComposerDefaults(t *testing.T) {
 		sessions,
 		nil,
 		fakeDesktopPreferencesReader{preferences: preferencesbiz.DesktopPreferences{
+			AgentWorkMode: preferencesbiz.DesktopAgentWorkModeGeneral,
 			AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
 				"codex": {
 					Model:            "gpt-5.5",
@@ -1422,6 +1429,9 @@ func TestProviderStartCommandUsesComposerDefaults(t *testing.T) {
 	}
 	if sessions.createInput.ReasoningEffort == nil || *sessions.createInput.ReasoningEffort != "high" {
 		t.Fatalf("ReasoningEffort = %#v, want composer default", sessions.createInput.ReasoningEffort)
+	}
+	if sessions.createInput.WorkMode != preferencesbiz.DesktopAgentWorkModeGeneral {
+		t.Fatalf("WorkMode = %q, want general", sessions.createInput.WorkMode)
 	}
 }
 

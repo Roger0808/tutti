@@ -10,6 +10,7 @@ import (
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
@@ -523,6 +524,17 @@ func (api DaemonAPI) composerDefaultLocale(ctx context.Context) string {
 		return ""
 	}
 	return preferences.Locale
+}
+
+func (api DaemonAPI) agentWorkMode(ctx context.Context) string {
+	if api.PreferencesService == nil {
+		return preferencesbiz.DefaultDesktopAgentWorkMode
+	}
+	preferences, err := api.PreferencesService.Get(ctx)
+	if err != nil {
+		return preferencesbiz.DefaultDesktopAgentWorkMode
+	}
+	return preferencesbiz.NormalizeDesktopAgentWorkMode(preferences.AgentWorkMode)
 }
 
 func mergeComposerSettings(base agentservice.ComposerSettings, override agentservice.ComposerSettings) agentservice.ComposerSettings {

@@ -61,6 +61,9 @@ function createHostServices(): DesktopHostServices {
       getAgentGUIConversationRailCollapsedByProvider() {
         return {};
       },
+      getAgentWorkMode() {
+        return "coding";
+      },
       getAppCatalogChannel() {
         return "production";
       },

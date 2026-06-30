@@ -35,6 +35,7 @@ test("desktop host preferences follows authoritative preference events", async (
     preferences: {
       agentComposerDefaultsByProvider: {},
       agentGuiConversationRailCollapsedByProvider: {},
+      agentWorkMode: "coding",
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
@@ -72,6 +73,7 @@ test("desktop host preferences follows authoritative preference events", async (
       agentGuiConversationRailCollapsedByProvider: {
         codex: true
       },
+      agentWorkMode: "coding",
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
@@ -107,6 +109,8 @@ test("desktop host preferences follows authoritative preference events", async (
 function createHostPreferencesState(): DesktopHostPreferencesState {
   let agentGUIConversationRailCollapsedByProvider: DesktopPreferencesStateResponse["preferences"]["agentGuiConversationRailCollapsedByProvider"] =
     {};
+  let agentWorkMode: DesktopPreferencesStateResponse["preferences"]["agentWorkMode"] =
+    "coding";
   let appCatalogChannel: DesktopPreferencesStateResponse["preferences"]["appCatalogChannel"] =
     "production";
   let defaultAgentProvider: DesktopPreferencesStateResponse["preferences"]["defaultAgentProvider"] =
@@ -141,6 +145,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     },
     getAgentGUIConversationRailCollapsedByProvider() {
       return agentGUIConversationRailCollapsedByProvider;
+    },
+    getAgentWorkMode() {
+      return agentWorkMode;
     },
     getAppCatalogChannel() {
       return appCatalogChannel;
@@ -188,6 +195,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
       if (input.agentGuiConversationRailCollapsedByProvider) {
         agentGUIConversationRailCollapsedByProvider =
           input.agentGuiConversationRailCollapsedByProvider;
+      }
+      if (input.agentWorkMode) {
+        agentWorkMode = input.agentWorkMode;
       }
       if (input.appCatalogChannel) {
         appCatalogChannel = input.appCatalogChannel;

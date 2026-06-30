@@ -73,6 +73,7 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 			Model:            model,
 			PermissionModeID: permissionModeID,
 			ReasoningEffort:  reasoningEffort,
+			WorkMode:         defaults.WorkMode,
 		},
 	})
 }
@@ -101,6 +102,7 @@ func (p Provider) composerDefaultsForProvider(ctx context.Context, provider stri
 		Model:            defaults.Model,
 		PermissionModeID: defaults.PermissionModeID,
 		ReasoningEffort:  defaults.ReasoningEffort,
+		WorkMode:         preferences.AgentWorkMode,
 	}
 }
 

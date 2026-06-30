@@ -1105,8 +1105,7 @@ func appServerPlanCollaborationMode(settings SessionSettings, planModeMask map[s
 		return nil
 	}
 	collaborationSettings := map[string]any{
-		"model": model,
-		// null selects the built-in instructions for the mode.
+		"model":                  model,
 		"developer_instructions": nil,
 	}
 	if effort := codexACPReasoningEffortValue(settings.ReasoningEffort); effort != "" {
@@ -1123,6 +1122,8 @@ func appServerPlanCollaborationMode(settings SessionSettings, planModeMask map[s
 	mode := "default"
 	if settings.PlanMode {
 		mode = strings.ToLower(strings.TrimSpace(firstNonEmpty(asString(planModeMask["mode"]), "plan")))
+	} else {
+		collaborationSettings["developer_instructions"] = agentWorkModeDeveloperInstructions(settings.WorkMode)
 	}
 	return map[string]any{
 		"mode":     mode,

@@ -31,6 +31,7 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderPayloadFromBiz(
 				preferences.AgentGUIConversationRailCollapsedByProvider,
 			),
+			AgentWorkMode:            preferencesbiz.NormalizeDesktopAgentWorkMode(preferences.AgentWorkMode),
 			AppCatalogChannel:        preferences.AppCatalogChannel,
 			BrowserUseConnectionMode: preferences.BrowserUseConnectionMode,
 			DefaultAgentProvider:     preferences.DefaultAgentProvider,
@@ -72,20 +73,21 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 		_, err = mutator.Put(ctx, preferencesservice.PutInput{
 			AgentComposerDefaultsByProvider:             decoded.AgentComposerDefaultsByProvider,
 			AgentGUIConversationRailCollapsedByProvider: decoded.AgentGUIConversationRailCollapsedByProvider,
-			AppCatalogChannel:                           decoded.AppCatalogChannel,
-			BrowserUseConnectionMode:                    decoded.BrowserUseConnectionMode,
-			DefaultAgentProvider:                        decoded.DefaultAgentProvider,
-			DockIconStyle:                               decoded.DockIconStyle,
-			DockPlacement:                               decoded.DockPlacement,
-			FileDefaultOpenersByExtension:               decoded.FileDefaultOpenersByExtension,
-			Locale:                                      decoded.Locale,
-			MinimizeAnimation:                           decoded.MinimizeAnimation,
-			SleepPreventionMode:                         decoded.SleepPreventionMode,
-			ShowAppDeveloperSources:                     decoded.ShowAppDeveloperSources,
-			ThemeSource:                                 decoded.ThemeSource,
-			UpdateChannel:                               decoded.UpdateChannel,
-			UpdatePolicy:                                decoded.UpdatePolicy,
-			WindowSnapping:                              decoded.WindowSnapping,
+			AgentWorkMode:                 decoded.AgentWorkMode,
+			AppCatalogChannel:             decoded.AppCatalogChannel,
+			BrowserUseConnectionMode:      decoded.BrowserUseConnectionMode,
+			DefaultAgentProvider:          decoded.DefaultAgentProvider,
+			DockIconStyle:                 decoded.DockIconStyle,
+			DockPlacement:                 decoded.DockPlacement,
+			FileDefaultOpenersByExtension: decoded.FileDefaultOpenersByExtension,
+			Locale:                        decoded.Locale,
+			MinimizeAnimation:             decoded.MinimizeAnimation,
+			SleepPreventionMode:           decoded.SleepPreventionMode,
+			ShowAppDeveloperSources:       decoded.ShowAppDeveloperSources,
+			ThemeSource:                   decoded.ThemeSource,
+			UpdateChannel:                 decoded.UpdateChannel,
+			UpdatePolicy:                  decoded.UpdatePolicy,
+			WindowSnapping:                decoded.WindowSnapping,
 		})
 		if err != nil {
 			return fmt.Errorf("put desktop preferences: %w", err)
@@ -97,6 +99,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 type decodedDesktopPreferencesMutationPayload struct {
 	AgentComposerDefaultsByProvider             map[string]preferencesbiz.AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
+	AgentWorkMode                               string
 	AppCatalogChannel                           string
 	BrowserUseConnectionMode                    string
 	DefaultAgentProvider                        string
@@ -133,6 +136,7 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderFromPayload(
 			decoded.Preferences.AgentGUIConversationRailCollapsedByProvider,
 		),
+		AgentWorkMode:            decoded.Preferences.AgentWorkMode,
 		AppCatalogChannel:        decoded.Preferences.AppCatalogChannel,
 		BrowserUseConnectionMode: decoded.Preferences.BrowserUseConnectionMode,
 		DefaultAgentProvider:     decoded.Preferences.DefaultAgentProvider,

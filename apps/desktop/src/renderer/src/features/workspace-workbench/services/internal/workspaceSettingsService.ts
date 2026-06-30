@@ -2,6 +2,7 @@ import type { DesktopDeveloperLogKind } from "@shared/contracts/ipc";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
   DesktopAgentProvider,
+  DesktopAgentWorkMode,
   DesktopAppCatalogChannel,
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
@@ -233,6 +234,25 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.notifications.error({
         title: createActiveTranslator().t(
           "workspace.settings.general.defaultAgentProviderSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeAgentWorkMode(mode: DesktopAgentWorkMode): Promise<void> {
+    if (
+      this.desktopPreferences.store.agentWorkMode === mode ||
+      this.desktopPreferences.store.changingAgentWorkMode === mode
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setAgentWorkMode(mode);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.agentWorkModeSaveFailed"
         )
       });
     }
@@ -1079,8 +1099,10 @@ IWorkspaceAppCenterService(WorkspaceSettingsService, undefined, 4);
 const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   agentComposerDefaultsByProvider: {},
   agentGuiConversationRailCollapsedByProvider: {},
+  agentWorkMode: "coding",
   appCatalogChannel: "production",
   browserUseConnectionMode: "isolated",
+  changingAgentWorkMode: null,
   changingAppCatalogChannel: null,
   changingBrowserUseConnectionMode: null,
   changingDefaultAgentProvider: null,
@@ -1122,6 +1144,9 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setDefaultAgentProvider(provider) {
     return Promise.resolve(provider);
+  },
+  setAgentWorkMode(mode) {
+    return Promise.resolve(mode);
   },
   setDockPlacement(placement) {
     return Promise.resolve(placement);
