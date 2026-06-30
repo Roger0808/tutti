@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -156,7 +157,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	)
 	permissionModeID := settings.PermissionModeID
 	if agentSessionID == "" {
-		if existing, ok := c.findStartSession(roomID, provider, input.CWD, input.Title, settings); ok {
+		if existing, ok := c.findStartSession(roomID, provider, input.CWD, input.Title, settings, input.ProviderTargetRef); ok {
 			return StartResult{Session: existing}, nil
 		}
 		agentSessionID = newID()
@@ -174,6 +175,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		Status:               SessionStatusReady,
 		Title:                firstNonEmpty(strings.TrimSpace(input.Title), provider),
 		Visible:              sessionVisible(input.Visible),
+		ProviderTargetRef:    clonePayload(input.ProviderTargetRef),
 		OpenclawGatewayReady: input.OpenclawGatewayReady,
 		PermissionModeID:     permissionModeID,
 		Settings:             cloneSessionSettings(settings),
@@ -276,7 +278,21 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		session.PermissionModeID = session.Settings.PermissionModeID
 	}
 	if err := adapter.Resume(ctx, session); err != nil {
-		return Session{}, err
+		if !input.RecreateIfMissing || !isResumeRecreatableError(err) {
+			return Session{}, err
+		}
+		// The provider session is not available locally (imported from another
+		// device, rollout deleted, ...) and the caller opted into recreation, so
+		// start a fresh provider session bound to the same agent session. This is
+		// what keeps imported conversations continuable instead of forcing the
+		// user into a brand new conversation.
+		if err := c.recreateAdapterSession(ctx, session, adapter); err != nil {
+			return Session{}, err
+		}
+		if refreshed, ok := c.get(session.RoomID, session.AgentSessionID); ok {
+			return refreshed, nil
+		}
+		return session, nil
 	}
 	session.Status = SessionStatusReady
 	c.store(session)
@@ -530,6 +546,46 @@ func (c *Controller) ensureLiveAdapterSession(ctx context.Context, session Sessi
 	if !c.publishPendingCommandSnapshot(session) {
 		c.publishAdapterCommandSnapshot(session, adapter)
 	}
+	return nil
+}
+
+// isResumeRecreatableError reports whether a failed resume should fall back to
+// creating a fresh provider session in place. These are the "the provider
+// session is not available locally" cases — anything else is a genuine failure
+// that should surface to the caller.
+func isResumeRecreatableError(err error) bool {
+	switch AppErrorCode(err) {
+	case AppErrorProviderSessionNotFound, AppErrorResumeSessionNotLocal:
+		return true
+	default:
+		return false
+	}
+}
+
+// recreateAdapterSession starts a brand new provider session for an existing
+// agent session, clearing the stale provider session id so the adapter mints a
+// fresh one. The new provider session id is captured from the started events and
+// persisted via the session report, keeping the conversation continuable.
+func (c *Controller) recreateAdapterSession(ctx context.Context, session Session, adapter Adapter) error {
+	fresh := session
+	fresh.ProviderSessionID = ""
+	fresh.Status = SessionStatusReady
+	fresh.LastError = ""
+	fresh.UpdatedAtUnixMS = unixMS(now())
+	events, err := adapter.Start(ctx, fresh)
+	if err != nil {
+		return err
+	}
+	fresh = applySessionEvents(fresh, events)
+	fresh.Status = SessionStatusReady
+	fresh.UpdatedAtUnixMS = unixMS(now())
+	c.store(fresh)
+	c.publish(fresh, events)
+	c.publishPendingConfigOptionsUpdates(fresh)
+	if !c.publishPendingCommandSnapshot(fresh) {
+		c.publishAdapterCommandSnapshot(fresh, adapter)
+	}
+	c.enqueueSessionReport(ctx, fresh, events)
 	return nil
 }
 
@@ -1662,7 +1718,14 @@ func (c *Controller) get(roomID, agentSessionID string) (Session, bool) {
 	return session, ok
 }
 
-func (c *Controller) findStartSession(roomID, provider, cwd, title string, settings SessionSettings) (Session, bool) {
+func (c *Controller) findStartSession(
+	roomID,
+	provider,
+	cwd,
+	title string,
+	settings SessionSettings,
+	providerTargetRef map[string]any,
+) (Session, bool) {
 	if c == nil {
 		return Session{}, false
 	}
@@ -1683,6 +1746,9 @@ func (c *Controller) findStartSession(roomID, provider, cwd, title string, setti
 		if strings.TrimSpace(session.CWD) != cwd {
 			continue
 		}
+		if !providerTargetRefsEqual(session.ProviderTargetRef, providerTargetRef) {
+			continue
+		}
 		if title != "" && strings.TrimSpace(session.Title) != title {
 			continue
 		}
@@ -1701,6 +1767,13 @@ func (c *Controller) findStartSession(roomID, provider, cwd, title string, setti
 		}
 	}
 	return Session{}, false
+}
+
+func providerTargetRefsEqual(left, right map[string]any) bool {
+	if len(left) == 0 && len(right) == 0 {
+		return true
+	}
+	return reflect.DeepEqual(left, right)
 }
 
 func (s Session) SettingsValue() SessionSettings {

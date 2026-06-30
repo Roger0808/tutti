@@ -180,20 +180,21 @@ type RuntimeSession struct {
 }
 
 type RuntimeStartInput struct {
-	WorkspaceID      string
-	AgentSessionID   string
-	Provider         string
-	Cwd              string
-	Env              []string
-	Title            string
-	PermissionModeID string
-	Model            string
-	PlanMode         bool
-	BrowserUse       *bool
-	ComputerUse      *bool
-	ReasoningEffort  string
-	Speed            string
-	Visible          *bool
+	WorkspaceID       string
+	AgentSessionID    string
+	Provider          string
+	Cwd               string
+	Env               []string
+	Title             string
+	PermissionModeID  string
+	Model             string
+	PlanMode          bool
+	BrowserUse        *bool
+	ComputerUse       *bool
+	ProviderTargetRef map[string]any
+	ReasoningEffort   string
+	Speed             string
+	Visible           *bool
 }
 
 type RuntimeResumeInput struct {
@@ -209,6 +210,10 @@ type RuntimeResumeInput struct {
 	CreatedAtUnixMS   int64
 	UpdatedAtUnixMS   int64
 	Visible           *bool
+	// RecreateIfMissing lets the runtime start a fresh provider session in place
+	// when the existing one can't be restored locally (imported conversations),
+	// instead of surfacing a non-recoverable restore error.
+	RecreateIfMissing bool
 }
 
 type RuntimeExecInput struct {
@@ -312,6 +317,7 @@ type CreateSessionInput struct {
 	PlanMode             *bool
 	BrowserUse           *bool
 	ComputerUse          *bool
+	ProviderTargetRef    map[string]any
 	ReasoningEffort      *string
 	Speed                *string
 	Visible              *bool

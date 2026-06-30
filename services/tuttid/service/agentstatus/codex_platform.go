@@ -85,12 +85,13 @@ func codexPlatformBinaryCandidatePaths(codexPkgDir, goos, goarch string) []strin
 	if !dirOK {
 		return nil
 	}
-	paths := []string{}
-	if targetTriple, ok := codexPlatformTargetTriple(goos, goarch); ok {
-		paths = append(paths, filepath.Join(codexPkgDir, "node_modules", "@openai", dir, "vendor", targetTriple, "bin", binName))
+	targetTriple, ok := codexPlatformTargetTriple(goos, goarch)
+	if !ok {
+		return nil
 	}
-	paths = append(paths, filepath.Join(codexPkgDir, "node_modules", "@openai", dir, binName))
-	return paths
+	return []string{
+		filepath.Join(codexPkgDir, "node_modules", "@openai", dir, "vendor", targetTriple, "bin", binName),
+	}
 }
 
 // codexPlatformBinaryComplete reports whether the platform-specific codex
@@ -189,10 +190,9 @@ func (s Service) codexPlatformPackageMissingPath(binaryPath string) string {
 	if len(paths) == 0 {
 		return ""
 	}
-	for _, path := range paths {
-		if s.executableFile(path) {
-			return ""
-		}
+	expectedPath := paths[0]
+	if s.executableFile(expectedPath) {
+		return ""
 	}
-	return paths[0]
+	return expectedPath
 }

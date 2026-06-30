@@ -60,6 +60,7 @@ type StartInput struct {
 	Env                  []string
 	Title                string
 	Visible              *bool
+	ProviderTargetRef    map[string]any
 	OpenclawGatewayReady bool
 	PermissionModeID     string
 	Settings             *SessionSettings
@@ -79,6 +80,10 @@ type ResumeInput struct {
 	Settings          *SessionSettings
 	CreatedAtUnixMS   int64
 	UpdatedAtUnixMS   int64
+	// RecreateIfMissing creates a fresh provider session in place when the
+	// existing provider session can no longer be restored locally (e.g. an
+	// imported conversation), instead of returning a restore error.
+	RecreateIfMissing bool
 }
 
 type CloseInput struct {
@@ -165,6 +170,7 @@ type Session struct {
 	Title                string              `json:"title,omitempty"`
 	LastError            string              `json:"lastError,omitempty"`
 	Visible              bool                `json:"visible"`
+	ProviderTargetRef    map[string]any      `json:"-"`
 	OpenclawGatewayReady bool                `json:"-"`
 	PermissionModeID     string              `json:"permissionModeId,omitempty"`
 	Settings             *SessionSettings    `json:"settings,omitempty"`

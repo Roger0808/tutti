@@ -724,6 +724,86 @@ describe("AgentMessageMarkdown", () => {
     ).toHaveLength(2);
   });
 
+  it("copies and downloads a workspace markdown image from preview actions", async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      bytes: new Uint8Array([137, 80, 78, 71])
+    });
+    const write = vi.fn().mockResolvedValue(undefined);
+    const fetchImage = vi.fn().mockResolvedValue({
+      blob: () => Promise.resolve(new Blob(["image"], { type: "image/png" }))
+    });
+    let downloadedName = "";
+    const clickDownload = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        downloadedName = this.download;
+      });
+    const clipboardItems: unknown[] = [];
+    class TestClipboardItem {
+      constructor(items: unknown) {
+        clipboardItems.push(items);
+      }
+    }
+    vi.stubGlobal("ClipboardItem", TestClipboardItem);
+    vi.stubGlobal("fetch", fetchImage);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { write }
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        readFile
+      }
+    } as typeof window.agentHostApi;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:tsh-markdown-image")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+
+    render(
+      <AgentMessageMarkdown
+        content={"![generated image](/workspace/output/imagegen/dance.png)"}
+        enableImageZoom
+      />
+    );
+
+    const image = await screen.findByRole("img", { name: "generated image" });
+    fireEvent.contextMenu(image, { clientX: 12, clientY: 34 });
+    expect(screen.getByRole("menu")).toHaveStyle({ left: "12px", top: "34px" });
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy image" }));
+    await waitFor(() => {
+      expect(write).toHaveBeenCalledTimes(1);
+    });
+    expect(fetchImage).toHaveBeenCalledWith("blob:tsh-markdown-image");
+    expect(clipboardItems).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /Zoom image/ }));
+    const dialog = await screen.findByRole("dialog");
+    const modalImage = dialog.querySelector("img");
+    expect(modalImage).toBeInstanceOf(HTMLElement);
+    fireEvent.contextMenu(modalImage as HTMLElement, {
+      clientX: 18,
+      clientY: 40
+    });
+    expect(screen.getByRole("menu").closest(".tsh-zoom-dialog")).toBe(dialog);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy image" }));
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("Copied");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Download image" }));
+    expect(clickDownload).toHaveBeenCalledTimes(1);
+    expect(downloadedName).toMatch(/^dance-\d{8}-\d{6}-[a-z0-9]{4}\.png$/);
+
+    clickDownload.mockRestore();
+  });
+
   it("closes the zoom preview when the unzoom button is clicked", async () => {
     const readFile = vi.fn().mockResolvedValue({
       bytes: new Uint8Array([137, 80, 78, 71])

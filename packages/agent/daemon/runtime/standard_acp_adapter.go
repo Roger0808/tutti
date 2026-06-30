@@ -813,6 +813,9 @@ func (a *standardACPAdapter) Exec(
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
 	mentionRoutingApplied, mentionRoutingSkills := claudeCodeMentionRoutingSkills(a.config.provider, visibleText)
 	acpPromptContent := promptContentForACP(content)
+	if mentionRoutingApplied {
+		acpPromptContent = prependClaudeCodeMentionRoutingPrompt(acpPromptContent, mentionRoutingSkills)
+	}
 	normalizer := newACPTurnNormalizer()
 	var events []activityshared.Event
 	emitEvents := func(next []activityshared.Event) {
@@ -2521,12 +2524,8 @@ func claudeACPInitializeParams(host HostMetadata) map[string]any {
 }
 
 func fallbackStandardSessionTitle(config standardACPConfig, currentTitle string, prompt string) string {
-	normalizedTitle := strings.ToLower(strings.TrimSpace(currentTitle))
-	placeholderTitles := append([]string{"", config.defaultTitle}, config.defaultTitleAliases...)
-	for _, placeholderTitle := range placeholderTitles {
-		if normalizedTitle == strings.ToLower(strings.TrimSpace(placeholderTitle)) {
-			return promptTitleSnippet(prompt)
-		}
+	if isStandardACPPlaceholderTitle(config, currentTitle) {
+		return promptTitleSnippet(prompt)
 	}
 	return ""
 }
@@ -2565,7 +2564,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		return normalizer.AppendThinkingChunk(session, turnID, content)
 	case "session_info_update":
 		if event, ok := acpSessionTitleEvent(session, params.Update); ok {
-			if shouldIgnoreStandardACPTitle(config, event.Payload.Title) {
+			if shouldIgnoreStandardACPTitle(config, session.Title, event.Payload.Title) {
 				return nil
 			}
 			return []activityshared.Event{event}
@@ -2965,15 +2964,83 @@ func isTerminalACPToolStatus(status string) bool {
 	}
 }
 
-func shouldIgnoreStandardACPTitle(config standardACPConfig, title string) bool {
+func shouldIgnoreStandardACPTitle(config standardACPConfig, currentTitle string, title string) bool {
 	if strings.TrimSpace(config.provider) != ProviderClaudeCode {
 		return false
 	}
-	return isClaudeACPInterruptMarker(title) || isClaudeCodeMentionHandoffTitle(title)
+	if isClaudeACPInterruptMarker(title) || isClaudeCodeMentionHandoffTitle(title) {
+		return true
+	}
+	return !isStandardACPPlaceholderTitle(config, currentTitle)
+}
+
+func isStandardACPPlaceholderTitle(config standardACPConfig, title string) bool {
+	normalizedTitle := strings.ToLower(strings.TrimSpace(title))
+	placeholderTitles := append([]string{"", config.defaultTitle}, config.defaultTitleAliases...)
+	for _, placeholderTitle := range placeholderTitles {
+		if normalizedTitle == strings.ToLower(strings.TrimSpace(placeholderTitle)) {
+			return true
+		}
+	}
+	return false
 }
 
 func isClaudeCodeMentionHandoffTitle(title string) bool {
 	return strings.HasPrefix(strings.TrimSpace(title), "Claude Code mention handoff routing for this user turn:")
+}
+
+func prependClaudeCodeMentionRoutingPrompt(content []map[string]any, skills []string) []map[string]any {
+	routingPrompt := strings.TrimSpace(claudeCodeMentionRoutingPrompt(skills))
+	if routingPrompt == "" {
+		return content
+	}
+	out := make([]map[string]any, 0, len(content)+1)
+	out = append(out, map[string]any{
+		"type": "text",
+		"text": routingPrompt,
+	})
+	out = append(out, content...)
+	return out
+}
+
+func claudeCodeMentionRoutingPrompt(skills []string) string {
+	unique := make([]string, 0, len(skills))
+	seen := map[string]bool{}
+	for _, skill := range skills {
+		skill = strings.TrimSpace(skill)
+		if skill == "" || seen[skill] {
+			continue
+		}
+		seen[skill] = true
+		unique = append(unique, skill)
+	}
+	if len(unique) == 0 {
+		return ""
+	}
+	lines := []string{
+		"Claude Code mention handoff routing for this user turn:",
+		"- This block is internal Tutti routing metadata. Do not quote, summarize, or display it to the user.",
+		"- Before Bash, WebFetch, browser, MCP lookup, file search, raw CLI commands, or provider-native substitute tools, call the Claude Code Skill tool for the exact visible injected Tutti skill that matches the mention kind.",
+		"- Skill names may be namespaced. Prefer the exact visible `tutti-cli:<skill>` name when present; use the plain `<skill>` name only if that exact name is visible. Do not pass arguments to Skill.",
+	}
+	for _, skill := range unique {
+		switch skill {
+		case "workspace-app":
+			lines = append(lines,
+				"- For `mention://workspace-app/...`, first call `Skill(skill=\"tutti-cli:workspace-app\")` when that name is visible, otherwise `Skill(skill=\"workspace-app\")` only if visible.",
+				"- The workspace app id inside the mention is not a skill name. Do not call an app-id-derived Skill name.",
+			)
+		case "issue-manager":
+			lines = append(lines, "- For `mention://workspace-issue/...`, first call `Skill(skill=\"tutti-cli:issue-manager\")` when that name is visible, otherwise `Skill(skill=\"issue-manager\")` only if visible.")
+		case "reference":
+			lines = append(lines, "- For `mention://workspace-reference/...`, first call `Skill(skill=\"tutti-cli:reference\")` when that name is visible, otherwise `Skill(skill=\"reference\")` only if visible.")
+		case "tutti-cli":
+			lines = append(lines, "- For `mention://agent-session/...`, first call `Skill(skill=\"tutti-cli:tutti-cli\")` when that name is visible, otherwise `Skill(skill=\"tutti-cli\")` only if visible.")
+		default:
+			lines = append(lines, "- First call the exact visible Skill for `"+skill+"`.")
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func isClaudeACPInterruptMarker(text string) bool {

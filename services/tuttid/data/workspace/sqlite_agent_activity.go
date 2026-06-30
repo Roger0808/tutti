@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -403,6 +404,13 @@ func (s *SQLiteStore) ListSessionMessages(
 	if queryLimit > 0 {
 		queryLimit++
 	}
+	turnID := strings.TrimSpace(input.TurnID)
+	where := []string{"workspace_id = ?", "agent_session_id = ?", "deleted_at_unix_ms = 0"}
+	args := []any{workspaceID, agentSessionID}
+	if turnID != "" {
+		where = append(where, "turn_id = ?")
+		args = append(args, turnID)
+	}
 	order := input.Order
 	if order == "" {
 		order = agentactivitybiz.MessageOrderAsc
@@ -412,42 +420,56 @@ func (s *SQLiteStore) ListSessionMessages(
 	switch order {
 	case agentactivitybiz.MessageOrderDesc:
 		if input.BeforeVersion > 0 {
+			whereWithCursor := append(append([]string{}, where...), "version < ?")
+			argsWithCursor := append(append([]any{}, args...), input.BeforeVersion, queryLimit)
 			rows, err = s.db.QueryContext(ctx, `
 SELECT id, agent_session_id, message_id, version, turn_id, role, kind, status,
        payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_messages
-WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-  AND version < ?
+WHERE `+strings.Join(whereWithCursor, " AND ")+`
 ORDER BY version DESC, id DESC
 LIMIT ?
-`, workspaceID, agentSessionID, input.BeforeVersion, queryLimit)
+`, argsWithCursor...)
 		} else {
+			argsWithLimit := append(append([]any{}, args...), queryLimit)
 			rows, err = s.db.QueryContext(ctx, `
 SELECT id, agent_session_id, message_id, version, turn_id, role, kind, status,
        payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_messages
-WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
+WHERE `+strings.Join(where, " AND ")+`
 ORDER BY version DESC, id DESC
 LIMIT ?
-`, workspaceID, agentSessionID, queryLimit)
+`, argsWithLimit...)
 		}
 	case agentactivitybiz.MessageOrderAsc:
+		whereWithCursor := append(append([]string{}, where...), "version > ?")
+		argsWithCursor := append(append([]any{}, args...), input.AfterVersion, queryLimit)
 		rows, err = s.db.QueryContext(ctx, `
 SELECT id, agent_session_id, message_id, version, turn_id, role, kind, status,
        payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_messages
-WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-  AND version > ?
+WHERE `+strings.Join(whereWithCursor, " AND ")+`
 ORDER BY version ASC, id ASC
 LIMIT ?
-`, workspaceID, agentSessionID, input.AfterVersion, queryLimit)
+`, argsWithCursor...)
 	default:
 		return agentactivitybiz.MessagePage{}, false, fmt.Errorf("unsupported workspace agent message order: %s", order)
 	}
 	if err != nil {
+		slog.Warn("workspace agent messages query failed",
+			"event", "workspace.agent_session.messages.sqlite.query_failed",
+			"workspace_id", workspaceID,
+			"agent_session_id", agentSessionID,
+			"after_version", input.AfterVersion,
+			"before_version", input.BeforeVersion,
+			"order", order,
+			"limit", input.Limit,
+			"query_limit", queryLimit,
+			"error", err,
+		)
 		return agentactivitybiz.MessagePage{}, false, fmt.Errorf("list workspace agent messages: %w", err)
 	}
 	defer rows.Close()
@@ -456,11 +478,35 @@ LIMIT ?
 	for rows.Next() {
 		message, err := scanAgentMessage(rows)
 		if err != nil {
+			slog.Warn("workspace agent message row scan failed",
+				"event", "workspace.agent_session.messages.sqlite.scan_failed",
+				"workspace_id", workspaceID,
+				"agent_session_id", agentSessionID,
+				"after_version", input.AfterVersion,
+				"before_version", input.BeforeVersion,
+				"order", order,
+				"limit", input.Limit,
+				"query_limit", queryLimit,
+				"scanned_message_count", len(messages),
+				"error", err,
+			)
 			return agentactivitybiz.MessagePage{}, false, err
 		}
 		messages = append(messages, message)
 	}
 	if err := rows.Err(); err != nil {
+		slog.Warn("workspace agent messages row iteration failed",
+			"event", "workspace.agent_session.messages.sqlite.iterate_failed",
+			"workspace_id", workspaceID,
+			"agent_session_id", agentSessionID,
+			"after_version", input.AfterVersion,
+			"before_version", input.BeforeVersion,
+			"order", order,
+			"limit", input.Limit,
+			"query_limit", queryLimit,
+			"scanned_message_count", len(messages),
+			"error", err,
+		)
 		return agentactivitybiz.MessagePage{}, false, fmt.Errorf("iterate workspace agent messages: %w", err)
 	}
 	hasMore := false

@@ -13,13 +13,7 @@ import {
 } from "react";
 import { useSnapshot } from "valtio";
 import { proxy } from "valtio/vanilla";
-import {
-  ChevronRight,
-  ExternalLink,
-  Info,
-  Settings,
-  Wrench
-} from "lucide-react";
+import { ChevronRight, ExternalLink, Info, Wrench } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -69,6 +63,7 @@ import {
 import { PinFilledIcon } from "../../app/renderer/components/icons/PinFilledIcon";
 import { PinLinedIcon } from "../../app/renderer/components/icons/PinLinedIcon";
 import { UnavailableChatIcon } from "../../app/renderer/components/icons/UnavailableChatIcon";
+import { EnvironmentLinedIcon } from "../../app/renderer/components/icons/EnvironmentLinedIcon";
 import {
   StatusDot,
   type StatusDotTone
@@ -303,6 +298,11 @@ export interface AgentGUIViewLabels {
   batchDeleteProjectSessionsTitle: string;
   batchDeleteProjectSessionsBody: (count: number, project: string) => string;
   batchDeleteProjectSessionsConfirm: string;
+  conversationsSectionMoreActions: string;
+  batchDeleteConversations: string;
+  batchDeleteConversationsTitle: string;
+  batchDeleteConversationsBody: (count: number) => string;
+  batchDeleteConversationsConfirm: string;
   approvalRequired: string;
   approvalUnavailable: string;
   authRequired: string;
@@ -359,6 +359,24 @@ export interface AgentGUIViewLabels {
   slashPalettePluginsGroup: string;
   slashPaletteConnectorsGroup: string;
   slashPaletteMcpGroup: string;
+  slashCommandCompactLabel: string;
+  slashCommandContextLabel: string;
+  slashCommandFastLabel: string;
+  slashCommandGoalLabel: string;
+  slashCommandInitLabel: string;
+  slashCommandPlanLabel: string;
+  slashCommandReviewLabel: string;
+  slashCommandStatusLabel: string;
+  slashCommandUsageLabel: string;
+  slashCommandCompactDescription: string;
+  slashCommandContextDescription: string;
+  slashCommandFastDescription: string;
+  slashCommandGoalDescription: string;
+  slashCommandInitDescription: string;
+  slashCommandPlanDescription: string;
+  slashCommandReviewDescription: string;
+  slashCommandStatusDescription: string;
+  slashCommandUsageDescription: string;
   browserUseCapabilityLabel: string;
   browserUseCapabilityDescription: string;
   browserUseCapabilityDescriptionAutoConnect: string;
@@ -433,9 +451,16 @@ interface AgentGUINodeViewProps {
   previewMode?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
   actions: {
-    createConversation: (options?: { projectPath?: string | null }) => void;
+    createConversation: (options?: {
+      projectPath?: string | null;
+      source?: string;
+    }) => void;
     selectConversation: (agentSessionId: string) => void;
     submitPrompt: (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string
+    ) => void;
+    submitGuidancePrompt: (
       content: AgentPromptContentBlock[],
       displayPrompt?: string
     ) => void;
@@ -466,6 +491,7 @@ interface AgentGUINodeViewProps {
     toggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
     removeProject: (path: string) => void;
     confirmDeleteProjectConversations: (path?: string) => void;
+    confirmDeleteConversations: (agentSessionIds: string[]) => void;
     requestDeleteConversation: (agentSessionId: string) => void;
     cancelDeleteConversation: () => void;
     confirmDeleteConversation: () => void;
@@ -1006,6 +1032,9 @@ export function AgentGUINodeView({
   const confirmDeleteProjectConversations = useStableEventCallback(
     actions.confirmDeleteProjectConversations
   );
+  const confirmDeleteConversations = useStableEventCallback(
+    actions.confirmDeleteConversations
+  );
   const requestDeleteConversation = useStableEventCallback(
     actions.requestDeleteConversation
   );
@@ -1024,18 +1053,20 @@ export function AgentGUINodeView({
       ? composerFocusRequestSequence
       : (composerFocusRequestSequence ?? 0) + localComposerFocusRequestSequence;
   const requestCreateConversation = useCallback(
-    (options?: { projectPath?: string | null }) => {
+    (options?: { projectPath?: string | null; source?: string }) => {
       if (previewMode) {
         return;
       }
-      if (options) {
+      const source = options?.source;
+      if (options && "projectPath" in options) {
         createConversationAction(options);
       } else if (viewModel.composerSettings.selectedProjectPath) {
         createConversationAction({
-          projectPath: viewModel.composerSettings.selectedProjectPath
+          projectPath: viewModel.composerSettings.selectedProjectPath,
+          source: source ?? "selected_project"
         });
       } else {
-        createConversationAction();
+        createConversationAction({ source: source ?? "rail_toolbar" });
       }
       setLocalComposerFocusRequestSequence((current) => current + 1);
     },
@@ -1057,7 +1088,7 @@ export function AgentGUINodeView({
     handledNewConversationRequestSequenceRef.current =
       newConversationRequestSequence;
     if (!createConversationDisabled) {
-      requestCreateConversation();
+      requestCreateConversation({ source: "external_request" });
     }
   }, [
     createConversationDisabled,
@@ -1240,6 +1271,7 @@ export function AgentGUINodeView({
         onToggleConversationPinned: toggleConversationPinned,
         onRemoveProject: removeProject,
         onConfirmDeleteProjectConversations: confirmDeleteProjectConversations,
+        onConfirmDeleteConversations: confirmDeleteConversations,
         onRequestDeleteConversation: requestDeleteConversation,
         onCancelDeleteConversation: cancelDeleteConversation,
         onConfirmDeleteConversation: confirmDeleteConversation,
@@ -1250,6 +1282,7 @@ export function AgentGUINodeView({
       [
         cancelDeleteConversation,
         confirmDeleteConversation,
+        confirmDeleteConversations,
         confirmDeleteProjectConversations,
         conversationRailCollapsed,
         createConversationDisabled,
@@ -1858,6 +1891,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       planModeOnLabel: labels.planModeOnLabel,
       planModeOffLabel: labels.planModeOffLabel,
       planUnavailable: labels.planUnavailable,
+      goalLabel: labels.goalLabel,
       queuedLabel: labels.queuedLabel,
       sendQueuedPromptNext: labels.sendQueuedPromptNext,
       editQueuedPrompt: labels.editQueuedPrompt,
@@ -1873,6 +1907,24 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       slashPalettePluginsGroup: labels.slashPalettePluginsGroup,
       slashPaletteConnectorsGroup: labels.slashPaletteConnectorsGroup,
       slashPaletteMcpGroup: labels.slashPaletteMcpGroup,
+      slashCommandCompactLabel: labels.slashCommandCompactLabel,
+      slashCommandContextLabel: labels.slashCommandContextLabel,
+      slashCommandFastLabel: labels.slashCommandFastLabel,
+      slashCommandGoalLabel: labels.slashCommandGoalLabel,
+      slashCommandInitLabel: labels.slashCommandInitLabel,
+      slashCommandPlanLabel: labels.slashCommandPlanLabel,
+      slashCommandReviewLabel: labels.slashCommandReviewLabel,
+      slashCommandStatusLabel: labels.slashCommandStatusLabel,
+      slashCommandUsageLabel: labels.slashCommandUsageLabel,
+      slashCommandCompactDescription: labels.slashCommandCompactDescription,
+      slashCommandContextDescription: labels.slashCommandContextDescription,
+      slashCommandFastDescription: labels.slashCommandFastDescription,
+      slashCommandGoalDescription: labels.slashCommandGoalDescription,
+      slashCommandInitDescription: labels.slashCommandInitDescription,
+      slashCommandPlanDescription: labels.slashCommandPlanDescription,
+      slashCommandReviewDescription: labels.slashCommandReviewDescription,
+      slashCommandStatusDescription: labels.slashCommandStatusDescription,
+      slashCommandUsageDescription: labels.slashCommandUsageDescription,
       browserUseCapabilityLabel: labels.browserUseCapabilityLabel,
       browserUseCapabilityDescription: labels.browserUseCapabilityDescription,
       browserUseCapabilityDescriptionAutoConnect:
@@ -1952,6 +2004,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.planModeOffLabel,
       labels.planModeOnLabel,
       labels.planUnavailable,
+      labels.goalLabel,
       labels.projectLocked,
       labels.projectMissingDescription,
       labels.promptTipsPrefix,
@@ -1995,6 +2048,24 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.slashPaletteCapabilitiesGroup,
       labels.slashPaletteCommandsGroup,
       labels.slashPaletteConnectorsGroup,
+      labels.slashCommandCompactLabel,
+      labels.slashCommandContextLabel,
+      labels.slashCommandFastLabel,
+      labels.slashCommandGoalLabel,
+      labels.slashCommandInitLabel,
+      labels.slashCommandPlanLabel,
+      labels.slashCommandReviewLabel,
+      labels.slashCommandStatusLabel,
+      labels.slashCommandUsageLabel,
+      labels.slashCommandCompactDescription,
+      labels.slashCommandContextDescription,
+      labels.slashCommandFastDescription,
+      labels.slashCommandGoalDescription,
+      labels.slashCommandInitDescription,
+      labels.slashCommandPlanDescription,
+      labels.slashCommandReviewDescription,
+      labels.slashCommandStatusDescription,
+      labels.slashCommandUsageDescription,
       labels.slashPaletteMcpGroup,
       labels.slashPalettePluginsGroup,
       labels.slashPaletteSkillsGroup,
@@ -2035,6 +2106,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     actions.updateComposerSettings
   );
   const submitPrompt = useStableEventCallback(actions.submitPrompt);
+  const submitGuidancePrompt = useStableEventCallback(
+    actions.submitGuidancePrompt
+  );
   const showPromptImagesUnsupported = useStableEventCallback(
     actions.showPromptImagesUnsupported
   );
@@ -2105,6 +2179,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       isInterrupting: viewModel.isInterrupting,
       isSendingTurn: isComposerSending,
       isSubmittingPrompt: viewModel.isRespondingApproval,
+      uiLanguage,
       labels: composerLabels,
       workspaceUserProjectI18n,
       capabilityMenuState,
@@ -2112,6 +2187,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
       onSubmit: submitPrompt,
+      onSubmitGuidance: submitGuidancePrompt,
       onPromptImagesUnsupported: showPromptImagesUnsupported,
       onSendQueuedPromptNext: sendQueuedPromptNext,
       onRemoveQueuedPrompt: removeQueuedPrompt,
@@ -2151,6 +2227,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       submitDisabled,
       submitInteractivePrompt,
       submitPrompt,
+      submitGuidancePrompt,
+      uiLanguage,
       stableLinkAction,
       stableRequestGitBranches,
       stableSelectProjectDirectory,
@@ -2218,6 +2296,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     sessionChrome.auth?.message ?? "",
     sessionChrome.recovery?.kind ?? "",
     sessionChrome.recovery?.message ?? "",
+    viewModel.queuedPrompts.map((prompt) => prompt.id).join(","),
+    viewModel.drainingQueuedPromptId ?? "",
     viewModel.isRespondingApproval ? "1" : "0"
   ].join("|");
 
@@ -2296,7 +2376,28 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
 
     let animationFrameId: number | null = null;
 
+    const syncBottomDockSafeArea = (): void => {
+      const bottomDockRect = bottomDock.getBoundingClientRect();
+      let visualTop = bottomDockRect.top;
+      bottomDock.querySelectorAll("*").forEach((element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          visualTop = Math.min(visualTop, rect.top);
+        }
+      });
+      const overflowHeight = Math.max(
+        0,
+        Math.ceil(bottomDockRect.top - visualTop)
+      );
+      timeline.style.setProperty(
+        "--agent-gui-bottom-dock-safe-area",
+        `${overflowHeight}px`
+      );
+    };
+
     const syncBottomDockSpace = (): void => {
+      syncBottomDockSafeArea();
+
       const anchor = timelineScrollAnchorRef.current;
       if (!anchor || anchor.conversationId !== activeConversationId) {
         return;
@@ -2330,6 +2431,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     syncBottomDockSpace();
     if (typeof ResizeObserver === "undefined") {
       return () => {
+        timeline.style.removeProperty("--agent-gui-bottom-dock-safe-area");
         if (animationFrameId !== null) {
           window.cancelAnimationFrame(animationFrameId);
         }
@@ -2338,13 +2440,20 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
 
     const observer = new ResizeObserver(syncBottomDockSpace);
     observer.observe(bottomDock);
+    const promptInputArea = bottomDock.querySelector(
+      ".agent-gui-node__composer-prompt-input-area"
+    );
+    if (promptInputArea instanceof Element) {
+      observer.observe(promptInputArea);
+    }
     return () => {
+      timeline.style.removeProperty("--agent-gui-bottom-dock-safe-area");
       if (animationFrameId !== null) {
         window.cancelAnimationFrame(animationFrameId);
       }
       observer.disconnect();
     };
-  }, [viewModel.activeConversationId]);
+  }, [bottomDockStoreRevision, viewModel.activeConversationId]);
 
   useEffect(() => {
     const timeline = timelineRef.current;
@@ -2416,8 +2525,12 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           </span>
           <button
             type="button"
-            className={styles.providerSetupNoticeAction}
+            className={cn(
+              styles.providerSetupNoticeAction,
+              "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]"
+            )}
             data-testid="agent-gui-provider-setup-notice-action"
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={() =>
               openAgentEnvPanel({
                 provider: viewModel.data.provider,
@@ -2890,7 +3003,10 @@ interface AgentGUIConversationRailPaneProps {
   openclawGateway: OpenclawGatewayViewModel | null;
   isCollapsed: boolean;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
-  onCreateConversation: (options?: { projectPath?: string | null }) => void;
+  onCreateConversation: (options?: {
+    projectPath?: string | null;
+    source?: string;
+  }) => void;
   onOpenAgentEnvSetup: () => void;
   onRetryOpenclawGateway: () => void;
   onSelectConversation: (agentSessionId: string) => void;
@@ -2900,6 +3016,7 @@ interface AgentGUIConversationRailPaneProps {
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRemoveProject: (path: string) => void;
   onConfirmDeleteProjectConversations: (path?: string) => void;
+  onConfirmDeleteConversations: (agentSessionIds: string[]) => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
@@ -2911,6 +3028,12 @@ type AgentGUIProjectActionDialog =
       conversationCount: number;
       label: string;
       path: string;
+    }
+  | {
+      kind: "batch-delete-conversations";
+      conversationCount: number;
+      label: string;
+      sessionIds: string[];
     }
   | {
       kind: "remove";
@@ -3116,6 +3239,7 @@ function conversationSummariesRenderEqual(
     left.pinnedAtUnixMs === right.pinnedAtUnixMs &&
     left.sortTimeUnixMs === right.sortTimeUnixMs &&
     left.updatedAtUnixMs === right.updatedAtUnixMs &&
+    left.isImported === right.isImported &&
     left.hasUnreadCompletion === right.hasUnreadCompletion &&
     left.unreadCompletionKey === right.unreadCompletionKey &&
     conversationProjectsRenderEqual(left.project, right.project) &&
@@ -3189,6 +3313,7 @@ const AgentGUIConversationRailPane = memo(
     selectProjectDirectory,
     onRemoveProject,
     onConfirmDeleteProjectConversations,
+    onConfirmDeleteConversations,
     onRequestDeleteConversation,
     onCancelDeleteConversation,
     onConfirmDeleteConversation
@@ -3444,7 +3569,11 @@ const AgentGUIConversationRailPane = memo(
                 title={labels.agentConfig}
                 disabled={previewMode}
               >
-                <Settings aria-hidden="true" size={16} strokeWidth={1.8} />
+                <EnvironmentLinedIcon
+                  aria-hidden="true"
+                  width={16}
+                  height={16}
+                />
                 <span>{labels.agentConfig}</span>
               </Button>
             </PopoverTrigger>
@@ -3496,13 +3625,16 @@ const AgentGUIConversationRailPane = memo(
           cancelLabel={labels.cancel}
           className={AGENT_GUI_CONFIRMATION_DIALOG_CLASS_NAME}
           confirmBusy={
-            pendingProjectAction?.kind === "batch-delete" &&
+            (pendingProjectAction?.kind === "batch-delete" ||
+              pendingProjectAction?.kind === "batch-delete-conversations") &&
             isDeletingProjectConversations
           }
           confirmLabel={
             pendingProjectAction?.kind === "batch-delete"
               ? labels.batchDeleteProjectSessionsConfirm
-              : labels.removeProject
+              : pendingProjectAction?.kind === "batch-delete-conversations"
+                ? labels.batchDeleteConversationsConfirm
+                : labels.removeProject
           }
           description={
             pendingProjectAction?.kind === "batch-delete"
@@ -3510,11 +3642,15 @@ const AgentGUIConversationRailPane = memo(
                   pendingProjectAction.conversationCount,
                   pendingProjectAction.label
                 )
-              : pendingProjectAction
-                ? labels.removeProjectConfirmDescription(
-                    pendingProjectAction.label
+              : pendingProjectAction?.kind === "batch-delete-conversations"
+                ? labels.batchDeleteConversationsBody(
+                    pendingProjectAction.conversationCount
                   )
-                : undefined
+                : pendingProjectAction
+                  ? labels.removeProjectConfirmDescription(
+                      pendingProjectAction.label
+                    )
+                  : undefined
           }
           onCancel={() => setPendingProjectAction(null)}
           onConfirm={() => {
@@ -3525,6 +3661,10 @@ const AgentGUIConversationRailPane = memo(
             }
             if (action.kind === "batch-delete") {
               onConfirmDeleteProjectConversations(action.path);
+              return;
+            }
+            if (action.kind === "batch-delete-conversations") {
+              onConfirmDeleteConversations(action.sessionIds);
               return;
             }
             onRemoveProject(action.path);
@@ -3539,7 +3679,9 @@ const AgentGUIConversationRailPane = memo(
           title={
             pendingProjectAction?.kind === "batch-delete"
               ? labels.batchDeleteProjectSessionsTitle
-              : labels.removeProjectConfirmTitle
+              : pendingProjectAction?.kind === "batch-delete-conversations"
+                ? labels.batchDeleteConversationsTitle
+                : labels.removeProjectConfirmTitle
           }
           tone="destructive"
         />
@@ -3563,7 +3705,10 @@ interface AgentGUIConversationRailSectionProps {
   labels: AgentGUIViewLabels;
   uiLanguage: UiLanguage;
   registerItemElement: (itemId: string, element: HTMLDivElement | null) => void;
-  onCreateConversation: (options?: { projectPath?: string | null }) => void;
+  onCreateConversation: (options?: {
+    projectPath?: string | null;
+    source?: string;
+  }) => void;
   onToggleProjectSectionCollapsed: (sectionId: string) => void;
   setPendingProjectAction: (action: AgentGUIProjectActionDialog | null) => void;
   onSelectConversation: (agentSessionId: string) => void;
@@ -3637,10 +3782,13 @@ const AgentGUIConversationRailSection = memo(
       : labels.newConversation;
     const handleCreateConversation = useCallback(() => {
       if (projectPath) {
-        onCreateConversation({ projectPath });
+        onCreateConversation({ projectPath, source: "project_section" });
         return;
       }
-      onCreateConversation({ projectPath: null });
+      onCreateConversation({
+        projectPath: null,
+        source: "unscoped_section"
+      });
     }, [onCreateConversation, projectPath]);
 
     return (
@@ -3809,6 +3957,75 @@ const AgentGUIConversationRailSection = memo(
                       }}
                     >
                       <span>{labels.removeProject}</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+              {!projectPath &&
+              section.kind === "conversations" &&
+              section.items.length > 0 ? (
+                <DropdownMenu>
+                  {previewMode ? (
+                    <DropdownMenuTrigger asChild>
+                      <span
+                        className={styles.conversationSectionActionTooltipWrap}
+                      >
+                        <BareIconButton
+                          className={styles.conversationSectionMoreButton}
+                          aria-label={labels.conversationsSectionMoreActions}
+                          size="sm"
+                        >
+                          <MoreHorizontalIcon aria-hidden="true" />
+                        </BareIconButton>
+                      </span>
+                    </DropdownMenuTrigger>
+                  ) : (
+                    <Tooltip>
+                      <DropdownMenuTrigger asChild>
+                        <TooltipTrigger asChild>
+                          <span
+                            className={
+                              styles.conversationSectionActionTooltipWrap
+                            }
+                          >
+                            <BareIconButton
+                              className={styles.conversationSectionMoreButton}
+                              aria-label={
+                                labels.conversationsSectionMoreActions
+                              }
+                              size="sm"
+                            >
+                              <MoreHorizontalIcon aria-hidden="true" />
+                            </BareIconButton>
+                          </span>
+                        </TooltipTrigger>
+                      </DropdownMenuTrigger>
+                      <TooltipContent
+                        side="right"
+                        sideOffset={6}
+                        className={styles.conversationSectionActionTooltip}
+                      >
+                        {labels.conversationsSectionMoreActions}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  <DropdownMenuContent
+                    align="end"
+                    className={`${styles.composerMenuContent} nodrag [-webkit-app-region:no-drag]`}
+                    sideOffset={6}
+                  >
+                    <DropdownMenuItem
+                      className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
+                      onSelect={() => {
+                        setPendingProjectAction({
+                          kind: "batch-delete-conversations",
+                          conversationCount: section.items.length,
+                          label: section.label,
+                          sessionIds: section.items.map((item) => item.id)
+                        });
+                      }}
+                    >
+                      <span>{labels.batchDeleteConversations}</span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

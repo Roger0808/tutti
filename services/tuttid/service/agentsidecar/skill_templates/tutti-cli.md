@@ -85,17 +85,17 @@ If a user mentions a workspace app or asks for app-specific work and the expecte
 
 `computer ...` drives the daemon-owned macOS desktop session. Prefer it over generic desktop automation when Tutti computer context is requested.
 
-Workspace app scopes are discovered from command guide or capability metadata that preserves `App id:`. Use `workspace-app` for app mention interpretation and command selection; use CLI help only after the scope is known.
+Workspace app scopes are discovered from command guide or capability metadata that preserves `App id:`. Use `workspace-app` for app mention interpretation and command selection; `workspace-app` is a skill and mention kind, not a CLI scope. Use CLI help only after the scope is known.
 
 ## Issue Guardrails
 
 Issue execution sequencing belongs to the `issue-manager` skill. Do not use this command reference alone to decide whether an issue-level execution should call `issue run create` or iterate child tasks with `issue task run create`.
 
-For workspace issue breakdowns, use issue/task inspection commands plus `issue task create` or `issue task update` to persist child tasks. `issue run create`, `issue task run create`, and their matching `complete` commands are execution-mode commands only; do not use them for breakdown-only work.
+For workspace issue breakdowns, use issue/task inspection commands plus `issue task create-batch` for multiple new child tasks, `issue task create` for one new child task, or `issue task update` for existing child tasks. `issue run create`, `issue task run create`, and their matching `complete` commands are execution-mode commands only; do not use them for breakdown-only work.
 
 ## Workspace Issue Run Reporting
 
-When creating issue runs, use the current AgentGUI runtime metadata below for `--agent-provider` and `--agent-session-id`. Do not invent a provider or session id.
+When creating issue runs, pass `--agent-provider` from the current AgentGUI runtime metadata below. Do not pass `--agent-session-id` during normal AgentGUI execution; the Tutti CLI binds the run to the current AgentGUI session from the runtime context. Use `--agent-session-id` only as a manual fallback if the CLI explicitly reports the session id is missing.
 
 When completing issue runs, include `--outputs` whenever the execution created or materially updated deliverable files. `--outputs` is a JSON array string; each item must include `path`, and may also include `displayName`, `title`, `mediaType`, `sizeBytes`, or `outputId`.
 
