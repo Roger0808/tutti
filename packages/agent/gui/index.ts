@@ -79,6 +79,7 @@ export type {
 } from "./agentQueuedPromptRuntime";
 export type {
   AgentHostApi,
+  AgentHostApplyWorkspaceGitPatchInput,
   AgentHostInputApi,
   AgentHostSelectFilesInput,
   AgentHostRuntimeApi,

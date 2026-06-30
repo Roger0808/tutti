@@ -101,7 +101,9 @@ export const EMPTY_AGENT_QUEUED_PROMPT_SNAPSHOT: AgentQueuedPromptSnapshot =
 export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
   let snapshot = EMPTY_AGENT_QUEUED_PROMPT_SNAPSHOT;
   const emptyQueuesByKey = new Map<string, AgentQueuedPromptQueueSnapshot>();
+  const expiredClaimsByKey = new Map<string, AgentQueuedPromptClaim>();
   const listeners = new Set<() => void>();
+  let claimExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
   const notify = (): void => {
     for (const listener of [...listeners]) {
@@ -114,13 +116,21 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
     agentSessionId: string,
     updater: (
       queue: AgentQueuedPromptQueueSnapshot
-    ) => AgentQueuedPromptQueueSnapshot | null
+    ) => AgentQueuedPromptQueueSnapshot | null,
+    options?: { releaseExpiredClaim?: boolean }
   ): void => {
     const key = queueKey(workspaceId, agentSessionId);
     const current =
       snapshot.queuesByKey[key] ??
       getEmptyQueueSnapshot(emptyQueuesByKey, { workspaceId, agentSessionId });
-    const nextQueue = updater(withExpiredClaimReleased(current));
+    const queueForUpdate =
+      options?.releaseExpiredClaim === false
+        ? current
+        : withExpiredClaimReleased(current);
+    if (queueForUpdate !== current && current.claim) {
+      expiredClaimsByKey.set(key, current.claim);
+    }
+    const nextQueue = updater(queueForUpdate);
     if (nextQueue === current) {
       return;
     }
@@ -132,11 +142,69 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
     } else {
       nextQueuesByKey[key] = freezeQueue(nextQueue);
     }
+    clearExpiredClaimIfReplaced(expiredClaimsByKey, key, nextQueue);
     snapshot = Object.freeze({
       queuesByKey: Object.freeze(nextQueuesByKey),
       version: snapshot.version + 1
     });
+    scheduleClaimExpiryWakeup();
     notify();
+  };
+
+  const releaseExpiredClaims = (): void => {
+    claimExpiryTimer = null;
+    let changed = false;
+    const nextQueuesByKey: Record<string, AgentQueuedPromptQueueSnapshot> = {
+      ...snapshot.queuesByKey
+    };
+    for (const [key, queue] of Object.entries(snapshot.queuesByKey)) {
+      const nextQueue = withExpiredClaimReleased(queue);
+      if (nextQueue === queue) {
+        continue;
+      }
+      changed = true;
+      if (queue.claim) {
+        expiredClaimsByKey.set(key, queue.claim);
+      }
+      if (isEmptyQueue(nextQueue)) {
+        delete nextQueuesByKey[key];
+      } else {
+        nextQueuesByKey[key] = nextQueue;
+      }
+    }
+    if (changed) {
+      snapshot = Object.freeze({
+        queuesByKey: Object.freeze(nextQueuesByKey),
+        version: snapshot.version + 1
+      });
+      notify();
+    }
+    scheduleClaimExpiryWakeup();
+  };
+
+  const scheduleClaimExpiryWakeup = (): void => {
+    if (claimExpiryTimer) {
+      clearTimeout(claimExpiryTimer);
+      claimExpiryTimer = null;
+    }
+    let nextExpiryUnixMs: number | null = null;
+    for (const queue of Object.values(snapshot.queuesByKey)) {
+      if (!queue.claim) {
+        continue;
+      }
+      nextExpiryUnixMs =
+        nextExpiryUnixMs === null
+          ? queue.claim.leasedUntilUnixMs
+          : Math.min(nextExpiryUnixMs, queue.claim.leasedUntilUnixMs);
+    }
+    if (nextExpiryUnixMs === null) {
+      return;
+    }
+    claimExpiryTimer = setTimeout(
+      releaseExpiredClaims,
+      Math.max(1, nextExpiryUnixMs - Date.now() + 1)
+    );
+    (claimExpiryTimer as { unref?: () => void }).unref?.();
   };
 
   return {
@@ -171,6 +239,7 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
         ...queue,
         claim
       }));
+      expiredClaimsByKey.delete(queueKey(workspaceId, agentSessionId));
       return { claim, prompt };
     },
     cleanupSession(input) {
@@ -180,31 +249,47 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
         return;
       }
       updateQueue(workspaceId, agentSessionId, () => null);
+      expiredClaimsByKey.delete(queueKey(workspaceId, agentSessionId));
     },
     completeClaim(input) {
       let completed = false;
-      updateQueue(input.workspaceId, input.agentSessionId, (queue) => {
-        if (!claimMatches(queue.claim, input)) {
-          return queue;
-        }
-        completed = true;
-        const promptId = queue.claim.promptId;
-        return {
-          ...queue,
-          claim: null,
-          failedPromptId:
-            queue.failedPromptId === promptId ? null : queue.failedPromptId,
-          prompts: Object.freeze(
-            queue.prompts.filter((prompt) => prompt.id !== promptId)
-          ),
-          retryBlock:
-            queue.retryBlock?.queuedPromptId === promptId
-              ? null
-              : queue.retryBlock,
-          sendNextPromptId:
-            queue.sendNextPromptId === promptId ? null : queue.sendNextPromptId
-        };
-      });
+      const key = queueKey(input.workspaceId, input.agentSessionId);
+      updateQueue(
+        input.workspaceId,
+        input.agentSessionId,
+        (queue) => {
+          const matchingClaim = claimMatches(queue.claim, input)
+            ? queue.claim
+            : queue.claim === null &&
+                claimMatches(expiredClaimsByKey.get(key) ?? null, input)
+              ? expiredClaimsByKey.get(key)!
+              : null;
+          if (!matchingClaim) {
+            return queue;
+          }
+          completed = true;
+          const promptId = matchingClaim.promptId;
+          expiredClaimsByKey.delete(key);
+          return {
+            ...queue,
+            claim: null,
+            failedPromptId:
+              queue.failedPromptId === promptId ? null : queue.failedPromptId,
+            prompts: Object.freeze(
+              queue.prompts.filter((prompt) => prompt.id !== promptId)
+            ),
+            retryBlock:
+              queue.retryBlock?.queuedPromptId === promptId
+                ? null
+                : queue.retryBlock,
+            sendNextPromptId:
+              queue.sendNextPromptId === promptId
+                ? null
+                : queue.sendNextPromptId
+          };
+        },
+        { releaseExpiredClaim: false }
+      );
       return completed;
     },
     enqueue(input) {
@@ -248,6 +333,9 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
           (prompt) => prompt.id === promptId
         );
         if (index < 0) {
+          return queue;
+        }
+        if (queue.claim?.promptId === promptId) {
           return queue;
         }
         const prompts = [...queue.prompts];
@@ -307,6 +395,14 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
           queue.prompts.find((prompt) => prompt.id === promptId) ?? null;
         if (!removed) {
           return queue;
+        }
+        if (queue.claim?.promptId === promptId) {
+          removed = null;
+          return queue;
+        }
+        const key = queueKey(input.workspaceId, input.agentSessionId);
+        if (expiredClaimsByKey.get(key)?.promptId === promptId) {
+          expiredClaimsByKey.delete(key);
         }
         return {
           ...queue,
@@ -434,4 +530,20 @@ function claimMatches(
     claim.ownerId === input.ownerId.trim() &&
     claim.claimId === input.claimId.trim()
   );
+}
+
+function clearExpiredClaimIfReplaced(
+  expiredClaimsByKey: Map<string, AgentQueuedPromptClaim>,
+  key: string,
+  queue: AgentQueuedPromptQueueSnapshot | null
+): void {
+  const expiredClaim = expiredClaimsByKey.get(key);
+  if (
+    expiredClaim &&
+    (queue === null ||
+      queue.claim !== null ||
+      !queue.prompts.some((prompt) => prompt.id === expiredClaim.promptId))
+  ) {
+    expiredClaimsByKey.delete(key);
+  }
 }

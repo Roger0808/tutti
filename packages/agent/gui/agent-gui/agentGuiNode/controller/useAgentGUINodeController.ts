@@ -9606,10 +9606,7 @@ export function useAgentGUINodeController({
     activeConversationId !== null &&
     Boolean(pendingInterruptSessionIds[activeConversationId]);
   const queuedPrompts = activeConversationId ? [...activeQueuedPrompts] : [];
-  const drainingQueuedPromptId =
-    activeQueuedPromptClaim?.ownerId === queuedPromptOwnerId
-      ? activeQueuedPromptClaim.promptId
-      : null;
+  const drainingQueuedPromptId = activeQueuedPromptClaim?.promptId ?? null;
   const sessionSettings = useStableComposerSettings(
     cloneComposerSettings(activeSessionState?.settings ?? null)
   );

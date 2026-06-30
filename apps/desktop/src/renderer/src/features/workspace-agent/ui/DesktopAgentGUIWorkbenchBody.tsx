@@ -888,6 +888,17 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   );
 
   const frame = context.node.frame;
+  const agentHostApiWithToast = useMemo<AgentHostInputApi>(
+    () => ({
+      ...agentHostApi,
+      toast: {
+        error: Toast.Error,
+        info: Toast.tips,
+        success: Toast.Success
+      }
+    }),
+    [agentHostApi]
+  );
   const desktopSize = useMemo(
     () => ({
       height: Math.max(frame.height, frame.y + frame.height),
@@ -918,7 +929,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       <AgentGUI
         agentActivityRuntime={agentActivityRuntime}
         agentQueuedPromptRuntime={agentQueuedPromptRuntime}
-        agentHostApi={agentHostApi}
+        agentHostApi={agentHostApiWithToast}
         i18n={i18n}
         locale={locale}
         agentSettings={DESKTOP_AGENT_GUI_AGENT_SETTINGS}

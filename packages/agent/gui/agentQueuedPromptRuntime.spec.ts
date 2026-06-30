@@ -201,6 +201,102 @@ describe("AgentQueuedPromptRuntime", () => {
     ).toEqual([]);
   });
 
+  it("does not remove or promote a prompt while it is claimed", () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    enqueue(runtime, "workspace-1", "session-1", ["p1", "p2"]);
+
+    const claim = runtime.claimNextToDrain({
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      ownerId: "owner-1"
+    });
+
+    expect(claim?.prompt.id).toBe("p1");
+    expect(
+      runtime.removePrompt({
+        workspaceId: "workspace-1",
+        agentSessionId: "session-1",
+        promptId: "p1"
+      })
+    ).toBeNull();
+    runtime.promotePrompt({
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      promptId: "p1"
+    });
+    expect(
+      runtime
+        .getSessionSnapshot({
+          workspaceId: "workspace-1",
+          agentSessionId: "session-1"
+        })
+        .prompts.map((item) => item.id)
+    ).toEqual(["p1", "p2"]);
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "workspace-1",
+        agentSessionId: "session-1"
+      }).claim?.claimId
+    ).toBe(claim?.claim.claimId);
+  });
+
+  it("allows the original owner to complete an expired claim that was not replaced", () => {
+    vi.useFakeTimers();
+    const runtime = createAgentQueuedPromptRuntime();
+    enqueue(runtime, "workspace-1", "session-1", ["p1"]);
+
+    const claim = runtime.claimNextToDrain({
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      ownerId: "owner-1",
+      leaseMs: 10
+    })!;
+    vi.advanceTimersByTime(11);
+
+    expect(
+      runtime.completeClaim({
+        workspaceId: "workspace-1",
+        agentSessionId: "session-1",
+        ownerId: "owner-1",
+        claimId: claim.claim.claimId
+      })
+    ).toBe(true);
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "workspace-1",
+        agentSessionId: "session-1"
+      }).prompts
+    ).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it("notifies subscribers when a claim lease expires", () => {
+    vi.useFakeTimers();
+    const runtime = createAgentQueuedPromptRuntime();
+    const listener = vi.fn();
+    runtime.subscribe(listener);
+    enqueue(runtime, "workspace-1", "session-1", ["p1"]);
+    listener.mockClear();
+
+    runtime.claimNextToDrain({
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      ownerId: "owner-1",
+      leaseMs: 10
+    });
+    listener.mockClear();
+    vi.advanceTimersByTime(11);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "workspace-1",
+        agentSessionId: "session-1"
+      }).claim
+    ).toBeNull();
+    vi.useRealTimers();
+  });
+
   it("releases claims when an owner unmounts or a lease expires", () => {
     vi.useFakeTimers();
     const runtime = createAgentQueuedPromptRuntime();
