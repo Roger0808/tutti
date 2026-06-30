@@ -2390,7 +2390,9 @@ describe("AgentComposer", () => {
 
     const compactButton = screen.queryByTestId("agent-gui-compact-button");
     expect(compactButton).toBeInTheDocument();
-    expect(compactButton).toHaveClass("hover:bg-[var(--transparency-hover)]");
+    expect(compactButton).toHaveAttribute("data-variant", "secondary");
+    expect(compactButton).toHaveAttribute("data-size", "sm");
+    expect(compactButton).toHaveClass("h-7");
     fireEvent.click(compactButton!);
     expect(onSubmit).toHaveBeenCalledWith(textPromptContent("/compact"));
   });
