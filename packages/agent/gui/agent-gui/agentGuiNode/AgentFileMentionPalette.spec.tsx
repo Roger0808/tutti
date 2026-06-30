@@ -1870,7 +1870,15 @@ describe("AgentFileMentionPalette", () => {
       /\.agent-gui-chrome__card--danger\s*{[^}]*border-color:\s*color-mix\(\s*in srgb,\s*var\(--status-danger,\s*var\(--state-danger\)\)\s*16%,\s*transparent\s*\)/s
     );
     expect(css).toMatch(
-      /\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__icon,[\s\S]*?\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__message,[\s\S]*?\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__expand-cue\s*{[^}]*color:\s*var\(--status-danger,\s*var\(--state-danger\)\)/s
+      /\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__icon,[\s\S]*?\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__message\s*{[^}]*color:\s*var\(--status-danger,\s*var\(--state-danger\)\)/s
+    );
+    expect(css).not.toContain("--agent-gui-chrome-card-expanded-height");
+    expect(css).not.toContain("--agent-gui-chrome-card-collapsed-height");
+    expect(css).toMatch(
+      /\.agent-gui-chrome__card--danger[\s\S]*?\.agent-gui-chrome__message:not\(\.agent-gui-chrome__notice-message\)[\s\S]*?{[^}]*-webkit-line-clamp:\s*2/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-chrome__card--connecting[\s\S]*?\.agent-gui-chrome__message:not\(\.agent-gui-chrome__notice-message\)[\s\S]*?{[^}]*-webkit-line-clamp:\s*2/s
     );
   });
 
