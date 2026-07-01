@@ -120,9 +120,10 @@ func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 		CWD:               "/workspace",
 	}
 	adapter.storeSession(session.AgentSessionID, &codexAppServerSession{threadID: session.ProviderSessionID})
+	reducer := newCodexAppServerReducer(adapter)
 	normalizer := newACPTurnNormalizer()
 
-	parentEvents := adapter.appServerNotificationEvents(nil, session, "parent-turn-1", acpMessage{
+	parentEvents := reducer.ReduceNotification(nil, session, "parent-turn-1", acpMessage{
 		Method: appServerNotifyItemStarted,
 		Params: mustJSONRawMessage(t, map[string]any{
 			"threadId": session.ProviderSessionID,
@@ -136,23 +137,23 @@ func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 				"receiverThreadIds": []any{"child-thread-1"},
 			},
 		}),
-	}, normalizer, nil)
+	}, normalizer, nil).Events
 	if len(parentEvents) != 1 || parentEvents[0].OwnerThreadID != "" {
 		t.Fatalf("parent collab events = %#v, want one top-level event", parentEvents)
 	}
 
-	childLifecycleEvents := adapter.appServerNotificationEvents(nil, session, "parent-turn-1", acpMessage{
+	childLifecycleEvents := reducer.ReduceNotification(nil, session, "parent-turn-1", acpMessage{
 		Method: appServerNotifyTurnCompleted,
 		Params: mustJSONRawMessage(t, map[string]any{
 			"threadId": "child-thread-1",
 			"turn":     map[string]any{"id": "child-turn-1", "status": "completed"},
 		}),
-	}, normalizer, nil)
+	}, normalizer, nil).Events
 	if len(childLifecycleEvents) != 0 {
 		t.Fatalf("child lifecycle events = %#v, want suppressed", childLifecycleEvents)
 	}
 
-	childEvents := adapter.appServerNotificationEvents(nil, session, "parent-turn-1", acpMessage{
+	childEvents := reducer.ReduceNotification(nil, session, "parent-turn-1", acpMessage{
 		Method: appServerNotifyAgentMessageDelta,
 		Params: mustJSONRawMessage(t, map[string]any{
 			"threadId": "child-thread-1",
@@ -160,7 +161,7 @@ func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 			"itemId":   "child-msg-1",
 			"delta":    "child output",
 		}),
-	}, normalizer, nil)
+	}, normalizer, nil).Events
 	if len(childEvents) != 1 {
 		t.Fatalf("child events = %#v, want one event", childEvents)
 	}

@@ -41,11 +41,12 @@ type sessionEntry struct {
 	mu       sync.Mutex
 	refCount int
 
-	state                   State
-	sessionMessages         map[string][]WorkspaceAgentSessionMessage
-	messageVersionBySession map[string]uint64
-	syncStates              map[string]*agentSessionSyncState
-	hiddenSessions          map[string]struct{}
+	state                         State
+	sessionMessages               map[string][]WorkspaceAgentSessionMessage
+	messageVersionBySession       map[string]uint64
+	remoteMessageVersionBySession map[string]uint64
+	syncStates                    map[string]*agentSessionSyncState
+	hiddenSessions                map[string]struct{}
 }
 
 type Store struct {
@@ -104,10 +105,11 @@ func (s *Store) TrackRoom(roomID string) {
 	entry := s.rooms[roomID]
 	if entry == nil {
 		entry = &sessionEntry{
-			sessionMessages:         make(map[string][]WorkspaceAgentSessionMessage),
-			messageVersionBySession: make(map[string]uint64),
-			syncStates:              make(map[string]*agentSessionSyncState),
-			hiddenSessions:          make(map[string]struct{}),
+			sessionMessages:               make(map[string][]WorkspaceAgentSessionMessage),
+			messageVersionBySession:       make(map[string]uint64),
+			remoteMessageVersionBySession: make(map[string]uint64),
+			syncStates:                    make(map[string]*agentSessionSyncState),
+			hiddenSessions:                make(map[string]struct{}),
 		}
 		for agentSessionID, syncState := range loadedSyncStates {
 			entry.syncStates[agentSessionID] = syncEntryFromState(syncState)
@@ -415,6 +417,7 @@ func (s *Store) HideAgentSession(roomID string, agentSessionID string) {
 	entry.state.Sessions = removeSessionByID(entry.state.Sessions, agentSessionID)
 	delete(entry.sessionMessages, agentSessionID)
 	delete(entry.messageVersionBySession, agentSessionID)
+	delete(entry.remoteMessageVersionBySession, agentSessionID)
 	delete(entry.syncStates, agentSessionID)
 	if s.syncStateStore != nil {
 		if err := s.syncStateStore.DeleteAgentSyncState(context.Background(), roomID, agentSessionID); err != nil {
@@ -676,6 +679,98 @@ func (*Store) applyEventLocked(entry *sessionEntry, _ string, source EventSource
 			"session_before", summarizeWorkspaceAgentSessionForLog(before),
 			"session_after", summarizeWorkspaceAgentSessionForLog(session),
 		)
+	}
+	if update, ok := sessionMessageUpdateFromActivityEvent(sessionID, event, timestamp); ok {
+		appendMessageUpdatesLocked(entry, source, []WorkspaceAgentMessageUpdate{update})
+	}
+}
+
+func sessionMessageUpdateFromActivityEvent(
+	sessionID string,
+	event activityshared.Event,
+	timestamp int64,
+) (WorkspaceAgentMessageUpdate, bool) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" || timestamp <= 0 {
+		return WorkspaceAgentMessageUpdate{}, false
+	}
+	switch event.Type {
+	case activityshared.EventMessageAppended, activityshared.EventMessageCreated:
+		messageID := firstNonEmptyString(payloadFirstStringValue(event.Payload.Metadata, "messageId"), event.EventID)
+		if strings.TrimSpace(messageID) == "" {
+			return WorkspaceAgentMessageUpdate{}, false
+		}
+		role := strings.TrimSpace(string(event.Payload.Role))
+		if role == "" {
+			role = string(activityshared.MessageRoleAssistant)
+		}
+		kind := "text"
+		if role == string(activityshared.MessageRoleAssistantThinking) {
+			role = string(activityshared.MessageRoleAssistant)
+			kind = "reasoning"
+		}
+		payload := clonePayloadMap(event.Payload.Metadata)
+		if payload == nil {
+			payload = map[string]any{}
+		}
+		if event.Payload.Content != "" {
+			if _, ok := payload["content"]; !ok {
+				payload["content"] = event.Payload.Content
+			}
+			payload["text"] = event.Payload.Content
+		}
+		return WorkspaceAgentMessageUpdate{
+			AgentSessionID:   sessionID,
+			MessageID:        messageID,
+			TurnID:           strings.TrimSpace(event.Payload.TurnID),
+			Role:             role,
+			Kind:             kind,
+			Status:           firstNonEmptyString(payloadFirstStringValue(event.Payload.Metadata, "streamState"), event.Payload.Status),
+			Payload:          payload,
+			OccurredAtUnixMS: timestamp,
+		}, true
+	case activityshared.EventCallStarted, activityshared.EventCallCompleted, activityshared.EventCallFailed:
+		callID := strings.TrimSpace(event.Payload.CallID)
+		if callID == "" {
+			return WorkspaceAgentMessageUpdate{}, false
+		}
+		status := firstNonEmptyString(payloadFirstStringValue(event.Payload.Metadata, "status"), event.Payload.Status)
+		if status == "" {
+			switch event.Type {
+			case activityshared.EventCallStarted:
+				status = string(activityshared.ActivityStatusRunning)
+			case activityshared.EventCallCompleted:
+				status = string(activityshared.ActivityStatusCompleted)
+			case activityshared.EventCallFailed:
+				status = string(activityshared.ActivityStatusFailed)
+			}
+		}
+		payload := clonePayloadMap(event.Payload.Metadata)
+		if payload == nil {
+			payload = map[string]any{}
+		}
+		switch event.Type {
+		case activityshared.EventCallStarted:
+			payload["input"] = clonePayloadMap(event.Payload.Input)
+		case activityshared.EventCallCompleted:
+			payload["output"] = clonePayloadMap(event.Payload.Output)
+		case activityshared.EventCallFailed:
+			payload["error"] = clonePayloadMap(event.Payload.Error)
+		}
+		return WorkspaceAgentMessageUpdate{
+			AgentSessionID:   sessionID,
+			MessageID:        "toolcall:" + callID,
+			TurnID:           strings.TrimSpace(event.Payload.TurnID),
+			Role:             string(activityshared.MessageRoleAssistant),
+			Kind:             "tool_call",
+			Status:           status,
+			CallID:           callID,
+			Title:            strings.TrimSpace(event.Payload.Name),
+			Payload:          payload,
+			OccurredAtUnixMS: timestamp,
+		}, true
+	default:
+		return WorkspaceAgentMessageUpdate{}, false
 	}
 }
 
@@ -1859,7 +1954,6 @@ func appendMessageUpdatesLocked(entry *sessionEntry, source EventSource, updates
 		return false
 	}
 	grouped := make(map[string][]WorkspaceAgentSessionMessage)
-	latestVersionBySession := make(map[string]uint64)
 	for _, update := range updates {
 		sessionID := resolveMessageUpdateSessionID(entry, source, update)
 		if sessionID == "" || isHiddenAgentSession(entry, sessionID) {
@@ -1870,13 +1964,10 @@ func appendMessageUpdatesLocked(entry *sessionEntry, source EventSource, updates
 			continue
 		}
 		grouped[sessionID] = append(grouped[sessionID], message)
-		if message.Version > latestVersionBySession[sessionID] {
-			latestVersionBySession[sessionID] = message.Version
-		}
 	}
 	changed := false
 	for sessionID, messages := range grouped {
-		if appendSessionMessagesForProviderLocked(entry, source.Provider, sessionID, messages, latestVersionBySession[sessionID]) {
+		if appendSessionMessagesForProviderLocked(entry, source.Provider, sessionID, messages, 0) {
 			changed = true
 		}
 	}
@@ -1951,8 +2042,14 @@ func appendSessionMessagesForProviderLocked(
 	if entry.messageVersionBySession == nil {
 		entry.messageVersionBySession = make(map[string]uint64)
 	}
+	if entry.remoteMessageVersionBySession == nil {
+		entry.remoteMessageVersionBySession = make(map[string]uint64)
+	}
 
 	items := entry.sessionMessages[agentSessionID]
+	if current := maxSessionMessageVersion(0, items); current > entry.messageVersionBySession[agentSessionID] {
+		entry.messageVersionBySession[agentSessionID] = current
+	}
 	changed := false
 	for _, message := range messages {
 		message.AgentSessionID = agentSessionID
@@ -1964,6 +2061,7 @@ func appendSessionMessagesForProviderLocked(
 			if strings.TrimSpace(existing.MessageID) != message.MessageID {
 				continue
 			}
+			message.Version = existing.Version
 			merged := mergeSessionMessage(existing, message)
 			if !sessionMessageBusinessEqual(existing, merged) {
 				changed = true
@@ -1971,13 +2069,15 @@ func appendSessionMessagesForProviderLocked(
 			items[index] = merged
 			goto nextMessage
 		}
+		entry.messageVersionBySession[agentSessionID]++
+		message.Version = entry.messageVersionBySession[agentSessionID]
 		items = append(items, cloneSessionMessage(message))
 		changed = true
 	nextMessage:
 	}
 	entry.sessionMessages[agentSessionID] = sortSessionMessages(items)
-	if latestVersion > entry.messageVersionBySession[agentSessionID] {
-		entry.messageVersionBySession[agentSessionID] = latestVersion
+	if latestVersion > entry.remoteMessageVersionBySession[agentSessionID] {
+		entry.remoteMessageVersionBySession[agentSessionID] = latestVersion
 	}
 	return changed
 }
@@ -2025,12 +2125,16 @@ func canonicalizeSessionMessageBucketsLocked(entry *sessionEntry) bool {
 		if canonicalID == "" || canonicalID == sessionID {
 			continue
 		}
-		latestVersion := maxSessionMessageVersion(entry.messageVersionBySession[sessionID], messages)
-		if appendSessionMessagesLocked(entry, canonicalID, messages, latestVersion) {
+		remoteVersion := entry.remoteMessageVersionBySession[sessionID]
+		if appendSessionMessagesLocked(entry, canonicalID, messages, remoteVersion) {
 			changed = true
+		}
+		if remoteVersion > entry.remoteMessageVersionBySession[canonicalID] {
+			entry.remoteMessageVersionBySession[canonicalID] = remoteVersion
 		}
 		delete(entry.sessionMessages, sessionID)
 		delete(entry.messageVersionBySession, sessionID)
+		delete(entry.remoteMessageVersionBySession, sessionID)
 		changed = true
 	}
 	return changed
@@ -2152,6 +2256,15 @@ func sortMessageUpdates(items []WorkspaceAgentMessageUpdate) []WorkspaceAgentMes
 	sort.SliceStable(items, func(i, j int) bool {
 		left := items[i]
 		right := items[j]
+		if left.OccurredAtUnixMS != right.OccurredAtUnixMS {
+			if left.OccurredAtUnixMS == 0 {
+				return false
+			}
+			if right.OccurredAtUnixMS == 0 {
+				return true
+			}
+			return left.OccurredAtUnixMS < right.OccurredAtUnixMS
+		}
 		if left.Seq != right.Seq {
 			if left.Seq == 0 {
 				return false
@@ -2170,6 +2283,15 @@ func sortSessionMessages(items []WorkspaceAgentSessionMessage) []WorkspaceAgentS
 	sort.SliceStable(items, func(i, j int) bool {
 		left := items[i]
 		right := items[j]
+		if left.OccurredAtUnixMS != right.OccurredAtUnixMS {
+			if left.OccurredAtUnixMS == 0 {
+				return false
+			}
+			if right.OccurredAtUnixMS == 0 {
+				return true
+			}
+			return left.OccurredAtUnixMS < right.OccurredAtUnixMS
+		}
 		if left.Version != right.Version {
 			if left.Version == 0 {
 				return false
@@ -2203,7 +2325,7 @@ func (s *Store) getMessageVersionCursor(roomID, agentSessionID string) uint64 {
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
 
-	return entry.messageVersionBySession[agentSessionID]
+	return entry.remoteMessageVersionBySession[agentSessionID]
 }
 
 func (s *Store) notifyRoomUpdate(roomID string) {
@@ -2489,7 +2611,7 @@ func sessionMessageFromLegacyUpdate(
 		Kind:              strings.TrimSpace(update.Kind),
 		Status:            strings.TrimSpace(update.Status),
 		Payload:           payload,
-		OccurredAtUnixMS:  update.OccurredAtUnixMS,
+		OccurredAtUnixMS:  firstNonZeroInt64(update.OccurredAtUnixMS, update.StartedAtUnixMS, update.CompletedAtUnixMS),
 		StartedAtUnixMS:   update.StartedAtUnixMS,
 		CompletedAtUnixMS: update.CompletedAtUnixMS,
 		Version:           update.Seq,
