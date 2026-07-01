@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createTuttiNodeAuthClient, readAuthJson, writeAuthJson } from "./node";
+import { DEFAULT_APP_ID } from "./shared";
 
 test("auth json read/write keeps desktop-compatible shape", async () => {
   const dir = await mkdtemp(join(tmpdir(), "tutti-auth-bridge-"));
@@ -86,7 +87,7 @@ test("node login completes bridge, redeems transfer code, writes auth json", asy
       transfer_code: "transfer-1",
       attempt_id: accountServer.requests.redeem?.attempt_id,
       bridge_token: accountServer.requests.redeem?.bridge_token,
-      app_id: "tutti",
+      app_id: DEFAULT_APP_ID,
       device_id: accountServer.requests.redeem?.device_id
     });
   } finally {
@@ -163,7 +164,7 @@ test("node getUserInfo refreshes auth json and logout clears it", async () => {
     assert.equal((await readAuthJson(file))?.userId, "user-1");
     await auth.logout();
     assert.equal(await readAuthJson(file), null);
-    assert.equal(accountServer.requests.logout?.appId, "tutti");
+    assert.equal(accountServer.requests.logout?.appId, DEFAULT_APP_ID);
   } finally {
     await accountServer.close();
     await rm(dir, { recursive: true, force: true });

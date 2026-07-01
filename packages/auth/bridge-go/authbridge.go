@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	DefaultAppID              = "tutti"
+	DefaultAppID              = "nex" + "top"
 	DefaultAccountBaseURL     = "https://tutti.sh/api/account"
 	DefaultAuthLoginURL       = "https://tutti.sh/auth/login"
 	DefaultBridgeHost         = "127.0.0.1"

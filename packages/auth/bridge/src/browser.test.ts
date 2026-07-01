@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createTuttiBrowserAuthClient } from "./browser";
+import { DEFAULT_APP_ID } from "./shared";
 
 test("browser login redirects in-place by default", () => {
   const assigned: string[] = [];
@@ -80,5 +81,5 @@ test("browser logout calls account logout endpoint", async () => {
     globalThis.fetch = previousFetch;
   }
 
-  assert.deepEqual(JSON.parse(requestBody), { appId: "tutti" });
+  assert.deepEqual(JSON.parse(requestBody), { appId: DEFAULT_APP_ID });
 });
