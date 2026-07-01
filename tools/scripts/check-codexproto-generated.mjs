@@ -1,0 +1,122 @@
+import { spawnSync } from "node:child_process";
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
+
+const codexRepoUrl = "https://github.com/openai/codex.git";
+const codexSourceCommit = "6d2168f06ae275d5e1f73cabf935d2bcc8549998";
+const schemaSubdir = "codex-rs/app-server-protocol/schema/json";
+
+const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+const workspaceRoot = join(scriptDirectory, "..", "..");
+const daemonRoot = join(workspaceRoot, "packages", "agent", "daemon");
+const codexprotoRoot = join(daemonRoot, "runtime", "codexproto");
+const vendoredSchemaRoot = join(codexprotoRoot, "schema", "json");
+
+const tempRoot = mkdtempSync(join(tmpdir(), "tutti-codexproto-"));
+
+try {
+  const upstreamRoot = join(tempRoot, "codex");
+  run("git", ["init", upstreamRoot], workspaceRoot);
+  run("git", ["-C", upstreamRoot, "remote", "add", "origin", codexRepoUrl], workspaceRoot);
+  run(
+    "git",
+    ["-C", upstreamRoot, "fetch", "--depth=1", "origin", codexSourceCommit],
+    workspaceRoot
+  );
+  run(
+    "git",
+    ["-C", upstreamRoot, "checkout", "FETCH_HEAD", "--", schemaSubdir],
+    workspaceRoot
+  );
+
+  compareDirectories(join(upstreamRoot, schemaSubdir), vendoredSchemaRoot);
+
+  run("go", ["run", "./runtime/codexproto/internal/codegen"], daemonRoot);
+  run(
+    "git",
+    [
+      "diff",
+      "--exit-code",
+      "--",
+      "packages/agent/daemon/runtime/codexproto"
+    ],
+    workspaceRoot
+  );
+
+  console.log("codexproto generated artifacts are current");
+} finally {
+  rmSync(tempRoot, { recursive: true, force: true });
+}
+
+function compareDirectories(expectedRoot, actualRoot) {
+  const expected = fileHashes(expectedRoot);
+  const actual = fileHashes(actualRoot);
+  const paths = new Set([...expected.keys(), ...actual.keys()]);
+  const mismatches = [];
+
+  for (const path of [...paths].sort()) {
+    if (!expected.has(path)) {
+      mismatches.push(`unexpected vendored schema: ${path}`);
+      continue;
+    }
+    if (!actual.has(path)) {
+      mismatches.push(`missing vendored schema: ${path}`);
+      continue;
+    }
+    if (expected.get(path) !== actual.get(path)) {
+      mismatches.push(`vendored schema differs: ${path}`);
+    }
+  }
+
+  if (mismatches.length > 0) {
+    throw new Error(
+      [
+        "codexproto schema drift detected against pinned Codex commit",
+        ...mismatches.map((line) => `- ${line}`)
+      ].join("\n")
+    );
+  }
+}
+
+function fileHashes(root) {
+  const out = new Map();
+  for (const path of walkFiles(root)) {
+    const rel = relative(root, path);
+    const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
+    out.set(rel, hash);
+  }
+  return out;
+}
+
+function walkFiles(root) {
+  const out = [];
+  for (const entry of readdirSync(root)) {
+    const path = join(root, entry);
+    const stat = statSync(path);
+    if (stat.isDirectory()) {
+      out.push(...walkFiles(path));
+    } else if (stat.isFile()) {
+      out.push(path);
+    }
+  }
+  return out;
+}
+
+function run(command, args, cwd) {
+  const result = spawnSync(command, args, {
+    cwd,
+    stdio: "inherit"
+  });
+  if (result.status !== 0) {
+    throw new Error(`${command} ${args.join(" ")} failed`);
+  }
+}
