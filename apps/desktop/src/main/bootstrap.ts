@@ -28,6 +28,10 @@ import {
 import { registerIpcHandlers } from "./ipc/register";
 import { flushDesktopLogger, setupDesktopLogger } from "./logging";
 import { ensureSingleInstance } from "./singleInstance";
+import {
+  completeDesktopLoginCallbackUrl,
+  findDesktopLoginCallbackUrl
+} from "./desktopLoginCallback";
 import { getSystemDesktopLocale } from "./desktopLocale";
 import { openDesktopWorkspaceAppFolder } from "./host/workspaceAppFolderAccess";
 import { openPerfMonitorDevToolsWindow } from "./windows/perfMonitorDevToolsWindow.ts";
@@ -89,9 +93,13 @@ export async function bootstrapDesktopApp(): Promise<void> {
   if (app.isPackaged) {
     app.setAsDefaultProtocolClient(protocolClientRegistration.scheme);
   }
+  const handleLoginCallbackUrl = (url: string): void => {
+    void completeDesktopLoginCallbackUrl(url).catch(() => undefined);
+  };
   app.on("open-url", (event, url) => {
     if (url.startsWith(loginCallbackUrl)) {
       event.preventDefault();
+      handleLoginCallbackUrl(url);
       focusPrimaryDesktopWindow();
     }
   });
@@ -117,7 +125,13 @@ export async function bootstrapDesktopApp(): Promise<void> {
     requestSingleInstanceLock: () => app.requestSingleInstanceLock(),
     quit: () => app.quit(),
     onSecondInstance: (handler) => {
-      app.on("second-instance", handler);
+      app.on("second-instance", (_event, commandLine) => handler(commandLine));
+    },
+    handleSecondInstanceArgv: (argv) => {
+      const callbackUrl = findDesktopLoginCallbackUrl(argv, loginCallbackUrl);
+      if (callbackUrl) {
+        handleLoginCallbackUrl(callbackUrl);
+      }
     },
     focusPrimaryWindow: focusPrimaryDesktopWindow
   });
