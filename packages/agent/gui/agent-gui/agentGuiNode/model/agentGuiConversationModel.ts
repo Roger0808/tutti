@@ -1080,7 +1080,7 @@ function interactivePromptFromTimelineItem(
   const status =
     normalizeStatus(item.status) ||
     normalizeStatus(stringPayload(payload.status));
-  if (status !== "waiting" && status !== "pending") {
+  if (!isPendingInteractiveStatus(status)) {
     return null;
   }
   const toolName = normalizeInteractiveToolName(
@@ -1253,6 +1253,16 @@ function normalizeStatus(status: string | null | undefined): string {
     return "waiting";
   }
   return normalized;
+}
+
+function isPendingInteractiveStatus(status: string): boolean {
+  return (
+    status === "waiting" ||
+    status === "pending" ||
+    status === "running" ||
+    status === "streaming" ||
+    status === "working"
+  );
 }
 
 function stringPayload(value: unknown): string {

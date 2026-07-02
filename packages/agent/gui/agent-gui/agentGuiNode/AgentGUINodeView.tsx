@@ -343,6 +343,7 @@ export interface AgentGUIViewLabels {
   submitAnswers: string;
   answerPlaceholder: string;
   waitingForAnswer: string;
+  waitingForBackgroundAgent: (count: number) => string;
   thinkingLabel: string;
   toolCallsLabel: (count: number) => string;
   openConversationWindow: string;
@@ -2197,6 +2198,10 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const stableRequestGitBranches =
     useOptionalStableEventCallback(onRequestGitBranches);
   const authLogin = useOptionalStableEventCallback(onAgentProviderLogin);
+  const backgroundAgentStatusText =
+    viewModel.backgroundAgentCount > 0
+      ? labels.waitingForBackgroundAgent(viewModel.backgroundAgentCount)
+      : null;
   const submitBottomDockInteractivePrompt = useCallback(
     (input: {
       requestId: string;
@@ -2247,6 +2252,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       // Plan decisions replace the composer via bottomDockReplacementPrompt;
       // approval / ask-user embed here (composerActivePrompt encodes that).
       activePrompt: composerActivePrompt,
+      backgroundAgentStatusText,
       activePromptKeyboardShortcutsEnabled: isActive,
       promptTips: labels.promptTips,
       composerFocusRequestSequence,
@@ -2283,6 +2289,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     }),
     [
       canQueueWhileBusy,
+      backgroundAgentStatusText,
       canSwitchComposerProvider,
       capabilityMenuState,
       composerProviderTargets,
@@ -2381,6 +2388,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     sessionChrome.auth?.message ?? "",
     sessionChrome.recovery?.kind ?? "",
     sessionChrome.recovery?.message ?? "",
+    backgroundAgentStatusText ?? "",
     viewModel.queuedPrompts.map((prompt) => prompt.id).join(","),
     viewModel.drainingQueuedPromptId ?? "",
     viewModel.isRespondingApproval ? "1" : "0"

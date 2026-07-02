@@ -212,6 +212,7 @@ export interface AgentComposerProps {
   canQueueWhileBusy: boolean;
   showStopButton: boolean;
   activePrompt: AgentConversationPromptVM | null;
+  backgroundAgentStatusText?: string | null;
   activePromptKeyboardShortcutsEnabled?: boolean;
   promptTips?: readonly AgentComposerPromptTip[];
   isInterrupting: boolean;
@@ -812,6 +813,7 @@ export function AgentComposer({
   canQueueWhileBusy,
   showStopButton,
   activePrompt,
+  backgroundAgentStatusText = null,
   activePromptKeyboardShortcutsEnabled = true,
   promptTips = EMPTY_PROMPT_TIPS,
   isInterrupting,
@@ -2934,6 +2936,15 @@ export function AgentComposer({
         )}
         data-edge-glow={showEdgeGlow ? "true" : undefined}
       >
+        {backgroundAgentStatusText ? (
+          <AgentChromeNotice
+            tone="muted"
+            role="status"
+            testId="agent-gui-composer-background-agent-status"
+            title={backgroundAgentStatusText}
+            icon={<Spinner className="h-3.5 w-3.5" />}
+          />
+        ) : null}
         {isSelectedProjectMissing ? (
           <AgentChromeNotice
             tone="danger"
