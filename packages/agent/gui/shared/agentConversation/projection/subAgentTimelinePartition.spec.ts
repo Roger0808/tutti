@@ -371,6 +371,47 @@ describe("subAgentTimelinePartition", () => {
       expect(lane?.name).toBeNull();
     });
 
+    it("seeds placeholder lanes from a spawn card before any child rows arrive", () => {
+      const partition = partitionSubAgentTimelineItems([
+        collabCardItem({
+          id: 10,
+          eventId: "spawn-1-started",
+          callId: "spawn-1",
+          status: "running",
+          occurredAtUnixMs: 100,
+          receiverThreadIds: ["child-thread-1", "child-thread-2"],
+          task: "你是 repo smell reviewer。請分析。"
+        })
+      ]);
+
+      const lanes = buildSubAgentLanesByCallId(partition).get("spawn-1");
+
+      expect(lanes?.map((lane) => lane.ownerThreadId)).toEqual([
+        "child-thread-1",
+        "child-thread-2"
+      ]);
+      expect(lanes?.[0]?.status).toBe("running");
+      expect(lanes?.[0]?.name).toBe("repo smell reviewer");
+      expect(lanes?.[0]?.latestActivity).toBeNull();
+      expect(lanes?.[0]?.startedAtUnixMs).toBe(100);
+    });
+
+    it("does not seed lanes from wait/close control cards", () => {
+      const partition = partitionSubAgentTimelineItems([
+        collabCardItem({
+          id: 10,
+          eventId: "wait-1-started",
+          callId: "wait-1",
+          status: "running",
+          occurredAtUnixMs: 100,
+          receiverThreadIds: ["child-thread-1"],
+          agentName: "waitAgent"
+        })
+      ]);
+
+      expect(buildSubAgentLanesByCallId(partition).size).toBe(0);
+    });
+
     it("titles the lane from the subAgentName marker and hides markers from the log", () => {
       const partition = partitionSubAgentTimelineItems([
         collabCardItem({
@@ -617,7 +658,8 @@ function collabCardItem({
   itemType = "call.started",
   output,
   receiverThreadIds,
-  task = "inspect the repository"
+  task = "inspect the repository",
+  agentName = "spawnAgent"
 }: {
   id: number;
   eventId: string;
@@ -628,6 +670,7 @@ function collabCardItem({
   output?: Record<string, unknown>;
   receiverThreadIds?: readonly string[];
   task?: string;
+  agentName?: string;
 }): WorkspaceAgentActivityTimelineItem {
   return timelineItem({
     id,
@@ -645,7 +688,7 @@ function collabCardItem({
       status,
       input: {
         task,
-        agentName: "spawnAgent",
+        agentName,
         ...(receiverThreadIds ? { receiverThreadIds } : {})
       },
       ...(output ? { output } : {})

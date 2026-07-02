@@ -92,13 +92,11 @@ export function buildSubAgentLanesByCallId(
   partition: SubAgentTimelinePartition
 ): ReadonlyMap<string, AgentTaskSubAgentVM[]> {
   const lanesByCallId = new Map<string, AgentTaskSubAgentVM[]>();
-  if (partition.subAgentItemsByOwner.size === 0) {
-    return lanesByCallId;
-  }
   const cards = collectCollabCards(partition.mainTimelineItems);
   if (cards.length === 0) {
     return lanesByCallId;
   }
+  const lanedOwners = new Set<string>();
   for (const [ownerThreadId, items] of partition.subAgentItemsByOwner) {
     const sortedItems = [...items].sort(compareTimelineItemsAscending);
     const startedAtUnixMs = timelineItemTime(sortedItems[0]);
@@ -109,9 +107,29 @@ export function buildSubAgentLanesByCallId(
     if (!card) {
       continue;
     }
+    lanedOwners.add(ownerThreadId);
     const lanes = lanesByCallId.get(card.callId) ?? [];
     lanes.push(subAgentLane(ownerThreadId, sortedItems, card));
     lanesByCallId.set(card.callId, lanes);
+  }
+  // A spawn card is a sub-agent card from the moment it exists: seed
+  // placeholder lanes for declared children that have not produced any rows
+  // yet, so the spawn never renders as a bare tool row. Only spawn-kind cards
+  // seed - wait/close control cards also declare receiverThreadIds and must
+  // not duplicate the lanes.
+  for (const card of cards) {
+    if (!isSpawnAgentToken(card.agentName)) {
+      continue;
+    }
+    for (const receiverThreadId of card.receiverThreadIds) {
+      if (lanedOwners.has(receiverThreadId)) {
+        continue;
+      }
+      lanedOwners.add(receiverThreadId);
+      const lanes = lanesByCallId.get(card.callId) ?? [];
+      lanes.push(subAgentLane(receiverThreadId, [], card));
+      lanesByCallId.set(card.callId, lanes);
+    }
   }
   for (const lanes of lanesByCallId.values()) {
     lanes.sort(
@@ -221,9 +239,12 @@ function subAgentLane(
     activityLog: activity.entries,
     activityOmittedCount: activity.omittedCount,
     failureDetail: terminal?.detail ?? null,
-    startedAtUnixMs: timelineItemTime(sortedItems[0]) || null,
+    startedAtUnixMs:
+      timelineItemTime(sortedItems[0]) || card.startedAtUnixMs || null,
     latestActivityAtUnixMs:
-      terminalAtUnixMs ?? timelineItemTime(lastItem) ?? null,
+      terminalAtUnixMs ??
+      (lastItem ? timelineItemTime(lastItem) : card.startedAtUnixMs) ??
+      null,
     terminalAtUnixMs
   };
 }
@@ -259,6 +280,11 @@ export function deriveSubAgentNameFromTask(task: string | null): string | null {
     return null;
   }
   return stripped;
+}
+
+function isSpawnAgentToken(agentName: string | null): boolean {
+  const token = normalizeToolToken(agentName);
+  return token === "spawnagent" || token === "spawn";
 }
 
 function latestNameMarker(
