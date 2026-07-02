@@ -82,8 +82,12 @@ func TestServiceCreateResolvesProviderFromAgentTarget(t *testing.T) {
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "target-session-1",
 		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
-		Provider:       "claude-code",
 		InitialContent: TextPromptContent("hello target"),
+		ProviderTargetRef: map[string]any{
+			"kind":     "local_cli",
+			"provider": "codex",
+			"targetId": "wrong-target",
+		},
 	})
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
@@ -99,6 +103,12 @@ func TestServiceCreateResolvesProviderFromAgentTarget(t *testing.T) {
 	}
 	if got := runtime.startCalls[0].AgentTargetID; got != agenttargetbiz.IDLocalClaudeCode {
 		t.Fatalf("runtime agent target id = %q, want %s", got, agenttargetbiz.IDLocalClaudeCode)
+	}
+	ref := runtime.startCalls[0].ProviderTargetRef
+	if ref["kind"] != agenttargetbiz.LaunchRefTypeLocalCLI ||
+		ref["provider"] != "claude-code" ||
+		ref["targetId"] != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("runtime provider target ref = %#v, want daemon-derived local_cli claude target", ref)
 	}
 }
 
@@ -158,6 +168,14 @@ func TestServiceCreateRejectsInvalidAgentTargetInputs(t *testing.T) {
 				},
 			},
 			errContains: "provider does not match agent target",
+		},
+		{
+			name: "missing launch authority",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-no-authority",
+				InitialContent: TextPromptContent("hello"),
+			},
+			errContains: ErrInvalidArgument.Error(),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

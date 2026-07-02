@@ -933,10 +933,14 @@ AgentGUI distinguishes launch authority, real provider identity, and legacy
 provider-target compatibility. `agentTargetId` is the authority for new
 session launches, workbench target selection, and AgentGUI node state. The
 daemon resolves that id against `agent_targets` and derives the execution
-provider from the trusted target `launchRef`. `provider` continues to mean the
-concrete provider family (`codex`, `claude-code`, `nexight`, and so on) and
-remains the key for display labels/icons, probes, provider status, historical
-conversation filters, telemetry, and provider execution policy.
+provider and runtime `providerTargetRef` from the trusted target `launchRef`.
+Target-backed create requests may omit `provider`; if a request supplies both
+`agentTargetId` and `provider`, the daemon rejects mismatches. Client-supplied
+`providerTargetRef` must not override the daemon-derived target ref when
+`agentTargetId` is present. `provider` continues to mean the concrete provider
+family (`codex`, `claude-code`, `nexight`, and so on) and remains the key for
+display labels/icons, probes, provider status, historical conversation filters,
+telemetry, and provider execution policy.
 
 `providerTargets` lets a host expose multiple targets under that same provider.
 AgentGUI owns only target display and passthrough:
@@ -948,15 +952,19 @@ AgentGUI owns only target display and passthrough:
 - read legacy `providerTargetId` / `providerTargetRef` from old workbench node
   state to recover the selected target
 - pass `agentTargetId` through `AgentActivityRuntime.activateSession`
-- pass `providerTargetRef` only as a legacy opaque compatibility hint
+- pass `providerTargetRef` only as a legacy opaque compatibility hint for
+  provider-only launches
 
 `providerTargetId` and `providerTargetRef` are transition fields, not daemon
 authority. AgentGUI must not interpret `ref.kind`, mint invocation-control
 tokens, resolve invocation plans, contact command gateways, or handle raw
 credentials. Host/trusted code must re-authenticate the current user and
-workspace and resolve any invocation plan before launching. A target may
-identify shared, local, remote, or other host-owned launch mechanisms, but those
-meanings stay outside AgentGUI.
+workspace and resolve any invocation plan before launching. When
+`agentTargetId` is present, the daemon maps the stored launch ref to the runtime
+target ref shape, currently `{ kind: launchRef.type, provider, targetId }`, and
+runtime session reuse must match that ref as part of the launch key. A target
+may identify shared, local, remote, or other host-owned launch mechanisms, but
+those meanings stay outside AgentGUI.
 
 When `providerTargets` is omitted or empty, AgentGUI may synthesize local
 targets from the static provider catalog for picker/display compatibility. Those

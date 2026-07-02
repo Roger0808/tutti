@@ -29,7 +29,8 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 	}
 	agentSessionID := request.Body.AgentSessionId.String()
 	metadata := mapValue(request.Body.Metadata)
-	logCreateAgentSubmitTrace("api.create.received", string(request.WorkspaceID), agentSessionID, metadata, string(request.Body.Provider), "", nil)
+	provider := workspaceAgentProviderString(request.Body.Provider)
+	logCreateAgentSubmitTrace("api.create.received", string(request.WorkspaceID), agentSessionID, metadata, provider, "", nil)
 	session, err := api.AgentSessionService.Create(ctx, string(request.WorkspaceID), agentservice.CreateSessionInput{
 		AgentSessionID:         agentSessionID,
 		AgentTargetID:          stringPtrValue(request.Body.AgentTargetId),
@@ -42,7 +43,7 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		PlanMode:               request.Body.PlanMode,
 		BrowserUse:             request.Body.BrowserUse,
 		ProviderTargetRef:      mapValue(request.Body.ProviderTargetRef),
-		Provider:               string(request.Body.Provider),
+		Provider:               provider,
 		ReasoningEffort:        request.Body.ReasoningEffort,
 		Speed:                  request.Body.Speed,
 		Title:                  request.Body.Title,
@@ -57,6 +58,13 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 	return tuttigenerated.CreateWorkspaceAgentSession201JSONResponse{
 		Session: generatedAgentSession(session),
 	}, nil
+}
+
+func workspaceAgentProviderString(provider *tuttigenerated.WorkspaceAgentProvider) string {
+	if provider == nil {
+		return ""
+	}
+	return string(*provider)
 }
 
 func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request tuttigenerated.SendWorkspaceAgentSessionInputRequestObject) (tuttigenerated.SendWorkspaceAgentSessionInputResponseObject, error) {

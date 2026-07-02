@@ -666,11 +666,6 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
         permissionModeId: "read-only",
         planMode: true,
         provider: "codex",
-        providerTargetRef: {
-          kind: "sharedAgent",
-          provider: "codex",
-          sharedAgentId: "agent-1"
-        },
         reasoningEffort: "high",
         speed: null,
         title: "Plan",

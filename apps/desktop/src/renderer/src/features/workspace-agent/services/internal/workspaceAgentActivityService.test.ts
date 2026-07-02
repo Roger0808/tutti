@@ -42,7 +42,7 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
   assert.equal(snapshotSession?.currentPhase, "working");
 });
 
-test("WorkspaceAgentActivityService.activateSession forwards provider target refs to create", async () => {
+test("WorkspaceAgentActivityService.activateSession omits provider target refs for target-backed create", async () => {
   const createCalls: unknown[] = [];
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
@@ -89,11 +89,6 @@ test("WorkspaceAgentActivityService.activateSession forwards provider target ref
       permissionModeId: null,
       planMode: null,
       provider: "codex",
-      providerTargetRef: {
-        kind: "sharedAgent",
-        provider: "codex",
-        sharedAgentId: "agent-1"
-      },
       reasoningEffort: null,
       speed: null,
       title: "Shared Codex",

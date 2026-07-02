@@ -1009,6 +1009,48 @@ func TestDaemonAPIGeneratedRoutesCreateAgentSession(t *testing.T) {
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesCreateAgentSessionAllowsTargetOnlyRequest(t *testing.T) {
+	createdAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			createFn: func(_ context.Context, workspaceID string, input agentservice.CreateSessionInput) (agentservice.Session, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if input.AgentTargetID != agenttargetbiz.IDLocalCodex {
+					t.Fatalf("agent target id = %q, want %s", input.AgentTargetID, agenttargetbiz.IDLocalCodex)
+				}
+				if input.Provider != "" {
+					t.Fatalf("provider = %q, want empty pre-service target-only authority", input.Provider)
+				}
+				return agentservice.Session{
+					ID:            input.AgentSessionID,
+					AgentTargetID: input.AgentTargetID,
+					Provider:      "codex",
+					Status:        "created",
+					CreatedAt:     createdAt,
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/workspaces/ws-1/agent-sessions", map[string]any{
+		"agentSessionId": "11111111-1111-4111-8111-111111111111",
+		"agentTargetId":  agenttargetbiz.IDLocalCodex,
+		"initialContent": []map[string]any{{"type": "text", "text": "hello"}},
+	})
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceAgentSessionResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.Session.AgentTargetId == nil || *response.Session.AgentTargetId != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("session agent target id = %#v, want %s", response.Session.AgentTargetId, agenttargetbiz.IDLocalCodex)
+	}
+}
+
 func TestDaemonAPIGeneratedRoutesUpdateAgentSessionPin(t *testing.T) {
 	createdAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
 	mux := http.NewServeMux()

@@ -1308,7 +1308,7 @@ export type CreateWorkspaceAgentSessionRequest = {
    * Preferred target-first session launch authority. When present, the daemon derives provider from the stored agent target launchRef and rejects mismatched provider values.
    */
   agentTargetId?: string | null;
-  provider: WorkspaceAgentProvider;
+  provider?: WorkspaceAgentProvider;
   initialContent: Array<AgentPromptContentBlock>;
   /**
    * Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).

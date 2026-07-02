@@ -2012,7 +2012,7 @@ func (c *Controller) findStartSession(
 		if strings.TrimSpace(session.CWD) != cwd {
 			continue
 		}
-		if agentTargetID == "" && !providerTargetRefsEqual(session.ProviderTargetRef, providerTargetRef) {
+		if !providerTargetRefsEqual(session.ProviderTargetRef, providerTargetRef) {
 			continue
 		}
 		if title != "" && strings.TrimSpace(session.Title) != title {

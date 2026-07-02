@@ -14,6 +14,7 @@ import {
   type AgentProviderComposerOptionsResponse,
   type AppReferenceListResponse,
   type CliCapabilitiesResponse,
+  type CreateWorkspaceAgentSessionRequest,
   type IssueManagerReferenceSearchResponse,
   type ListAgentTargetsResponse,
   type ListWorkspacesResponse,
@@ -21,6 +22,16 @@ import {
   type WorkspaceGitPatchSupportResponse,
   type WorkspaceGitPatchResponse
 } from "./index.ts";
+
+test("create workspace agent session request supports target-only authority", () => {
+  const request = {
+    agentSessionId: "11111111-1111-4111-8111-111111111111",
+    agentTargetId: "local:codex",
+    initialContent: [{ type: "text", text: "hello" }]
+  } satisfies CreateWorkspaceAgentSessionRequest;
+
+  assert.equal(request.agentTargetId, "local:codex");
+});
 
 test("generated tuttid client returns parsed health response", async () => {
   const client = createClient({

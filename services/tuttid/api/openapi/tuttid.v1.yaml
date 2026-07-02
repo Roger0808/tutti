@@ -6454,7 +6454,6 @@ components:
       additionalProperties: false
       required:
         - agentSessionId
-        - provider
         - initialContent
       properties:
         agentSessionId:
@@ -6467,6 +6466,7 @@ components:
           description: Preferred target-first session launch authority. When present, the daemon derives provider from the stored agent target launchRef and rejects mismatched provider values.
         provider:
           $ref: "#/components/schemas/WorkspaceAgentProvider"
+          description: Legacy provider-first launch authority. Optional when agentTargetId is present; when both are present, the daemon rejects mismatches with the target launchRef-derived provider. Required when agentTargetId is absent.
         initialContent:
           type: array
           minItems: 1

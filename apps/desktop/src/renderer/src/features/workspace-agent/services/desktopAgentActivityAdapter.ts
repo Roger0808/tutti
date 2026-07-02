@@ -86,7 +86,7 @@ export function createDesktopAgentActivityAdapter({
             permissionModeId: input.settings.permissionModeId,
             planMode: input.settings.planMode,
             provider: "claude-code",
-            ...(input.providerTargetRef
+            ...(!input.agentTargetId && input.providerTargetRef
               ? { providerTargetRef: input.providerTargetRef }
               : {}),
             reasoningEffort: input.settings.reasoningEffort,
@@ -433,7 +433,7 @@ export function createDesktopAgentActivityAdapter({
                 planMode: input.planMode ?? null,
                 permissionModeId: input.permissionModeId ?? null,
                 provider: workspaceAgentProvider(input.provider),
-                ...(input.providerTargetRef
+                ...(!input.agentTargetId && input.providerTargetRef
                   ? { providerTargetRef: input.providerTargetRef }
                   : {}),
                 reasoningEffort: input.reasoningEffort ?? null,

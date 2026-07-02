@@ -84,6 +84,25 @@ func MustLocalCLILaunchRefJSON(provider string) string {
 	return raw
 }
 
+func RuntimeProviderTargetRef(target Target) (map[string]any, error) {
+	normalized, err := NormalizeTarget(target)
+	if err != nil {
+		return nil, err
+	}
+	var launchRef LaunchRef
+	if err := json.Unmarshal([]byte(normalized.LaunchRefJSON), &launchRef); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidLaunchRef, err)
+	}
+	if _, err := CanonicalLaunchRefJSON(normalized.Provider, launchRef); err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"kind":     launchRef.Type,
+		"provider": launchRef.Provider,
+		"targetId": normalized.ID,
+	}, nil
+}
+
 func NormalizeTarget(value Target) (Target, error) {
 	value.ID = strings.TrimSpace(value.ID)
 	value.Provider = normalizeFirstIterationProvider(value.Provider)

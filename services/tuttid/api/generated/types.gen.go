@@ -2321,7 +2321,7 @@ type CreateWorkspaceAgentSessionRequest struct {
 	Model            *string                 `json:"model,omitempty"`
 	PermissionModeId *string                 `json:"permissionModeId,omitempty"`
 	PlanMode         *bool                   `json:"planMode,omitempty"`
-	Provider         WorkspaceAgentProvider  `json:"provider"`
+	Provider         *WorkspaceAgentProvider `json:"provider,omitempty"`
 
 	// ProviderTargetRef Opaque host-owned provider target reference. It is not authority; trusted launchers must re-authenticate and resolve it before invoking a provider.
 	ProviderTargetRef *map[string]interface{} `json:"providerTargetRef,omitempty"`

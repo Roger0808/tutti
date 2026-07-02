@@ -274,7 +274,10 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       workspaceId: input.workspaceId,
       fields: { agentTargetId: input.agentTargetId ?? null }
     });
-    const session = await entry.adapter.createSession(input);
+    const adapterInput = input.agentTargetId
+      ? { ...input, providerTargetRef: null }
+      : input;
+    const session = await entry.adapter.createSession(adapterInput);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
       event: "activity_service.create.adapter_resolved",
@@ -364,7 +367,9 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         planMode: input.settings?.planMode ?? null,
         permissionModeId: resolveComposerPermissionMode(input.settings),
         provider,
-        providerTargetRef: input.providerTargetRef ?? null,
+        ...(input.agentTargetId
+          ? {}
+          : { providerTargetRef: input.providerTargetRef ?? null }),
         reasoningEffort: input.settings?.reasoningEffort ?? null,
         speed: input.settings?.speed ?? null,
         title: input.title ?? null,

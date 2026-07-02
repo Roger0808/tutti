@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -95,14 +94,16 @@ func (s *Service) ListFiltered(ctx context.Context, workspaceID string, input Li
 func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSessionInput) (Session, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	input.AgentTargetID = strings.TrimSpace(input.AgentTargetID)
-	provider, err := s.resolveCreateSessionProvider(ctx, input)
+	launch, err := s.resolveCreateSessionLaunch(ctx, input)
 	if err != nil {
 		return Session{}, err
 	}
+	provider := launch.Provider
 	if workspaceID == "" || provider == "" {
 		return Session{}, ErrInvalidArgument
 	}
 	input.Provider = provider
+	input.ProviderTargetRef = launch.ProviderTargetRef
 	input.ConversationDetailMode = preferencesbiz.NormalizeDesktopAgentConversationDetailMode(input.ConversationDetailMode)
 	if normalizedPermissionModeID := normalizePermissionModeIDForProvider(
 		provider,
@@ -273,41 +274,50 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	), nil
 }
 
-func (s *Service) resolveCreateSessionProvider(ctx context.Context, input CreateSessionInput) (string, error) {
+type resolvedCreateSessionLaunch struct {
+	Provider          string
+	ProviderTargetRef map[string]any
+}
+
+func (s *Service) resolveCreateSessionLaunch(ctx context.Context, input CreateSessionInput) (resolvedCreateSessionLaunch, error) {
 	requestProvider := strings.TrimSpace(input.Provider)
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	if agentTargetID == "" {
-		return requestProvider, nil
+		return resolvedCreateSessionLaunch{
+			Provider:          requestProvider,
+			ProviderTargetRef: clonePayload(input.ProviderTargetRef),
+		}, nil
 	}
 	if s.AgentTargetStore == nil {
-		return "", fmt.Errorf("%w: agent target store is unavailable", ErrInvalidArgument)
+		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: agent target store is unavailable", ErrInvalidArgument)
 	}
 	target, err := s.AgentTargetStore.GetAgentTarget(ctx, agentTargetID)
 	if err != nil {
 		if errors.Is(err, workspacedata.ErrAgentTargetNotFound) {
-			return "", fmt.Errorf("%w: agent target not found", ErrInvalidArgument)
+			return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: agent target not found", ErrInvalidArgument)
 		}
-		return "", fmt.Errorf("get agent target: %w", err)
+		return resolvedCreateSessionLaunch{}, fmt.Errorf("get agent target: %w", err)
 	}
 	normalized, err := agenttargetbiz.NormalizeTarget(target)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrInvalidArgument, err)
+		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: %v", ErrInvalidArgument, err)
 	}
 	if !normalized.Enabled {
-		return "", fmt.Errorf("%w: agent target is disabled", ErrInvalidArgument)
+		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: agent target is disabled", ErrInvalidArgument)
 	}
-	var launchRef agenttargetbiz.LaunchRef
-	if err := json.Unmarshal([]byte(normalized.LaunchRefJSON), &launchRef); err != nil {
-		return "", fmt.Errorf("%w: invalid agent target launch ref", ErrInvalidArgument)
+	derivedRef, err := agenttargetbiz.RuntimeProviderTargetRef(normalized)
+	if err != nil {
+		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: invalid agent target launch ref", ErrInvalidArgument)
 	}
-	if _, err := agenttargetbiz.CanonicalLaunchRefJSON(normalized.Provider, launchRef); err != nil {
-		return "", fmt.Errorf("%w: invalid agent target launch ref", ErrInvalidArgument)
-	}
-	derivedProvider := strings.TrimSpace(launchRef.Provider)
+	derivedProvider, _ := derivedRef["provider"].(string)
+	derivedProvider = strings.TrimSpace(derivedProvider)
 	if requestProvider != "" && requestProvider != derivedProvider {
-		return "", fmt.Errorf("%w: provider does not match agent target", ErrInvalidArgument)
+		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: provider does not match agent target", ErrInvalidArgument)
 	}
-	return derivedProvider, nil
+	return resolvedCreateSessionLaunch{
+		Provider:          derivedProvider,
+		ProviderTargetRef: derivedRef,
+	}, nil
 }
 
 func (s *Service) resolveCreateSessionModel(ctx context.Context, provider string, model *string) *string {
