@@ -233,9 +233,6 @@ const AGENT_RESUME_SESSION_NOT_LOCAL_FALLBACK_MESSAGE =
   "The previous agent session is not available on this machine.";
 const AGENT_GUI_CAUGHT_ERROR_STACK_LIMIT = 4000;
 const SELECTED_SESSION_NOT_FOUND_RETRY_DELAY_MS = 150;
-const AGENT_GUI_ALL_CONVERSATION_FILTER = {
-  kind: "all"
-} as const satisfies AgentGUIConversationFilter;
 
 type AgentGUIRuntimeErrorPhase =
   | "create_conversation"
@@ -269,8 +266,6 @@ export interface AgentGUIRememberComposerDefaultsInput {
   provider: AgentGUINodeData["provider"];
   defaults: AgentGUIComposerDefaults | null;
 }
-
-export type AgentGUIConversationScope = "multi-provider" | "single-provider";
 
 function composerDefaultsFromSettings(
   settings: AgentSessionComposerSettings
@@ -3477,20 +3472,15 @@ export function useAgentGUINodeController({
       () => createAgentGUIConversationFilterState().filter
     );
   const canUseConversationTargetFilter = conversationScope === "multi-provider";
-  const effectiveConversationFilter = canUseConversationTargetFilter
+  const queryConversationFilter = canUseConversationTargetFilter
     ? conversationFilter
-    : AGENT_GUI_ALL_CONVERSATION_FILTER;
+    : null;
   useEffect(() => {
     if (canUseConversationTargetFilter || conversationFilter.kind === "all") {
       return;
     }
-    setConversationFilter(AGENT_GUI_ALL_CONVERSATION_FILTER);
+    setConversationFilter({ kind: "all" });
   }, [canUseConversationTargetFilter, conversationFilter]);
-  const queryConversationFilter =
-    canUseConversationTargetFilter &&
-    (data.provider === "codex" || data.provider === "claude-code")
-      ? effectiveConversationFilter
-      : null;
   const conversationListQuery =
     useMemo<AgentGUIConversationListQuery | null>(() => {
       const userId = currentUserId?.trim() ?? "";
@@ -10032,7 +10022,7 @@ export function useAgentGUINodeController({
   const updateConversationFilter = useCallback(
     (filter: AgentGUIConversationFilter) => {
       if (!canUseConversationTargetFilter) {
-        setConversationFilter(AGENT_GUI_ALL_CONVERSATION_FILTER);
+        setConversationFilter({ kind: "all" });
         return;
       }
       setConversationFilter(normalizeAgentGUIConversationFilter(filter));
@@ -10297,7 +10287,7 @@ export function useAgentGUINodeController({
         providerTargets: normalizedProviderTargets,
         providerTargetsLoading,
         conversationScope,
-        conversationFilter: effectiveConversationFilter,
+        conversationFilter,
         conversations: visibleConversations,
         userProjects,
         activeConversation,
@@ -10364,7 +10354,7 @@ export function useAgentGUINodeController({
       canQueueWhileBusy,
       conversation,
       conversationScope,
-      effectiveConversationFilter,
+      conversationFilter,
       conversationDetail,
       controllerActions,
       data,

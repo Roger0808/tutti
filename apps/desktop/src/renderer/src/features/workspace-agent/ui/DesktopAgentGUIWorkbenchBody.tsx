@@ -99,7 +99,6 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
   defaultProviderTargetId?: string | null;
-  conversationScope: NonNullable<AgentGUIProps["conversationScope"]>;
   contextMentionProviders: NonNullable<
     AgentGUIProps["contextMentionProviders"]
   >;
@@ -168,7 +167,6 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
-    previous.conversationScope === next.conversationScope &&
     previous.contextMentionProviders === next.contextMentionProviders &&
     previous.runtimeApi === next.runtimeApi &&
     previous.trackAgentProviderChatReady === next.trackAgentProviderChatReady &&
@@ -249,7 +247,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   providerTargets,
   providerTargetsLoading = false,
   defaultProviderTargetId = null,
-  conversationScope,
   contextMentionProviders,
   runtimeApi,
   trackAgentProviderChatReady,
@@ -984,7 +981,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         locale={locale}
         agentSettings={DESKTOP_AGENT_GUI_AGENT_SETTINGS}
         capabilityMenuState={capabilityMenuState}
-        conversationScope={conversationScope}
         currentUserId="local"
         desktopSize={desktopSize}
         embedded

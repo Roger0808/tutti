@@ -38,7 +38,6 @@ import { CanvasNodePanelLinedIcon } from "../shared/canvasNodeChromeIcons";
 import { useAgentGUINodeController } from "./controller/useAgentGUINodeController";
 import type {
   AgentGUIOpenSessionRequest,
-  AgentGUIConversationScope,
   AgentGUIPrefillPromptRequest,
   AgentGUIRememberComposerDefaultsInput
 } from "./controller/useAgentGUINodeController";
@@ -526,7 +525,6 @@ function areAgentGUINodePropsEqual(
       next.agentSettings.avoidGroupingEdits &&
     previous.title === next.title &&
     agentGuiStateEquals(previous.state, next.state) &&
-    previous.conversationScope === next.conversationScope &&
     previous.position.x === next.position.x &&
     previous.position.y === next.position.y &&
     previous.width === next.width &&
@@ -765,7 +763,6 @@ export const AgentGUINode = memo(function AgentGUINode({
     currentUserId,
     workspacePath,
     avoidGroupingEdits: agentSettings.avoidGroupingEdits,
-    conversationScope,
     data: state,
     conversationScope,
     openSessionRequest,
@@ -820,32 +817,6 @@ export const AgentGUINode = memo(function AgentGUINode({
   const activeConversationDockTitle = viewModel.activeConversation
     ? resolveAgentGUIDockConversationTitle(viewModel.activeConversation)
     : null;
-  useEffect(() => {
-    if (
-      previewMode ||
-      !activeConversationDockTitle ||
-      !viewModel.activeConversationId
-    ) {
-      return;
-    }
-    onUpdateNode((current) => {
-      if (
-        current.lastActiveAgentSessionId !== viewModel.activeConversationId ||
-        current.lastActiveConversationTitle === activeConversationDockTitle
-      ) {
-        return current;
-      }
-      return {
-        ...current,
-        lastActiveConversationTitle: activeConversationDockTitle
-      };
-    });
-  }, [
-    activeConversationDockTitle,
-    onUpdateNode,
-    previewMode,
-    viewModel.activeConversationId
-  ]);
   const activeConversationWindowTitle = viewModel.activeConversation
     ? formatAgentGUIConversationPlainTitle(viewModel.activeConversation, {
         fallbackAgentLabel: fallbackAgentTitle,
