@@ -255,9 +255,16 @@ task progress after the active prompt call has returned.
 For Claude SDK background agents, treat the Agent tool call id
 (`parentToolUseId`) as the canonical background-agent key. SDK `task_id` and
 `agent_id` values are aliases that may arrive later or from hooks without a
-parent id. Do not bind an unscoped `TaskCreated` hook to "the only running"
-delegated task; concurrent launches can otherwise attach one child task id to a
-different Agent tool call and leave the composer wait count permanently stale.
+parent id, and `task_id` frequently carries the agent id, so aliases must be
+resolved against both maps. Do not bind any unscoped task event (`TaskCreated`,
+`TaskCompleted`, `task_started`, `task_progress`, `task_notification`) to "the
+only running" delegated task when its alias fails to resolve and another
+registered task already has a known alias; concurrent launches can otherwise
+attach one child task id to a different Agent tool call, fold two background
+agents into one runtime entry, and leave the composer wait count stale or
+cleared early. The daemon `backgroundAgents` map follows the same canonical
+rule: an update carrying an explicit parent tool call id may merge through
+weaker aliases only into an entry with an empty or identical recorded parent.
 
 Claude SDK manual `/compact` turns must publish a visible compact completion
 activity when the SDK emits only a `compact_boundary` system message. The

@@ -428,6 +428,87 @@ func TestClaudeCodeSDKAdapterUpdatesBackgroundAgentByAlias(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterKeepsBackgroundAgentsSeparateOnAliasConflict(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		conn:            &recordingClaudeSDKConnection{},
+		pendingRequests: make(map[string]*pendingACPRequest),
+		liveState:       newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	// A poisoned upstream binding attaches agent-2's task id to the first
+	// Agent tool call.
+	_, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "", claudeSDKSidecarEvent{
+		Type: "task_started",
+		Payload: map[string]any{
+			"turnId":          "turn-task",
+			"taskId":          "agent-2",
+			"parentToolUseId": "toolu-agent-1",
+			"description":     "Generate number",
+			"status":          "running",
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("task_started terminal=%v err=%v", terminal, err)
+	}
+
+	// The second Agent launch carries its own parent tool call id; it must
+	// not merge into toolu-agent-1 through the poisoned agent-2 alias.
+	launched, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+		Type: "tool_completed",
+		Payload: map[string]any{
+			"turnId":     "turn-task",
+			"toolCallId": "toolu-agent-2",
+			"toolName":   "Agent",
+			"callType":   "subagent",
+			"input":      map[string]any{"description": "Generate number"},
+			"output":     map[string]any{"text": "Async agent launched successfully"},
+			"metadata": map[string]any{
+				"subagentAsync":   true,
+				"subagentStatus":  "running",
+				"agentId":         "agent-2",
+				"subagentAgentId": "agent-2",
+			},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("tool_completed terminal=%v err=%v", terminal, err)
+	}
+	backgroundAgents := sdkBackgroundAgentsFromEvents(t, launched)
+	if backgroundAgents["count"] != 2 {
+		t.Fatalf("backgroundAgents = %#v, want two separate running agents", backgroundAgents)
+	}
+	if status := sdkBackgroundAgentStatusByParent(t, backgroundAgents, "toolu-agent-1"); status != "running" {
+		t.Fatalf("agent-1 status = %q, want running", status)
+	}
+	if status := sdkBackgroundAgentStatusByParent(t, backgroundAgents, "toolu-agent-2"); status != "running" {
+		t.Fatalf("agent-2 status = %q, want running", status)
+	}
+
+	completed, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "", claudeSDKSidecarEvent{
+		Type: "task_completed",
+		Payload: map[string]any{
+			"taskId":          "agent-2",
+			"agentId":         "agent-2",
+			"parentToolUseId": "toolu-agent-2",
+			"status":          "completed",
+			"summary":         "Generated number",
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("task_completed terminal=%v err=%v", terminal, err)
+	}
+	backgroundAgents = sdkBackgroundAgentsFromEvents(t, completed)
+	if backgroundAgents["count"] != 1 {
+		t.Fatalf("completed backgroundAgents = %#v, want one running agent", backgroundAgents)
+	}
+	if status := sdkBackgroundAgentStatusByParent(t, backgroundAgents, "toolu-agent-2"); status != "completed" {
+		t.Fatalf("agent-2 status = %q, want completed", status)
+	}
+}
+
 func TestClaudeCodeSDKAdapterKeepsLateBackgroundAgentEventsWithPayloadTurnID(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)
@@ -1697,6 +1778,82 @@ func TestClaudeCodeSDKAdapterMapsSessionTitleUpdated(t *testing.T) {
 	}
 	if events[0].Payload.Title != "Inspect repository structure" {
 		t.Fatalf("title = %q, want provider title", events[0].Payload.Title)
+	}
+}
+
+func TestClaudeCodeSDKAdapterMirrorsGoalSlashPromptIntoRuntimeContext(t *testing.T) {
+	t.Parallel()
+
+	adapterSession := &claudeSDKAdapterSession{
+		liveState: newClaudeSDKLiveState(),
+	}
+	session := standardTestSession(ProviderClaudeCode)
+
+	if event, ok := adapterSession.mirrorGoalSlashPrompt(session, "/goal ship native goal"); !ok {
+		t.Fatal("mirrorGoalSlashPrompt ok=false, want goal mirror")
+	} else if event.Type != activityshared.EventSessionUpdated {
+		t.Fatalf("event type = %q, want session.updated", event.Type)
+	}
+	goal := payloadObject(claudeSDKRuntimeContext(session, adapterSession)["goal"])
+	if asString(goal["objective"]) != "ship native goal" || asString(goal["status"]) != "active" {
+		t.Fatalf("runtime goal = %#v, want active objective", goal)
+	}
+
+	if _, ok := adapterSession.mirrorGoalSlashPrompt(session, "/goal clear"); !ok {
+		t.Fatal("mirrorGoalSlashPrompt clear ok=false")
+	}
+	if goal := payloadObject(claudeSDKRuntimeContext(session, adapterSession)["goal"]); len(goal) != 0 {
+		t.Fatalf("runtime goal after clear = %#v, want empty", goal)
+	}
+}
+
+func TestClaudeCodeSDKAdapterMapsGoalUpdatedSidecarEvent(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	adapterSession := &claudeSDKAdapterSession{
+		liveState: newClaudeSDKLiveState(),
+	}
+	session := standardTestSession(ProviderClaudeCode)
+
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-goal", claudeSDKSidecarEvent{
+		Type: "goal_updated",
+		Payload: map[string]any{
+			"turnId":     "turn-goal",
+			"updateType": "thread_goal_update",
+			"goal": map[string]any{
+				"objective": "ship native goal",
+				"status":    "active",
+				"sentinel":  true,
+			},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("goal_updated terminal=%v err=%v", terminal, err)
+	}
+	if len(activityEventsWithType(events, activityshared.EventSessionUpdated)) < 2 {
+		t.Fatalf("events = %#v, want goal session.updated events", events)
+	}
+	goal := payloadObject(claudeSDKRuntimeContext(session, adapterSession)["goal"])
+	if asString(goal["objective"]) != "ship native goal" || asString(goal["status"]) != "active" {
+		t.Fatalf("runtime goal = %#v, want active SDK goal status", goal)
+	}
+
+	events, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-goal", claudeSDKSidecarEvent{
+		Type: "goal_updated",
+		Payload: map[string]any{
+			"turnId":     "turn-goal",
+			"updateType": "thread_goal_cleared",
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("goal cleared terminal=%v err=%v", terminal, err)
+	}
+	if len(events) == 0 {
+		t.Fatal("events empty, want goal cleared session.updated")
+	}
+	if goal := payloadObject(claudeSDKRuntimeContext(session, adapterSession)["goal"]); len(goal) != 0 {
+		t.Fatalf("runtime goal after clear = %#v, want empty", goal)
 	}
 }
 

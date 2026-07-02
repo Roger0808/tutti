@@ -14,6 +14,7 @@ import {
   answersFromInteractivePayload,
   commandEntries,
   contentBlocksFromMessage,
+  goalStateFromContentBlocks,
   isThinkingBlock,
   isToolUseBlock,
   numberValue,
@@ -1064,6 +1065,7 @@ export class SessionRuntime {
           usedAssistantSegmentIds
         );
       }
+      this.emitGoalStatusFromBlocks(blocks);
       return;
     }
 
@@ -1079,6 +1081,7 @@ export class SessionRuntime {
       for (const block of blocks) {
         this.handleUserContentBlock(block, parentToolUseID);
       }
+      this.emitGoalStatusFromBlocks(blocks);
       return;
     }
 
@@ -2312,17 +2315,18 @@ export class SessionRuntime {
     if (explicitParentToolUseId) {
       return this.delegatedTasksByParentToolUseID.get(explicitParentToolUseId);
     }
-    const parentFromTask = taskId
-      ? this.delegatedParentByTaskID.get(taskId)
-      : "";
-    const parentFromAgent = agentId
-      ? this.delegatedParentByAgentID.get(agentId)
-      : "";
-    const parentToolUseId = parentFromTask || parentFromAgent;
+    const parentToolUseId = this.delegatedParentByAlias(taskId, agentId);
     if (parentToolUseId) {
       return this.delegatedTasksByParentToolUseID.get(parentToolUseId);
     }
     if (options.allowRunningFallback === false) {
+      return undefined;
+    }
+    if ((taskId || agentId) && this.hasDelegatedTaskAliases()) {
+      // An unresolved task/agent id usually belongs to a delegated task whose
+      // launch has not been observed yet. Binding it to "the only running"
+      // task would poison the alias maps for concurrent launches, so drop the
+      // event and let a later resolvable event settle that task.
       return undefined;
     }
     const activeTasks = [
@@ -2337,6 +2341,32 @@ export class SessionRuntime {
       ...this.delegatedTasksByParentToolUseID.values()
     ].filter((task) => task.status === "running");
     return allRunningTasks.length === 1 ? allRunningTasks[0] : undefined;
+  }
+
+  private delegatedParentByAlias(taskId: string, agentId: string): string {
+    // Claude Code hooks and task notifications frequently carry the agent id
+    // in task_id, so each alias is matched against both maps.
+    for (const alias of [taskId, agentId]) {
+      if (!alias) {
+        continue;
+      }
+      const parent =
+        this.delegatedParentByTaskID.get(alias) ||
+        this.delegatedParentByAgentID.get(alias);
+      if (parent) {
+        return parent;
+      }
+    }
+    return "";
+  }
+
+  private hasDelegatedTaskAliases(): boolean {
+    for (const task of this.delegatedTasksByParentToolUseID.values()) {
+      if (task.agentId || task.taskId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private emitDelegatedTaskParentUpdate(
@@ -2444,6 +2474,23 @@ export class SessionRuntime {
               }
             : {})
         }
+      }
+    });
+  }
+
+  private emitGoalStatusFromBlocks(
+    blocks: ReadonlyArray<Record<string, unknown>>
+  ): void {
+    const goal = goalStateFromContentBlocks(blocks);
+    if (!goal) {
+      return;
+    }
+    emit({
+      type: "goal_updated",
+      payload: {
+        turnId: this.activeTurnId,
+        updateType: "thread_goal_update",
+        goal
       }
     });
   }

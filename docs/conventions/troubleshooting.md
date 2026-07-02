@@ -893,7 +893,20 @@ delimited by ---`, and the composer skill picker may show partial or
   delegated task by count. Use `parentToolUseId` as the canonical key and treat
   `agentId`/`taskId` as aliases resolved back to an existing Agent tool call;
   otherwise concurrent subagents can cross-bind ids and keep
-  `backgroundAgents.count` stale. When the SDK
+  `backgroundAgents.count` stale. The same rule applies to `task_started`,
+  `task_progress`, `task_notification`, and `TaskCompleted`: Claude Code often
+  puts the agent id into `task_id`, so resolve each alias against both the
+  task-id and agent-id maps, and never bind an alias that fails to resolve to
+  "the only running" task while any registered delegated task already has a
+  known alias. During concurrent launches, a child `task_started` can race
+  ahead of its own Agent launch result; binding that unknown alias to the
+  single already-registered task attributes one agent's completion to another,
+  drops the second agent's runtime entry, and clears the composer wait count
+  early. The daemon-side `backgroundAgents` map must also treat a sidecar
+  update that carries an explicit `parentToolUseId` as canonical: it may merge
+  through `agentId`/`taskId` aliases only into an entry whose recorded parent
+  tool call is empty or identical, and it must not overwrite an entry's
+  recorded `agentId`/`taskId` with a different value. When the SDK
   resumes parent work after a background agent, the sidecar must emit
   `turn_started` for the synthetic continuation and the Go adapter must map it
   to `EventTurnStarted`; keep the background-agent wait banner separate from
@@ -914,7 +927,59 @@ delimited by ---`, and the composer skill picker may show partial or
   runtime `backgroundAgents.count > 0` suppresses stale resume reconciliation
   even when there is no active parent turn. Add sidecar/adapter coverage for
   synthetic continuation `turn_started`, plus projection coverage that a
-  completed tool update drops an earlier failed `error` payload.
+  completed tool update drops an earlier failed `error` payload. For alias
+  binding, keep sidecar coverage that an unknown `task_id` racing ahead of its
+  own launch does not bind to another running task, and Go adapter coverage
+  that an alias conflict with a different recorded parent tool call keeps two
+  background-agent entries separate.
+
+### Claude SDK parent waits forever for background agents that already finished
+
+- Symptom:
+  A Claude Code SDK parent session launches several async subagents, replies to
+  some results ("received result N, waiting for the rest..."), then goes idle
+  and never acknowledges the remaining results or produces the final summary.
+  `runtimeContext.backgroundAgents` shows every task completed, so the composer
+  wait copy has already cleared while the transcript still says it is waiting.
+- Quick checks:
+  Open the raw Claude session JSONL under
+  `~/.claude/projects/<project>/<provider-session-id>.jsonl` and correlate
+  three record kinds. `queue-operation enqueue` entries carry each
+  `<task-notification>`; a matching later `dequeue` means the notification ran
+  as its own follow-up (synthetic) turn, while `remove` plus a
+  `queued_command` attachment with `commandMode: "task-notification"` means it
+  was folded into the still-active turn instead. Also check for `api_error`
+  records (provider 429/limits) that stretch the active turn and widen the
+  fold-in window.
+- Root cause:
+  This is upstream Claude Code queue behavior, not a tutti event loss. Task
+  notifications that arrive while a turn is still streaming are removed from
+  the pending prompt queue and injected into the active turn as
+  `queued_command` attachments. The attachment contains the full notification
+  including `<status>`, `<summary>`, and `<result>`, is appended to the model
+  `messages`, and stays in the conversation history for later turns, but
+  Claude Code will never schedule a dedicated follow-up turn for it. The
+  information is therefore in the model context the whole time; weaker or
+  custom models can ignore the attachments, keep an incorrect "still waiting"
+  count across every later turn, and stall the workflow. Notifications that
+  arrive after the turn settles are dequeued normally and produce synthetic
+  turns.
+- Fix:
+  There is no daemon/sidecar data fix because tutti-side projections already
+  record the completed tasks; the gap is only in the model's own accounting.
+  Reproduce with a stronger model before treating this as a tutti regression.
+  If product-level mitigation is required, design it as an explicit nudge
+  prompt that restates the sidecar-known completed task list in text, because
+  the model already failed to read the same facts from context attachments.
+  Keep the composer wait copy semantics driven by
+  `runtimeContext.backgroundAgents`; do not try to infer "results not yet
+  acknowledged" from transcript text.
+- Validation:
+  Compare the raw JSONL queue operations against the persisted
+  `workspace_agent_messages` rows for the session: every removed notification
+  should still have its Agent tool row marked completed from the
+  `task_notification` system message, which confirms the daemon saw the
+  completion even though the parent model never acknowledged it.
 
 ### Claude SDK Grep or Glob unavailable despite Claude Code preset
 

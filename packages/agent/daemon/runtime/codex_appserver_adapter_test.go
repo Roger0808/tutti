@@ -2007,6 +2007,21 @@ func TestCodexAppServerAdapterSlashReviewDefaultsToUncommitted(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAdapterSlashReviewUncommittedKeyword(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/review uncommitted",
+	}}, "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	review := appServerRequestParams(t, transport.conn, appServerMethodReviewStart)
+	if asString(payloadObject(review["target"])["type"]) != "uncommittedChanges" {
+		t.Fatalf("review target = %#v, want uncommittedChanges", review["target"])
+	}
+}
+
 func TestCodexAppServerAdapterSlashGoalSetsObjective(t *testing.T) {
 	t.Parallel()
 
@@ -2179,6 +2194,7 @@ func TestAppServerReviewTargetParsing(t *testing.T) {
 	}{
 		{name: "empty", args: "", want: map[string]any{"type": "uncommittedChanges"}},
 		{name: "blank", args: "   ", want: map[string]any{"type": "uncommittedChanges"}},
+		{name: "uncommitted keyword", args: "uncommitted", want: map[string]any{"type": "uncommittedChanges"}},
 		{name: "base branch", args: "base:main", want: map[string]any{"type": "baseBranch", "branch": "main"}},
 		{name: "base branch slashes", args: "base:feature/x", want: map[string]any{"type": "baseBranch", "branch": "feature/x"}},
 		{name: "commit", args: "commit:abc123", want: map[string]any{"type": "commit", "sha": "abc123"}},

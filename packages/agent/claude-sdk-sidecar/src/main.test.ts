@@ -786,6 +786,110 @@ test("task created hook does not bind unrelated running delegated task", async (
   }
 });
 
+test("unknown task alias does not bind to another running delegated task", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeRacedDelegatedTaskAliasQuery(prompt)
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate tasks");
+    await waitForEvent(events, "task_completed");
+
+    const taskCompleted = events.find(
+      (event) => event.type === "task_completed"
+    );
+    assert.equal(taskCompleted?.payload?.parentToolUseId, "toolu-agent-2");
+
+    const completedParents = events
+      .filter((event) => {
+        const metadata = event.payload?.metadata as
+          | Record<string, unknown>
+          | undefined;
+        return (
+          event.type === "tool_completed" &&
+          event.payload?.status === "completed" &&
+          metadata?.subagentStatus === "completed"
+        );
+      })
+      .map((event) => event.payload?.toolCallId);
+    assert.deepEqual(completedParents, ["toolu-agent-2"]);
+
+    const firstAgentTaskEvents = events.filter(
+      (event) =>
+        (event.type === "task_started" ||
+          event.type === "task_progress" ||
+          event.type === "task_completed") &&
+        event.payload?.parentToolUseId === "toolu-agent-1"
+    );
+    assert.deepEqual(firstAgentTaskEvents, []);
+  } finally {
+    restoreSink();
+  }
+});
+
+function fakeRacedDelegatedTaskAliasQuery(
+  prompt: AsyncIterable<SDKUserMessage>
+): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield delegatedAgentToolUse("toolu-agent-1", "First task");
+      yield delegatedAgentToolResult("toolu-agent-1", "agent-1");
+      // Claude Code puts the agent id into task_id; this event races ahead of
+      // the second launch result, so its alias is still unknown here.
+      yield {
+        type: "system",
+        subtype: "task_started",
+        task_id: "agent-2",
+        description: "Second task"
+      } as unknown as SDKMessage;
+      yield delegatedAgentToolUse("toolu-agent-2", "Second task");
+      yield delegatedAgentToolResult("toolu-agent-2", "agent-2");
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+      yield {
+        type: "system",
+        subtype: "task_notification",
+        task_id: "agent-2",
+        status: "completed",
+        summary: "Second task complete"
+      } as unknown as SDKMessage;
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
+}
+
 function fakeDelegatedTaskQuery(
   prompt: AsyncIterable<SDKUserMessage>,
   options: {

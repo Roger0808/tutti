@@ -283,6 +283,9 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 			"adapter": claudeSDKSidecarAdapterName,
 		}),
 	)
+	if event, ok := adapterSession.mirrorGoalSlashPrompt(session, visibleText); ok {
+		startEvents = append(startEvents, event)
+	}
 	emitEvents(startEvents)
 
 	waiter := a.registerClaudeSDKTurn(adapterSession, turnID, emit)
@@ -570,6 +573,17 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 			}
 		}
 		return nil, false, nil
+	case "goal_updated":
+		updateType := adapterSession.applyGoalUpdated(event.Payload)
+		if updateType == "" {
+			return nil, false, nil
+		}
+		events := make([]activityshared.Event, 0, 2)
+		if goalEvent, ok := acpGoalUpdatedEvent(session, updateType); ok {
+			events = append(events, goalEvent)
+		}
+		events = append(events, newSessionActivityEvent(session, EventSessionUpdated, firstNonEmpty(session.Status, SessionStatusReady), claudeSDKRuntimeContext(session, adapterSession)))
+		return events, false, nil
 	case "turn_completed":
 		return []activityshared.Event{newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", map[string]any{
 			"adapter":    claudeSDKSidecarAdapterName,
@@ -959,12 +973,12 @@ func (s *claudeSDKAdapterSession) updateClaudeSDKBackgroundAgent(update claudeSD
 	if update.TurnID != "" {
 		agent.TurnID = update.TurnID
 	}
-	if update.TaskID != "" && !s.backgroundAgentAliasBelongsToOtherKey(key, update.TaskID, func(agent claudeSDKBackgroundAgent) string {
+	if update.TaskID != "" && (agent.TaskID == "" || agent.TaskID == update.TaskID) && !s.backgroundAgentAliasBelongsToOtherKey(key, update.TaskID, func(agent claudeSDKBackgroundAgent) string {
 		return agent.TaskID
 	}) {
 		agent.TaskID = update.TaskID
 	}
-	if update.AgentID != "" && !s.backgroundAgentAliasBelongsToOtherKey(key, update.AgentID, func(agent claudeSDKBackgroundAgent) string {
+	if update.AgentID != "" && (agent.AgentID == "" || agent.AgentID == update.AgentID) && !s.backgroundAgentAliasBelongsToOtherKey(key, update.AgentID, func(agent claudeSDKBackgroundAgent) string {
 		return agent.AgentID
 	}) {
 		agent.AgentID = update.AgentID
@@ -990,8 +1004,29 @@ func (s *claudeSDKAdapterSession) updateClaudeSDKBackgroundAgent(update claudeSD
 }
 
 func (s *claudeSDKAdapterSession) resolveClaudeSDKBackgroundAgentKey(update claudeSDKBackgroundAgentUpdate, fallback string) string {
+	parentID := strings.TrimSpace(update.ParentToolUseID)
+	if parentID != "" {
+		if resolved := s.backgroundAgentKeyByAlias(parentID); resolved != "" {
+			return resolved
+		}
+		// The Agent tool call id is the canonical background-agent key. An
+		// update that carries one may merge through weaker task/agent aliases
+		// only into an entry that does not already belong to a different
+		// parent tool call; otherwise a poisoned alias would fold two
+		// concurrent background agents into one entry.
+		for _, alias := range []string{update.AgentID, update.TaskID, update.Key} {
+			resolved := s.backgroundAgentKeyByAlias(alias)
+			if resolved == "" {
+				continue
+			}
+			existingParent := strings.TrimSpace(s.backgroundAgents[resolved].ParentToolUseID)
+			if existingParent == "" || existingParent == parentID {
+				return resolved
+			}
+		}
+		return parentID
+	}
 	keys := []string{
-		update.ParentToolUseID,
 		update.AgentID,
 		update.TaskID,
 		update.Key,
@@ -1858,7 +1893,48 @@ func claudeSDKRuntimeContext(session Session, adapterSession *claudeSDKAdapterSe
 	if title := strings.TrimSpace(session.Title); title != "" {
 		context["title"] = title
 	}
+	if len(liveState.goal) > 0 {
+		context["goal"] = clonePayload(liveState.goal)
+	}
 	return context
+}
+
+func (s *claudeSDKAdapterSession) mirrorGoalSlashPrompt(session Session, prompt string) (activityshared.Event, bool) {
+	if s == nil {
+		return activityshared.Event{}, false
+	}
+	goal, updateType, ok := claudeGoalSlashPromptUpdate(prompt)
+	if !ok {
+		return activityshared.Event{}, false
+	}
+	if updateType == "thread_goal_update" {
+		s.liveState.goal = clonePayload(goal)
+	} else {
+		s.liveState.goal = nil
+	}
+	return acpGoalUpdatedEvent(session, updateType)
+}
+
+func (s *claudeSDKAdapterSession) applyGoalUpdated(payload map[string]any) string {
+	if s == nil {
+		return ""
+	}
+	updateType := strings.TrimSpace(payloadString(payload, "updateType"))
+	if updateType == "thread_goal_clear" || updateType == "thread_goal_cleared" {
+		s.liveState.goal = nil
+		return firstNonEmpty(updateType, "thread_goal_cleared")
+	}
+	if goal := payloadObject(payload["goal"]); len(goal) > 0 {
+		s.liveState.goal = clonePayload(goal)
+		return firstNonEmpty(updateType, "thread_goal_update")
+	}
+	if raw, err := json.Marshal(payload["sdkMessage"]); err == nil && len(raw) > 0 {
+		if goal, ok := claudeSDKGoalStatusPayload(raw); ok {
+			s.liveState.goal = clonePayload(goal)
+			return "thread_goal_update"
+		}
+	}
+	return ""
 }
 
 func claudeSDKResumeCursor(session Session, adapterSession *claudeSDKAdapterSession) map[string]any {
