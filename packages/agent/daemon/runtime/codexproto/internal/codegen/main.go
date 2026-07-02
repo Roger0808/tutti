@@ -818,6 +818,9 @@ func normalizeGeneratedHeader(src []byte, codexCommit string) []byte {
 	if len(parts) > 1 {
 		rest = strings.TrimLeft(parts[1], "\n")
 	}
+	for strings.Contains(rest, "\n\n\n") {
+		rest = strings.ReplaceAll(rest, "\n\n\n", "\n\n")
+	}
 	return []byte(generatedHeader(codexCommit) + rest)
 }
 
