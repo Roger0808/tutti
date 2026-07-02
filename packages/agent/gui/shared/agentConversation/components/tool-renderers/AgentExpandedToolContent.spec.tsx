@@ -1245,9 +1245,10 @@ describe("AgentExpandedToolContent", () => {
     expect(screen.getByText("TASK")).toBeTruthy();
     expect(screen.getByText("PROGRESS")).toBeTruthy();
     expect(screen.getByText(/1m 40s · Running/)).toBeTruthy();
-    expect(screen.getByText("Scanning layout")).toBeTruthy();
+    // Progress is a single line: only the latest activity renders.
     expect(screen.getByText("Run command")).toBeTruthy();
-    expect(screen.getByText("3 earlier steps omitted")).toBeTruthy();
+    expect(screen.queryByText("Scanning layout")).toBeNull();
+    expect(screen.queryByText("3 earlier steps omitted")).toBeNull();
   });
 
   it("titles an unnamed sub-agent with the localized fallback and starting label", async () => {

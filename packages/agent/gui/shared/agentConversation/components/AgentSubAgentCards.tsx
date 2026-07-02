@@ -1,9 +1,6 @@
 import type { JSX } from "react";
 import { translate } from "../../../i18n/index";
-import type {
-  AgentTaskSubAgentActivityVM,
-  AgentTaskSubAgentVM
-} from "../contracts/agentTaskItemVM";
+import type { AgentTaskSubAgentVM } from "../contracts/agentTaskItemVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import {
   ToolMarkdownBlock,
@@ -98,55 +95,21 @@ function SubAgentProgress({
   subAgent: AgentTaskSubAgentVM;
 }): JSX.Element {
   "use memo";
-  if (subAgent.activityLog.length === 0 && !subAgent.failureDetail) {
-    return (
-      <div className="workspace-agents-status-panel__detail-subagent-activity">
-        {translate("agentHost.agentTool.details.subAgentStarting")}
-      </div>
-    );
-  }
-  return (
-    <div className="workspace-agents-status-panel__detail-subagent-log">
-      {subAgent.activityOmittedCount > 0 ? (
-        <div className="workspace-agents-status-panel__detail-subagent-log-omitted">
-          {translate("agentHost.agentTool.details.subAgentEarlierOmitted", {
-            count: String(subAgent.activityOmittedCount)
-          })}
-        </div>
-      ) : null}
-      {subAgent.activityLog.map((entry, index) => (
-        <SubAgentLogEntry
-          key={`${entry.kind}:${entry.atUnixMs ?? index}:${index}`}
-          entry={entry}
-          latest={index === subAgent.activityLog.length - 1}
-        />
-      ))}
-      {subAgent.failureDetail ? (
-        <div className="workspace-agents-status-panel__detail-subagent-log-entry workspace-agents-status-panel__detail-subagent-log-entry--failure">
-          {subAgent.failureDetail}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function SubAgentLogEntry({
-  entry,
-  latest
-}: {
-  entry: AgentTaskSubAgentActivityVM;
-  latest: boolean;
-}): JSX.Element {
-  "use memo";
+  // Per user feedback: progress stays a single line - the sub-agent's most
+  // recent activity (or failure detail), not a scrolling log.
+  const text =
+    subAgent.failureDetail ??
+    subAgent.latestActivity ??
+    translate("agentHost.agentTool.details.subAgentStarting");
   return (
     <div
-      className={`workspace-agents-status-panel__detail-subagent-log-entry workspace-agents-status-panel__detail-subagent-log-entry--${entry.kind}${
-        latest
-          ? " workspace-agents-status-panel__detail-subagent-log-entry--latest"
+      className={`workspace-agents-status-panel__detail-subagent-activity${
+        subAgent.failureDetail
+          ? " workspace-agents-status-panel__detail-subagent-activity--failure"
           : ""
       }`}
     >
-      {entry.text}
+      {text}
     </div>
   );
 }

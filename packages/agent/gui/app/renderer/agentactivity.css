@@ -8170,3 +8170,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   font-size: 11px;
   font-style: italic;
 }
+
+.workspace-agents-status-panel__detail-subagent-activity--failure {
+  color: var(--tutti-status-danger, #c0392b);
+}
