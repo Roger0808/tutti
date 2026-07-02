@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -1518,6 +1519,102 @@ func TestStandardACPSystemNoticeChunkProjectsAssistantNotice(t *testing.T) {
 	}
 	if got := event.Payload.Metadata["noticeKind"]; got != "transport_fallback" {
 		t.Fatalf("noticeKind = %#v, want transport_fallback", got)
+	}
+}
+
+func TestNexightSpawnCommandCarriesModelSettings(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		settings *SessionSettings
+		want     []string
+	}{
+		{
+			name:     "spark model adds reasoning summary override",
+			settings: &SessionSettings{Model: "gpt-5.3-codex-spark", ReasoningEffort: "high"},
+			want: []string{
+				nexightACPCommand,
+				"--config", "model=gpt-5.3-codex-spark",
+				"--config", "model_reasoning_summary=none",
+				"--config", "model_reasoning_effort=high",
+			},
+		},
+		{
+			name:     "plain model omits reasoning summary override",
+			settings: &SessionSettings{Model: "gpt-5.1-codex", ReasoningEffort: "medium"},
+			want: []string{
+				nexightACPCommand,
+				"--config", "model=gpt-5.1-codex",
+				"--config", "model_reasoning_effort=medium",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			transport := newStandardACPTransport("Nexight", "nexight-session-1")
+			adapter := NewNexightAdapter(transport)
+			session := standardTestSession(ProviderNexight)
+			session.Settings = tc.settings
+			if _, err := adapter.Start(context.Background(), session); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			transport.mu.Lock()
+			specs := append([]ProcessSpec(nil), transport.specs...)
+			transport.mu.Unlock()
+			if len(specs) != 1 {
+				t.Fatalf("specs = %#v, want one process spawn", specs)
+			}
+			if !reflect.DeepEqual(specs[0].Command, tc.want) {
+				t.Fatalf("spawn command = %#v, want %#v", specs[0].Command, tc.want)
+			}
+		})
+	}
+}
+
+func TestNexightRequiresNewSessionWhenReasoningSummaryOverrideChanges(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewNexightAdapter(nil)
+	session := standardTestSession(ProviderNexight)
+	session.Settings = &SessionSettings{Model: "gpt-5.1-codex"}
+
+	sparkModel := "gpt-5.3-codex-spark"
+	if !adapter.RequiresNewSessionForSettings(session, SessionSettingsPatch{Model: &sparkModel}) {
+		t.Fatal("switching to a spark-family model must force a new session (spawn-time model_reasoning_summary override)")
+	}
+	plainModel := "gpt-5.2-codex"
+	if adapter.RequiresNewSessionForSettings(session, SessionSettingsPatch{Model: &plainModel}) {
+		t.Fatal("plain-to-plain model change must not force a new session")
+	}
+	if adapter.RequiresNewSessionForSettings(session, SessionSettingsPatch{}) {
+		t.Fatal("empty patch must not force a new session")
+	}
+}
+
+func TestStandardACPSpawnCommandUnchangedForOtherProviders(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
+	session.Settings = &SessionSettings{Model: "gpt-5.3-codex-spark", ReasoningEffort: "high"}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	transport.mu.Lock()
+	specs := append([]ProcessSpec(nil), transport.specs...)
+	transport.mu.Unlock()
+	if len(specs) != 1 || !reflect.DeepEqual(specs[0].Command, []string{"hermes", "acp"}) {
+		t.Fatalf("spawn command = %#v, want bare hermes command", specs)
+	}
+	sparkModel := "gpt-5.3-codex-spark"
+	if adapter.RequiresNewSessionForSettings(session, SessionSettingsPatch{Model: &sparkModel}) {
+		t.Fatal("non-nexight providers must not force new sessions for model changes")
 	}
 }
 

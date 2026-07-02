@@ -43,6 +43,13 @@ type standardACPConfig struct {
 	// stderrMessageMapper translates provider stderr frames into synthetic
 	// session/update messages (e.g. codex-acp retry logs -> transport notices).
 	stderrMessageMapper acpStderrMessageMapper
+	// commandWithSettings appends session-settings-derived spawn arguments to
+	// the resolved command (e.g. codex-acp `--config model=...` flags that can
+	// only be applied at process start).
+	commandWithSettings func([]string, Session) []string
+	// requiresNewSessionForSettings reports settings patches that can only
+	// take effect via a fresh process/session (spawn-time-only flags).
+	requiresNewSessionForSettings func(Session, SessionSettingsPatch) bool
 }
 
 type standardACPAdapter struct {
@@ -135,6 +142,12 @@ func NewNexightAdapterWithHostMetadata(transport ProcessTransport, host HostMeta
 			// projection the old CodexAdapter provided.
 			allowSyntheticNotice: true,
 			stderrMessageMapper:  nexightACPSystemNoticeMessageFromStderr,
+			// Model/effort (and the spark-family model_reasoning_summary=none
+			// override) are spawn-time codex config flags; the reasoning-summary
+			// override cannot change on a live process, so switching across the
+			// spark boundary forces a new session.
+			commandWithSettings:           nexightACPCommandWithSettings,
+			requiresNewSessionForSettings: nexightRequiresNewSessionForSettings,
 		},
 		transport: transport,
 		host:      host,
@@ -184,6 +197,51 @@ func nexightACPSystemNoticeMessageFromStderr(stderr []byte) (acpMessage, bool) {
 		Method:  acpMethodUpdate,
 		Params:  params,
 	}, true
+}
+
+// nexightACPConfigFlag is the codex-acp CLI flag for spawn-time config
+// overrides (recovered with the settings logic from the retired CodexAdapter).
+const nexightACPConfigFlag = "--config"
+
+// nexightACPCommandWithSettings appends the session's model/effort settings as
+// spawn-time codex config flags; without them model selection depends entirely
+// on the agent advertising a "model" config option after session/new.
+func nexightACPCommandWithSettings(base []string, session Session) []string {
+	command := append([]string(nil), base...)
+	if len(command) == 0 {
+		return command
+	}
+	for _, entry := range nexightACPConfigEntries(session) {
+		command = append(command, nexightACPConfigFlag, entry)
+	}
+	return command
+}
+
+func nexightACPConfigEntries(session Session) []string {
+	settings := session.SettingsValue()
+	entries := make([]string, 0, 4)
+	if model := strings.TrimSpace(settings.Model); model != "" {
+		entries = append(entries, "model="+model)
+		if summary := codexACPReasoningSummaryOverride(model); summary != "" {
+			entries = append(entries, codexACPConfigModelReasoningSummary+"="+summary)
+		}
+	}
+	if reasoning := codexACPReasoningEffortValue(settings.ReasoningEffort); reasoning != "" {
+		entries = append(entries, "model_reasoning_effort="+reasoning)
+	}
+	return entries
+}
+
+// nexightRequiresNewSessionForSettings forces a new session when the
+// spark-family model_reasoning_summary spawn override would change: it is a
+// process-start-only flag, so a live session cannot apply it.
+func nexightRequiresNewSessionForSettings(session Session, patch SessionSettingsPatch) bool {
+	if patch.Model == nil {
+		return false
+	}
+	currentModel := session.SettingsValue().Model
+	nextModel := strings.TrimSpace(*patch.Model)
+	return codexACPReasoningSummaryOverride(currentModel) != codexACPReasoningSummaryOverride(nextModel)
 }
 
 func NewGeminiAdapter(transport ProcessTransport) *standardACPAdapter {
@@ -859,6 +917,9 @@ func (a *standardACPAdapter) startInitializedClient(
 			command = append([]string(nil), resolved.Command...)
 		}
 		env = append(env, resolved.Env...)
+	}
+	if a.config.commandWithSettings != nil {
+		command = a.config.commandWithSettings(command, session)
 	}
 	processStartedAt := time.Now()
 	a.logHermesStartupDiagnostics("process_start.start", map[string]any{
@@ -1628,11 +1689,23 @@ func (a *standardACPAdapter) updateSessionConfigOption(
 	updateConfigOptionDescriptorValue(session.configOptionDescriptors, configID, value)
 }
 
+// RequiresNewSessionForSettings implements NewSessionSettingsAdapter for
+// providers whose config declares spawn-time-only settings (currently Nexight).
+func (a *standardACPAdapter) RequiresNewSessionForSettings(session Session, patch SessionSettingsPatch) bool {
+	if a == nil || a.config.requiresNewSessionForSettings == nil {
+		return false
+	}
+	return a.config.requiresNewSessionForSettings(session, patch)
+}
+
 func (a *standardACPAdapter) ApplySessionSettings(
 	ctx context.Context,
 	session Session,
 	patch SessionSettingsPatch,
 ) error {
+	if a.RequiresNewSessionForSettings(session, patch) {
+		return ErrSessionSettingsRequireNewSession
+	}
 	acpSession := a.getSession(session.AgentSessionID)
 	if acpSession == nil || acpSession.client == nil {
 		return nil
