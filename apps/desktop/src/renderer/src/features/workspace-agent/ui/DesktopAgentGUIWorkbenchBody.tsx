@@ -38,7 +38,10 @@ import type { IAgentProviderStatusService } from "../services/agentProviderStatu
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { Toast } from "@renderer/lib/toast";
 import type { DesktopComputerUseApi, DesktopRuntimeApi } from "@preload/types";
-import type { DesktopComputerUseStatus } from "@shared/contracts/ipc";
+import {
+  desktopComputerUseStatusesEqual,
+  type DesktopComputerUseStatus
+} from "@shared/contracts/ipc";
 import {
   areDesktopAgentGUINodeStatesEqual,
   areDesktopAgentGUIWorkbenchStatesEqual,
@@ -130,15 +133,7 @@ function resolveComputerUseAuthorizationState(
   if (!status?.installed) {
     return null;
   }
-  const permissions = status.permissions;
-  if (!permissions || permissions.source !== "driver-daemon") {
-    return "unknown";
-  }
-  return permissions.accessibility === true &&
-    permissions.screenRecording === true &&
-    permissions.screenRecordingCapturable === true
-    ? "authorized"
-    : "needs-authorization";
+  return status.authorization;
 }
 const DESKTOP_AGENT_GUI_AGENT_SETTINGS = {
   avoidGroupingEdits: false
@@ -222,24 +217,6 @@ function areDesktopAgentGUIWorkbenchBodyContextsEqual(
       previous.node.frame.x === next.node.frame.x &&
       previous.node.frame.y === next.node.frame.y &&
       previous.node.data.runtimeNodeState === next.node.data.runtimeNodeState)
-  );
-}
-
-function desktopComputerUseStatusesEqual(
-  left: DesktopComputerUseStatus | null,
-  right: DesktopComputerUseStatus | null
-): boolean {
-  return (
-    left === right ||
-    (left !== null &&
-      right !== null &&
-      left.installed === right.installed &&
-      left.permissions?.accessibility === right.permissions?.accessibility &&
-      left.permissions?.screenRecording ===
-        right.permissions?.screenRecording &&
-      left.permissions?.screenRecordingCapturable ===
-        right.permissions?.screenRecordingCapturable &&
-      left.permissions?.source === right.permissions?.source)
   );
 }
 
@@ -429,9 +406,27 @@ function DesktopAgentGUIWorkbenchBodyImpl({
 
     refreshComputerUseStatus();
     const interval = window.setInterval(refreshComputerUseStatus, 15_000);
+    // Permission changes usually happen in System Settings; refresh as soon
+    // as the user comes back instead of waiting for the next interval tick.
+    let lastVisibilityRefreshAt = 0;
+    const refreshOnVisibility = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      const now = Date.now();
+      if (now - lastVisibilityRefreshAt < 5_000) {
+        return;
+      }
+      lastVisibilityRefreshAt = now;
+      refreshComputerUseStatus();
+    };
+    window.addEventListener("focus", refreshOnVisibility);
+    document.addEventListener("visibilitychange", refreshOnVisibility);
     return () => {
       canceled = true;
       window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOnVisibility);
+      document.removeEventListener("visibilitychange", refreshOnVisibility);
     };
   }, [computerUseApi, previewMode]);
   const handleAgentProviderLogin = useCallback(
