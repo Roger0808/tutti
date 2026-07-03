@@ -1714,7 +1714,7 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 			// Mark before the RPC: the server may start (and even settle) the
 			// goal's first turn while thread/goal/set is still in flight, and
 			// the settle path only emits terminal events for marked turns.
-			a.markTurnSettleEmits(session.AgentSessionID, appTurn)
+			a.markTurnSettleEmits(appTurn)
 			go a.watchTurnExternalTermination(appSession, appTurn)
 		}
 		result, err := appSession.callGoal(ctx, method, params,

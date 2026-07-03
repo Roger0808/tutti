@@ -210,12 +210,12 @@ func (r codexAppServerReducer) ReduceNotification(
 				}
 			}
 		}
-		a.emitSessionEvents(session.AgentSessionID, appServerEventsWithOwnerThreadID(goalEvents, ownerThreadID))
+		a.emitSessionEvents(session.AgentSessionID, appServerEventsWithOwner(goalEvents, ownerThreadID, ownerCallID))
 		return codexAppServerReduction{}
 	case appServerNotifyThreadGoalCleared:
 		a.applyGoalClear(session.AgentSessionID)
 		if event, ok := acpGoalUpdatedEvent(session, "thread_goal_cleared"); ok {
-			a.emitSessionEvents(session.AgentSessionID, appServerEventsWithOwnerThreadID([]activityshared.Event{event}, ownerThreadID))
+			a.emitSessionEvents(session.AgentSessionID, appServerEventsWithOwner([]activityshared.Event{event}, ownerThreadID, ownerCallID))
 		}
 		return codexAppServerReduction{}
 	case appServerNotifyThreadStarted:
