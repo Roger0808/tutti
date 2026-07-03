@@ -140,24 +140,49 @@ export async function runDesktopAgentGUILinkAction(
         workspaceId: dependencies.workspaceId
       });
     }
-    case "open-room-chat-messages": {
-      // 群聊消息引用(mention://room-message):打开群聊应用并定位到首条消息。
-      if (
-        action.roomId !== dependencies.workspaceId ||
-        !dependencies.launchGroupChat
-      ) {
+    case "open-custom-mention": {
+      // 宿主侧二次解析自定义 mention:desktop 目前只认识群聊消息引用
+      // (mention://room-message),打开群聊应用并定位到首条消息。
+      if (action.kind !== "room-message" || !dependencies.launchGroupChat) {
         return false;
       }
-      const [firstMessageId] = action.messageIds;
-      if (!firstMessageId) {
+      const roomMessage = parseRoomMessageMentionHref(action.href);
+      if (!roomMessage || roomMessage.roomId !== dependencies.workspaceId) {
         return false;
       }
       return dependencies.launchGroupChat({
-        messageId: firstMessageId,
+        messageId: roomMessage.firstMessageId,
         workspaceId: dependencies.workspaceId
       });
     }
   }
+}
+
+// mention://room-message/<firstId>?ids=...&roomId=... 的宿主侧解析
+// (协议契约见 tsh 仓 openspecs/proposals/room-message-mention-contract.md)。
+function parseRoomMessageMentionHref(
+  href: string
+): { roomId: string; firstMessageId: string } | null {
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
+  if (url.hostname.trim().toLowerCase() !== "room-message") {
+    return null;
+  }
+  const roomId = url.searchParams.get("roomId")?.trim() ?? "";
+  const ids = (url.searchParams.get("ids") ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const firstMessageId =
+    ids[0] ?? decodeURIComponent(url.pathname.replace(/^\//, "")).trim();
+  if (!roomId || !firstMessageId) {
+    return null;
+  }
+  return { roomId, firstMessageId };
 }
 
 type WorkspaceIssueManagerLaunchInput = Parameters<

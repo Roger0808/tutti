@@ -13,7 +13,7 @@ import {
   resolveAgentMentionFileThumbnailUrl,
   resolveAgentMentionFileVisualKind
 } from "../../shared/mentionFilePresentation";
-import { roomMessageMentionWorkspaceIdOf } from "../../../shared/roomMessageMention";
+import { getAgentCustomMentionKind } from "../../../shared/agentCustomMentionKinds";
 import { translate } from "../../../i18n/index";
 import { AgentMentionNodeView } from "./AgentMentionNodeView";
 import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
@@ -31,7 +31,7 @@ export type AgentMentionKind =
   | "workspace-reference"
   | "workspace-app-factory"
   | "workspace-issue"
-  | "room-message";
+  | "custom";
 
 export type AgentMentionReferenceSource = "app" | "task";
 
@@ -129,21 +129,19 @@ export interface AgentMentionWorkspaceAppFactoryItem {
   contextPath?: string;
 }
 
-// 群聊消息引用(tsh room-chat 多选「发送给 Agent」):一次多选 = 一个 item/一个链接,
-// 活引用只存 id。协议契约见 tsh 仓库 openspecs/proposals/room-message-mention-contract.md。
-export interface AgentMentionRoomMessageItem {
-  kind: "room-message";
+// 宿主注册的自定义 mention(见 shared/agentCustomMentionKinds):href 是完整信息源
+// (round-trip 无损),item 只承载通用展示字段;业务细节由宿主在注册的钩子里从 href 还原。
+export interface AgentMentionCustomItem {
+  kind: "custom";
+  /** 注册表里的 kind(= mention:// providerId)。 */
+  customKind: string;
   href: string;
   workspaceId: string;
-  /** 首条消息 id(= href 的 entityId 槽位)。 */
   targetId: string;
-  /** 全量消息 id,按 timeline seq 升序、去重(含首条)。 */
-  messageIds: string[];
-  /** label(发送者+条数),双行卡第一行。 */
+  /** chip 第一行。 */
   name: string;
-  count: number;
-  /** 首条消息纯文本截断(≤60 字符),双行卡第二行。 */
-  preview?: string;
+  /** chip 第二行(通用双行卡)。 */
+  summary?: string;
 }
 
 export type AgentContextMentionItem =
@@ -154,7 +152,7 @@ export type AgentContextMentionItem =
   | AgentMentionWorkspaceReferenceItem
   | AgentMentionWorkspaceAppFactoryItem
   | AgentMentionWorkspaceIssueItem
-  | AgentMentionRoomMessageItem;
+  | AgentMentionCustomItem;
 
 export type AgentFileMentionItem = AgentContextMentionItem;
 
@@ -235,8 +233,7 @@ export function createAgentFileMentionExtension(
         source: { default: "" },
         groupId: { default: "" },
         fileCount: { default: "" },
-        messageIds: { default: "" },
-        count: { default: "" },
+        customKind: { default: "" },
         preview: { default: "" }
       };
     },
@@ -753,26 +750,20 @@ export function parseMentionItemFromHref(input: {
       contextPath: mention.scope?.contextPath?.trim() || undefined
     };
   }
-  if (resource === "room-message") {
-    const mentionWorkspaceId = roomMessageMentionWorkspaceIdOf(mention.scope);
-    if (!mentionWorkspaceId || !targetId) {
+  const customDefinition = getAgentCustomMentionKind(resource);
+  if (customDefinition) {
+    const presentation = customDefinition.present(mention, href);
+    if (!presentation) {
       return null;
     }
-    const ids = (mention.scope?.ids ?? "")
-      .split(",")
-      .map((part) => part.trim())
-      .filter(Boolean);
-    // ids 缺失时兜底为 entityId 单条(容忍手写单 id 链接)。
-    const messageIds = ids.length > 0 ? ids : [targetId];
     return {
-      kind: "room-message",
+      kind: "custom",
+      customKind: resource,
       href,
-      workspaceId: mentionWorkspaceId,
+      workspaceId: presentation.workspaceId?.trim() || workspaceId,
       targetId,
-      messageIds,
-      name,
-      count: parseMentionFileCount(mention.scope?.count) || messageIds.length,
-      preview: mention.scope?.preview?.trim() || undefined
+      name: presentation.name.trim() || name,
+      summary: presentation.summary?.trim() || undefined
     };
   }
   return null;
@@ -861,16 +852,15 @@ export function mentionItemToAttrs(
       contextPath: item.contextPath ?? ""
     };
   }
-  if (item.kind === "room-message") {
+  if (item.kind === "custom") {
     return {
       name: item.name,
       kind: item.kind,
+      customKind: item.customKind,
       href: item.href,
       ...workspaceMentionAttrs(item.workspaceId),
       targetId: item.targetId,
-      messageIds: item.messageIds.join(","),
-      count: String(item.count),
-      preview: item.preview ?? ""
+      preview: item.summary ?? ""
     };
   }
   return {
@@ -932,36 +922,24 @@ export function attrsToMentionItem(
           : undefined
     };
   }
-  if (kind === "room-message") {
+  if (kind === "custom") {
     const workspaceId = workspaceIdFromMentionAttrs(attrs);
-    const attrTargetId =
+    const targetId =
       typeof attrs.targetId === "string" ? attrs.targetId.trim() : "";
-    const parsedMessageIds = (
-      typeof attrs.messageIds === "string" ? attrs.messageIds : ""
-    )
-      .split(",")
-      .map((part) => part.trim())
-      .filter(Boolean);
-    const targetId = attrTargetId || parsedMessageIds[0] || "";
-    const messageIds =
-      parsedMessageIds.length > 0
-        ? parsedMessageIds
-        : targetId
-          ? [targetId]
-          : [];
-    const preview =
+    const customKind =
+      typeof attrs.customKind === "string" ? attrs.customKind.trim() : "";
+    const summary =
       typeof attrs.preview === "string" && attrs.preview.trim()
         ? attrs.preview.trim()
         : undefined;
     return {
       kind,
+      customKind,
       href,
       workspaceId,
       targetId,
-      messageIds,
       name,
-      count: parseMentionFileCount(attrs.count) || messageIds.length,
-      preview
+      summary
     };
   }
   if (kind === "workspace-issue") {
@@ -1172,8 +1150,8 @@ function normalizeMentionKind(value: unknown): AgentMentionKind {
   if (value === "workspace-app-factory") {
     return "workspace-app-factory";
   }
-  if (value === "room-message") {
-    return "room-message";
+  if (value === "custom") {
+    return "custom";
   }
   return "file";
 }
@@ -1223,9 +1201,9 @@ function mentionVisual(item: AgentContextMentionItem): {
       primary: item.name
     };
   }
-  if (item.kind === "room-message") {
+  if (item.kind === "custom") {
     return {
-      kindLabel: "Chat messages",
+      kindLabel: "Reference",
       primary: item.name
     };
   }

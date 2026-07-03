@@ -519,9 +519,9 @@ function agentMentionItemToRowItem(
     };
   }
 
-  if (item.kind === "room-message") {
-    // room-message 只经 draftPrompt prefill 进入 composer,不出现在 @ 面板候选;
-    // 兜底按通用条目展示(label 即发送者+条数)。
+  if (item.kind === "custom") {
+    // 自定义 mention 只经 draftPrompt prefill 进入 composer,不出现在 @ 面板候选;
+    // 兜底按通用条目展示(label 即注册方给的 name)。
     return {
       kind: "issue",
       title: item.name,

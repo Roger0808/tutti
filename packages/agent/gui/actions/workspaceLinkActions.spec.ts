@@ -6,6 +6,10 @@ import {
   resolveWorkspaceFileLinkAction,
   resolveWorkspaceFilePathCandidate
 } from "./workspaceLinkActions";
+import {
+  registerAgentCustomMentionKind,
+  resetAgentCustomMentionKindsForTests
+} from "../shared/agentCustomMentionKinds";
 
 describe("resolveWorkspaceFileLinkAction", () => {
   it("opens local absolute paths without remapping workspace-prefixed paths", () => {
@@ -308,38 +312,50 @@ describe("resolveWorkspaceMentionLinkAction", () => {
     });
   });
 
-  it("parses room-message mention context with the full ids list", () => {
-    expect(
-      resolveWorkspaceMentionLinkAction({
+  it("resolves clickable registered custom mentions to open-custom-mention", () => {
+    registerAgentCustomMentionKind({
+      kind: "room-message",
+      clickable: true,
+      present: (mention) => ({ name: mention.label })
+    });
+    try {
+      expect(
+        resolveWorkspaceMentionLinkAction({
+          href: "mention://room-message/msg-a?count=2&ids=msg-a%2Cmsg-b&preview=222&roomId=room-1",
+          source: "agent-markdown"
+        })
+      ).toEqual({
+        type: "open-custom-mention",
+        kind: "room-message",
         href: "mention://room-message/msg-a?count=2&ids=msg-a%2Cmsg-b&preview=222&roomId=room-1",
         source: "agent-markdown"
-      })
-    ).toEqual({
-      type: "open-room-chat-messages",
-      roomId: "room-1",
-      messageIds: ["msg-a", "msg-b"],
-      source: "agent-markdown"
-    });
+      });
+    } finally {
+      resetAgentCustomMentionKindsForTests();
+    }
   });
 
-  it("falls back to the path id for a room-message mention without ids", () => {
+  it("does not resolve non-clickable registered custom mentions", () => {
+    registerAgentCustomMentionKind({
+      kind: "room-message",
+      present: (mention) => ({ name: mention.label })
+    });
+    try {
+      expect(
+        resolveWorkspaceMentionLinkAction({
+          href: "mention://room-message/msg-a?roomId=room-1",
+          source: "agent-markdown"
+        })
+      ).toBeNull();
+    } finally {
+      resetAgentCustomMentionKindsForTests();
+    }
+  });
+
+  it("does not resolve unregistered custom mention kinds", () => {
     expect(
       resolveWorkspaceMentionLinkAction({
         href: "mention://room-message/msg-a?roomId=room-1",
-        source: "agent-markdown"
-      })
-    ).toEqual({
-      type: "open-room-chat-messages",
-      roomId: "room-1",
-      messageIds: ["msg-a"],
-      source: "agent-markdown"
-    });
-  });
-
-  it("rejects room-message mentions without a roomId", () => {
-    expect(
-      resolveWorkspaceMentionLinkAction({
-        href: "mention://room-message/msg-a",
         source: "agent-markdown"
       })
     ).toBeNull();

@@ -1,6 +1,7 @@
 import { resolveWebsiteNavigationUrl } from "../shared/utils/websiteUrl";
 import type { WorkspaceIssueMentionMode } from "@tutti-os/workspace-issue-manager/core";
 import { parseRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
+import { getAgentCustomMentionKind } from "../shared/agentCustomMentionKinds";
 
 export type WorkspaceLinkActionSource =
   | "agent-markdown"
@@ -112,12 +113,13 @@ export interface ResolveWorkspaceLinkActionInput {
   source: WorkspaceLinkActionSource;
 }
 
-// 群聊消息引用(mention://room-message)的点击动作:宿主打开只读消息预览面板。
-// 协议契约见 tsh 仓库 openspecs/proposals/room-message-mention-contract.md。
-export interface OpenRoomChatMessagesLinkAction {
-  type: "open-room-chat-messages";
-  roomId: string;
-  messageIds: string[];
+// 宿主注册的自定义 mention(shared/agentCustomMentionKinds,clickable=true)的点击动作:
+// 携带原始 href 原样上抛,由宿主自行二次解析(包内不理解业务语义)。
+export interface OpenCustomMentionLinkAction {
+  type: "open-custom-mention";
+  /** 注册表里的 kind(= mention:// providerId)。 */
+  kind: string;
+  href: string;
   source: WorkspaceLinkActionSource;
 }
 
@@ -128,7 +130,7 @@ export type WorkspaceLinkAction =
   | OpenAgentSessionLinkAction
   | OpenWorkspaceIssueLinkAction
   | OpenWorkspaceAppLinkAction
-  | OpenRoomChatMessagesLinkAction;
+  | OpenCustomMentionLinkAction;
 
 const URL_LIKE_LINK_PATTERN = /^[a-zA-Z][a-zA-Z\d+.-]*:|^#/;
 const LOCAL_ASSET_ROOT = "/var/cache/tsh/local-assets";
@@ -285,29 +287,24 @@ export function resolveWorkspaceMentionLinkAction({
   | OpenAgentSessionLinkAction
   | OpenWorkspaceIssueLinkAction
   | OpenWorkspaceAppLinkAction
-  | OpenRoomChatMessagesLinkAction
+  | OpenCustomMentionLinkAction
   | null {
   const mention = parseRichTextMentionHref(href, "");
   if (!mention) {
     return null;
   }
 
-  // room-message 的 scope 键是 roomId(不带 workspaceId),必须在下面的
-  // workspaceId 必填检查之前处理。
-  if (mention.providerId === "room-message") {
-    const roomId = mention.scope?.roomId?.trim() || "";
-    const firstId = mention.entityId.trim();
-    if (!roomId || !firstId) {
+  // 注册的自定义 kind 的 scope 键由宿主约定(未必带 workspaceId),
+  // 必须在下面的 workspaceId 必填检查之前处理。
+  const customDefinition = getAgentCustomMentionKind(mention.providerId);
+  if (customDefinition) {
+    if (!customDefinition.clickable) {
       return null;
     }
-    const ids = (mention.scope?.ids ?? "")
-      .split(",")
-      .map((part) => part.trim())
-      .filter(Boolean);
     return {
-      type: "open-room-chat-messages",
-      roomId,
-      messageIds: ids.length > 0 ? ids : [firstId],
+      type: "open-custom-mention",
+      kind: mention.providerId.trim().toLowerCase(),
+      href: href.trim(),
       source
     };
   }

@@ -2,8 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   attrsToMentionItem,
   formatAgentMentionMarkdown,
-  parseAgentMentionMarkdown
+  mentionItemToAttrs,
+  parseAgentMentionMarkdown,
+  parseMentionItemFromHref
 } from "./agentFileMentionExtension";
+import {
+  registerAgentCustomMentionKind,
+  resetAgentCustomMentionKindsForTests
+} from "../../../shared/agentCustomMentionKinds";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 
 describe("parseAgentMentionMarkdown", () => {
@@ -67,22 +73,68 @@ describe("parseAgentMentionMarkdown", () => {
     });
   });
 
-  it("accepts room-message mention hrefs with lossless ids", () => {
+  it("parses registered custom mention kinds into custom items", () => {
+    registerAgentCustomMentionKind({
+      kind: "room-message",
+      present: (mention) => ({
+        name: mention.label,
+        summary: mention.scope?.preview?.trim() || undefined,
+        workspaceId: mention.scope?.roomId?.trim() || undefined
+      })
+    });
+    try {
+      expect(
+        parseAgentMentionMarkdown(
+          "[@郑伟滨 的 2 条群聊消息](mention://room-message/msg-a?count=2&ids=msg-a%2Cmsg-b&preview=222&roomId=room-1)"
+        )
+      ).toMatchObject({
+        item: {
+          kind: "custom",
+          customKind: "room-message",
+          workspaceId: "room-1",
+          targetId: "msg-a",
+          summary: "222",
+          name: "郑伟滨 的 2 条群聊消息"
+        }
+      });
+    } finally {
+      resetAgentCustomMentionKindsForTests();
+    }
+  });
+
+  it("rejects unregistered custom mention kinds", () => {
     expect(
       parseAgentMentionMarkdown(
-        "[@郑伟滨 的 2 条群聊消息](mention://room-message/msg-a?count=2&ids=msg-a%2Cmsg-b&preview=222&roomId=room-1)"
+        "[@郑伟滨 的 2 条群聊消息](mention://room-message/msg-a?roomId=room-1)"
       )
-    ).toMatchObject({
-      item: {
-        kind: "room-message",
-        workspaceId: "room-1",
-        targetId: "msg-a",
-        messageIds: ["msg-a", "msg-b"],
-        count: 2,
-        preview: "222",
-        name: "郑伟滨 的 2 条群聊消息"
-      }
+    ).toBeNull();
+  });
+
+  it("round-trips custom items through attrs", () => {
+    registerAgentCustomMentionKind({
+      kind: "room-message",
+      present: (mention) => ({
+        name: mention.label,
+        summary: mention.scope?.preview?.trim() || undefined,
+        workspaceId: mention.scope?.roomId?.trim() || undefined
+      })
     });
+    try {
+      const href =
+        "mention://room-message/msg-a?count=2&ids=msg-a%2Cmsg-b&preview=222&roomId=room-1";
+      const parsed = parseMentionItemFromHref({
+        name: "郑伟滨 的 2 条群聊消息",
+        href
+      });
+      expect(parsed).not.toBeNull();
+      expect(attrsToMentionItem(mentionItemToAttrs(parsed!))).toEqual(parsed);
+      // markdown 序列化走 default 分支(canonical href round-trip 无损)。
+      expect(formatAgentMentionMarkdown(parsed!)).toContain(
+        "mention://room-message/msg-a"
+      );
+    } finally {
+      resetAgentCustomMentionKindsForTests();
+    }
   });
 
   it("accepts workspace app mention hrefs without an @ prefix", () => {
