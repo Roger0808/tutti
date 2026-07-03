@@ -152,6 +152,7 @@ import {
   USAGE_CRITICAL_PERCENT,
   USAGE_WARN_PERCENT
 } from "./model/agentUsageThresholds";
+import atLinedIconUrl from "../../app/renderer/assets/icons/@-lined-14px.svg";
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
 import { useOptionalAgentHostApi } from "../../agentActivityHost";
 import type { AgentDroppedFileReferenceResolver } from "./model/agentDroppedFileReferences";
@@ -354,6 +355,7 @@ export interface AgentComposerProps {
     fileMentionEmpty: string;
     fileMentionError: string;
     fileMentionTabHint: string;
+    mentionPalette: string;
     removeMention: string;
     addReference: string;
     referenceWorkspaceFiles: string;
@@ -2327,6 +2329,12 @@ export function AgentComposer({
   );
   const inputDisabled =
     isSelectedProjectMissing || (disabled && !canQueueWhileBusy);
+  const handleMentionPaletteButton = useCallback((): void => {
+    if (composerControlsHardDisabled || inputDisabled) {
+      return;
+    }
+    editorHandleRef.current?.openMentionPalette();
+  }, [composerControlsHardDisabled, inputDisabled]);
   const scheduleComposerFocus = useCallback(() => {
     if (inputDisabled) {
       return;
@@ -3223,50 +3231,16 @@ export function AgentComposer({
           </Popover>
           <div className={styles.composerFooter}>
             <div className={composerStyles.footerGroup}>
-              {previewMode ? (
-                <button
-                  type="button"
-                  aria-label={labels.referenceWorkspaceFiles}
-                  title={labels.referenceWorkspaceFiles}
-                  className={cn(
-                    styles.composerMenuTrigger,
-                    styles.composerReferenceTrigger,
-                    "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&_svg]:shrink-0"
-                  )}
-                >
-                  <AddIcon
-                    aria-hidden
-                    className="size-3.5"
-                    data-agent-reference-add-icon="true"
-                  />
-                </button>
-              ) : (
-                <Select
-                  open={false}
-                  value={workspaceReferenceSelectValue}
-                  disabled={
-                    !onRequestWorkspaceReferences ||
-                    composerControlsHardDisabled
-                  }
-                  onOpenChange={(isOpen) => {
-                    if (isOpen) {
-                      void handleWorkspaceReferencePicker();
-                    }
-                  }}
-                  onValueChange={(nextValue) => {
-                    if (nextValue === workspaceReferenceOptionValue) {
-                      void handleWorkspaceReferencePicker();
-                    }
-                  }}
-                >
-                  <SelectTrigger
-                    size="sm"
+              <div className="inline-flex shrink-0 items-center gap-1">
+                {previewMode ? (
+                  <button
+                    type="button"
                     aria-label={labels.referenceWorkspaceFiles}
                     title={labels.referenceWorkspaceFiles}
                     className={cn(
                       styles.composerMenuTrigger,
                       styles.composerReferenceTrigger,
-                      "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden [&_svg]:shrink-0"
+                      "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&_svg]:shrink-0"
                     )}
                   >
                     <AddIcon
@@ -3274,9 +3248,73 @@ export function AgentComposer({
                       className="size-3.5"
                       data-agent-reference-add-icon="true"
                     />
-                  </SelectTrigger>
-                </Select>
-              )}
+                  </button>
+                ) : (
+                  <Select
+                    open={false}
+                    value={workspaceReferenceSelectValue}
+                    disabled={
+                      !onRequestWorkspaceReferences ||
+                      composerControlsHardDisabled
+                    }
+                    onOpenChange={(isOpen) => {
+                      if (isOpen) {
+                        void handleWorkspaceReferencePicker();
+                      }
+                    }}
+                    onValueChange={(nextValue) => {
+                      if (nextValue === workspaceReferenceOptionValue) {
+                        void handleWorkspaceReferencePicker();
+                      }
+                    }}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      aria-label={labels.referenceWorkspaceFiles}
+                      title={labels.referenceWorkspaceFiles}
+                      className={cn(
+                        styles.composerMenuTrigger,
+                        styles.composerReferenceTrigger,
+                        "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden [&_svg]:shrink-0"
+                      )}
+                    >
+                      <AddIcon
+                        aria-hidden
+                        className="size-3.5"
+                        data-agent-reference-add-icon="true"
+                      />
+                    </SelectTrigger>
+                  </Select>
+                )}
+                <button
+                  type="button"
+                  aria-label={labels.mentionPalette}
+                  title={labels.mentionPalette}
+                  disabled={composerControlsHardDisabled || inputDisabled}
+                  className={cn(
+                    styles.composerMenuTrigger,
+                    styles.composerReferenceTrigger,
+                    "group w-auto justify-center text-[var(--agent-gui-text-secondary)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:shrink-0"
+                  )}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={handleMentionPaletteButton}
+                >
+                  <span
+                    aria-hidden
+                    className="inline-block size-3.5 bg-[var(--text-secondary)] transition-colors group-hover:bg-[var(--text-primary)] group-focus-visible:bg-[var(--text-primary)]"
+                    style={{
+                      WebkitMaskImage: `url("${atLinedIconUrl}")`,
+                      WebkitMaskPosition: "center",
+                      WebkitMaskRepeat: "no-repeat",
+                      WebkitMaskSize: "contain",
+                      maskImage: `url("${atLinedIconUrl}")`,
+                      maskPosition: "center",
+                      maskRepeat: "no-repeat",
+                      maskSize: "contain"
+                    }}
+                  />
+                </button>
+              </div>
               {showProviderSelect && selectedProviderSwitchTarget ? (
                 <Select
                   value={selectedProviderTargetId}

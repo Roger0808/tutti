@@ -437,6 +437,7 @@ export interface AgentGUIViewLabels {
   fileMentionEmpty: string;
   fileMentionError: string;
   fileMentionTabHint: string;
+  mentionPalette: string;
   removeMention: string;
   addReference: string;
   referenceWorkspaceFiles: string;
@@ -2043,6 +2044,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       fileMentionEmpty: labels.fileMentionEmpty,
       fileMentionError: labels.fileMentionError,
       fileMentionTabHint: labels.fileMentionTabHint,
+      mentionPalette: labels.mentionPalette,
       removeMention: labels.removeMention,
       addReference: labels.addReference,
       referenceWorkspaceFiles: labels.referenceWorkspaceFiles,

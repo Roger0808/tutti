@@ -161,6 +161,9 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
           getPromptTextBeforeSelection() {
             return value;
           },
+          openMentionPalette() {
+            onChange(`${value}@`);
+          },
           insertWorkspaceReferences(
             items: ReadonlyArray<{ displayName?: string; path: string }>
           ) {
@@ -2278,7 +2281,13 @@ describe("AgentComposer", () => {
     const referenceDropdown = screen.getByRole("combobox", {
       name: "引用空间文件"
     });
-    expect(footerLeft?.firstElementChild).toBe(referenceDropdown);
+    const referenceCluster = footerLeft?.firstElementChild;
+    expect(referenceCluster).not.toBeNull();
+    expect(referenceCluster).toHaveClass("gap-1");
+    expect(referenceCluster?.firstElementChild).toBe(referenceDropdown);
+    expect(referenceCluster).toContainElement(
+      screen.getByRole("button", { name: "提及上下文" })
+    );
     expect(referenceDropdown).toHaveAttribute("data-slot", "select-trigger");
     expect(referenceDropdown).toHaveClass(
       "agent-gui-node__composer-reference-trigger"
@@ -3385,6 +3394,49 @@ describe("AgentComposer", () => {
     expect(draftContent.prompt).not.toMatch(/^@/);
   });
 
+  it("opens the mention palette from the @ footer button", async () => {
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "提及上下文" }));
+
+    await waitFor(() => expect(draftContent.prompt).toBe("@"));
+  });
+
   it("renders controlled text and image draft content", () => {
     const onSubmit = vi.fn();
     const draftContent = createDraft("describe this", [
@@ -4037,6 +4089,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     fileMentionEmpty: "空",
     fileMentionError: "错误",
     fileMentionTabHint: "Tab 提示",
+    mentionPalette: "提及上下文",
     removeMention: "移除引用",
     addReference: "添加引用",
     referenceWorkspaceFiles: "引用空间文件",

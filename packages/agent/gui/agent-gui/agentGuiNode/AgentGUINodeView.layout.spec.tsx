@@ -2332,6 +2332,7 @@ function createLabels(): AgentGUIViewLabels {
     fileMentionEmpty: "fileMentionEmpty",
     fileMentionError: "fileMentionError",
     fileMentionTabHint: "fileMentionTabHint",
+    mentionPalette: "mentionPalette",
     removeMention: "removeMention",
     addReference: "addReference",
     referenceWorkspaceFiles: "referenceWorkspaceFiles",

@@ -1245,6 +1245,12 @@ files or `workspace-reference` mentions must clear the active trigger text
 before launching the picker, otherwise the raw `@` query remains in the
 composer before the inserted mention.
 
+Composer toolbar affordances that open the `@` panel should insert the same
+trigger text through `AgentRichTextEditor` at the current selection and let the
+Tiptap suggestion plugin publish `AgentRichTextEditor` suggestion state. Do not
+open the mention palette as a separate UI-only state path; the trigger range
+still owns command replacement, keyboard handling, and panel anchoring.
+
 Pasting text that contains an `@` must not be treated as active mention input
 unless the paste leaves the caret immediately after the `@` trigger. A bare
 `@` paste may open the mention panel; a complete pasted query such as `@readme`

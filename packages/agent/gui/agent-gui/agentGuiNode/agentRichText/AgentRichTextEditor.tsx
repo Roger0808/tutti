@@ -85,6 +85,7 @@ export interface AgentRichTextEditorHandle {
   focusAtStart: () => void;
   focusAtEnd: () => void;
   getPromptTextBeforeSelection: () => string;
+  openMentionPalette: () => void;
   insertWorkspaceReferences: (items: readonly WorkspaceFileReference[]) => void;
   insertMentionItems: (items: readonly AgentContextMentionItem[]) => void;
   replaceTextBeforeSelection: (length: number, text: string) => string | null;
@@ -141,6 +142,20 @@ function isPromptVisualLineStart(editor: Editor, position: number): boolean {
       "\n"
     ) === "\n"
   );
+}
+
+function isMentionTriggerBoundaryBeforeSelection(editor: Editor): boolean {
+  const position = editor.state.selection.from;
+  if (position <= 1) {
+    return true;
+  }
+  const previous = editor.state.doc.textBetween(
+    Math.max(1, position - 1),
+    position,
+    "\n",
+    "\n"
+  );
+  return previous === "" || /\s/.test(previous);
 }
 
 function findCaretAnchorBeforeAtomicRun(
@@ -1160,6 +1175,22 @@ export const AgentRichTextEditor = forwardRef<
           "\n",
           "\n"
         );
+      },
+      openMentionPalette() {
+        const currentEditor = editorRef.current;
+        if (
+          !currentEditor ||
+          currentEditor.isDestroyed ||
+          !currentEditor.isEditable
+        ) {
+          return;
+        }
+        const triggerText = isMentionTriggerBoundaryBeforeSelection(
+          currentEditor
+        )
+          ? "@"
+          : " @";
+        currentEditor.chain().focus().insertContent(triggerText).run();
       },
       insertWorkspaceReferences(items) {
         const currentEditor = editorRef.current;
