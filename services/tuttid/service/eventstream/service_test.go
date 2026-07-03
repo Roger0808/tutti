@@ -206,6 +206,64 @@ func TestAgentActivityUpdatedValidationRejectsSchemaDrift(t *testing.T) {
 	}
 }
 
+func TestAgentActivityUpdatedValidationAcceptsAgentTargetID(t *testing.T) {
+	t.Parallel()
+
+	catalog := DefaultCatalog()
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{
+			name: "session update",
+			payload: `{
+				"workspaceId":"workspace-1",
+				"agentSessionId":"agent-session-1",
+				"agentTargetId":"local:codex",
+				"eventType":"session_update",
+				"data":{
+					"workspaceId":"workspace-1",
+					"agentSessionId":"agent-session-1",
+					"agentTargetId":"local:codex",
+					"eventType":"session_update",
+					"lastEventUnixMs":1
+				}
+			}`,
+		},
+		{
+			name: "state patch",
+			payload: `{
+				"workspaceId":"workspace-1",
+				"agentSessionId":"agent-session-1",
+				"agentTargetId":"local:codex",
+				"eventType":"state_patch",
+				"data":{
+					"workspaceId":"workspace-1",
+					"agentSessionId":"agent-session-1",
+					"eventType":"state_patch",
+					"lastEventUnixMs":1,
+					"provider":"codex",
+					"agentTargetId":"local:codex"
+				}
+			}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if err := catalog.ValidatePublish(
+				TopicAgentActivityUpdated,
+				DirectionServerToClient,
+				[]byte(tt.payload),
+			); err != nil {
+				t.Fatalf("ValidatePublish() error = %v", err)
+			}
+		})
+	}
+}
+
 func TestPreferencesIntentHandlerUsesAuthoritativeMutationPath(t *testing.T) {
 	t.Parallel()
 

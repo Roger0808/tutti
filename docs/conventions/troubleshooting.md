@@ -693,6 +693,37 @@ delimited by ---`, and the composer skill picker may show partial or
   [service.go](../../services/tuttid/service/agent/service.go)
   [wiring.go](../../services/tuttid/wiring.go)
 
+### Agent activity live updates fail after event schema changes
+
+- Symptom:
+  AgentGUI stays busy after a turn has finished, while durable
+  `workspace_agent_sessions` state is already idle and daemon logs show
+  `publish workspace agent activity update failed` with a
+  `decode ... data: json: unknown field` error.
+- Quick checks:
+  Compare the new field in
+  `packages/events/protocol/definitions/agent/activity.updated.event.json`,
+  generated event protocol outputs, and the hand-written strict validators in
+  `services/tuttid/service/eventstream/catalog.go`.
+- Root cause:
+  The shared business event schema and generated Go/TypeScript protocol files
+  can be current while the daemon event-stream catalog still rejects the same
+  payload through `DisallowUnknownFields` on a hand-written validation struct.
+  The activity projection may persist the correct session state, but the live
+  `agent.activity.updated` publish is rejected before the renderer runtime sees
+  the settling patch.
+- Fix:
+  Keep `catalog.go` validation DTOs in sync with new event fields, especially
+  for `agent.activity.updated` top-level, `session_update`, and `state_patch`
+  payloads. Add a positive validator test for the new field, not only generated
+  protocol checks.
+- Validation:
+  Run `go test ./services/tuttid/service/eventstream` and
+  `pnpm check:event-protocol-generated` when event protocol sources changed.
+- References:
+  [catalog.go](../../services/tuttid/service/eventstream/catalog.go)
+  [activity.updated.event.json](../../packages/events/protocol/definitions/agent/activity.updated.event.json)
+
 ### Agent approval controls submit stale permission requests after restart
 
 - Symptom:
