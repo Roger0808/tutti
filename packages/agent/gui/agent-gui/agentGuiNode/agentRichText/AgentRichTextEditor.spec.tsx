@@ -816,6 +816,33 @@ describe("AgentRichTextEditor", () => {
     );
   });
 
+  it("opens file mention suggestions from the imperative mention palette handle", async () => {
+    const ref = createRef<AgentRichTextEditorHandle>();
+    const onFileMentionSuggestionChange = vi.fn();
+    render(
+      <AgentRichTextEditor
+        ref={ref}
+        value=""
+        disabled={false}
+        placeholder="Prompt"
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onFileMentionSuggestionChange={onFileMentionSuggestionChange}
+      />
+    );
+
+    await screen.findByRole("textbox", { name: "Prompt" });
+    act(() => {
+      ref.current?.openMentionPalette();
+    });
+
+    await waitFor(() =>
+      expect(onFileMentionSuggestionChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ query: "", text: "@" })
+      )
+    );
+  });
+
   it("does not open file mention suggestions after a slash path segment", async () => {
     const onFileMentionSuggestionChange = vi.fn();
     render(

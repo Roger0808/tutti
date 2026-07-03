@@ -928,6 +928,7 @@ export const en = {
       fileMentionError: "Unable to search Files.",
       fileMentionTabHint:
         "Tab switch category | ←→ enter/leave folder | ↑↓ switch selection",
+      mentionPalette: "Mention context",
       addReference: "Add reference",
       referenceWorkspaceFiles: "Reference workspace files",
       referencePicker: {
