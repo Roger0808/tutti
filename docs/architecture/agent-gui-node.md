@@ -437,6 +437,19 @@ enter `AgentActivityRuntime`; large workspaces can accumulate hundreds or
 thousands of historical agent sessions, and pushing all of them through the
 runtime snapshot forces AgentGuiNode to repeatedly project and reconcile data
 the user is unlikely to inspect in the rail.
+AgentGUI rail sections are loaded from the daemon section contract, not inferred
+from conversation `cwd` values. The runtime exposes `listSessionSections` for
+section first pages and `listSessionSectionPage` for Show more; both are backed
+by `GET /v1/workspaces/{workspaceID}/agent-session-sections` and
+`GET /v1/workspaces/{workspaceID}/agent-session-sections/page`. Project
+sections come from current `userProjects` and use the stable
+`project:/canonical/path` `sectionKey`; the Chats section uses
+`conversations`. The daemon pages sessions by `rail_section_key`, so AgentGUI
+must render returned section props and use backend `hasMore`/`nextCursor`
+rather than cwd grouping, root filters, excluded project paths, or local
+Show more heuristics. Removing a project removes that rail section from the
+section list; re-adding the same path reveals historical sessions with the same
+section key.
 Conversation-list read-state metadata is notification-style UI state. Historical
 imports that carry `runtimeContext.imported === true` should remain visible in
 the rail, but they must not seed unread completion lamps as though they just

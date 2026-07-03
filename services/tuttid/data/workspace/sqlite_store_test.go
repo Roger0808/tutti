@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1699,6 +1700,112 @@ func TestSQLiteStoreListAgentSessionsByUpdatedAtDescending(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreListSessionSectionPagesByRailSectionKey(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "ws-agent-section-page",
+		Name: "Workspace Agent Section Page",
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := store.PutUserProject(ctx, userprojectbiz.Project{
+		ID:    "project-app",
+		Path:  "/workspace/app",
+		Label: "App",
+	}); err != nil {
+		t.Fatalf("PutUserProject() error = %v", err)
+	}
+	for _, input := range []agentactivitybiz.SessionStateReport{
+		{
+			WorkspaceID:      "ws-agent-section-page",
+			AgentSessionID:   "project-newer",
+			Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			Provider:         "codex",
+			Cwd:              "/workspace/app",
+			Status:           "completed",
+			OccurredAtUnixMS: 300,
+		},
+		{
+			WorkspaceID:      "ws-agent-section-page",
+			AgentSessionID:   "project-older",
+			Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			Provider:         "codex",
+			Cwd:              "/workspace/app/pkg",
+			Status:           "completed",
+			OccurredAtUnixMS: 200,
+		},
+		{
+			WorkspaceID:      "ws-agent-section-page",
+			AgentSessionID:   "chat",
+			Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			Provider:         "codex",
+			Cwd:              "/scratch/session",
+			RuntimeContext:   map[string]any{"externalImportNoProject": true},
+			Status:           "completed",
+			OccurredAtUnixMS: 100,
+		},
+	} {
+		if _, err := store.ReportSessionState(ctx, input); err != nil {
+			t.Fatalf("ReportSessionState(%s) error = %v", input.AgentSessionID, err)
+		}
+	}
+
+	projectPage, ok, err := store.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
+		WorkspaceID: "ws-agent-section-page",
+		SectionKey:  "project:/workspace/app",
+		Limit:       1,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionSection(project) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("ListSessionSection(project) ok=false, want true")
+	}
+	if got, want := activitySessionIDs(projectPage.Sessions), []string{"project-older"}; !slices.Equal(got, want) {
+		t.Fatalf("project page sessions = %#v, want %#v", got, want)
+	}
+	cursorParts := strings.SplitN(projectPage.NextCursor, "|", 2)
+	if !projectPage.HasMore || len(cursorParts) != 2 || cursorParts[1] != "project-older" {
+		t.Fatalf("project page cursor = %q hasMore=%v, want cursor for project-older true", projectPage.NextCursor, projectPage.HasMore)
+	}
+
+	nextProjectPage, ok, err := store.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
+		WorkspaceID:       "ws-agent-section-page",
+		SectionKey:        "project:/workspace/app",
+		CursorUpdatedAtMS: projectPage.Sessions[0].UpdatedAtUnixMS,
+		CursorSessionID:   "project-older",
+		Limit:             2,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionSection(project next) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("ListSessionSection(project next) ok=false, want true")
+	}
+	if got, want := activitySessionIDs(nextProjectPage.Sessions), []string{"project-newer"}; !slices.Equal(got, want) {
+		t.Fatalf("project next sessions = %#v, want %#v", got, want)
+	}
+
+	conversationsPage, ok, err := store.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
+		WorkspaceID: "ws-agent-section-page",
+		SectionKey:  "conversations",
+		Limit:       5,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionSection(conversations) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("ListSessionSection(conversations) ok=false, want true")
+	}
+	if got, want := activitySessionIDs(conversationsPage.Sessions), []string{"chat"}; !slices.Equal(got, want) {
+		t.Fatalf("conversations sessions = %#v, want %#v", got, want)
+	}
+}
+
 func TestSQLiteStoreDeleteAgentActivitySessionSoftDeletesMessages(t *testing.T) {
 	t.Parallel()
 
@@ -1754,6 +1861,14 @@ func TestSQLiteStoreDeleteAgentActivitySessionSoftDeletesMessages(t *testing.T) 
 	}); err != nil || ok {
 		t.Fatalf("ListSessionMessages() after delete ok=%v error=%v, want ok=false", ok, err)
 	}
+}
+
+func activitySessionIDs(sessions []agentactivitybiz.Session) []string {
+	ids := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		ids = append(ids, session.ID)
+	}
+	return ids
 }
 
 func TestSQLiteStoreClearAgentActivitySessionsHardDeletesTombstones(t *testing.T) {

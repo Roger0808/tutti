@@ -91,6 +91,13 @@ Agent GUI must read and write agent session/activity data through
 `AgentActivityRuntime`. `AgentHostApi` remains available for host capabilities
 such as files, clipboard, runtime metadata, account lookup, composer options,
 and temporary desktop-only session-control behavior.
+Conversation rail sections are also an `AgentActivityRuntime` contract:
+AgentGUI calls `listSessionSections` for the first page of every returned rail
+section and `listSessionSectionPage` for Show more by `sectionKey` and cursor.
+Hosts must pass those calls through to the daemon section endpoints so project
+sections come from current user projects and session membership comes from
+persisted `rail_section_key`, not frontend cwd grouping or project-root
+filters.
 
 `AgentActivity*` types are the canonical frontend agent activity data model.
 `AgentHostWorkspaceAgent*` types may only appear in compatibility or projection
