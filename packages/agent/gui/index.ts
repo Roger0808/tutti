@@ -16,6 +16,9 @@ export {
 } from "./providerTargets";
 export type {
   AgentGUIProvider,
+  AgentGUIProviderReadinessGate,
+  AgentGUIProviderReadinessGateAction,
+  AgentGUIProviderReadinessGateStatus,
   AgentGUIProviderTarget,
   AgentGUIProviderTargetRef
 } from "./types";
