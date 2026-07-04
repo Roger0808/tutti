@@ -2442,6 +2442,46 @@ describe("AgentComposer", () => {
     ).toBeNull();
   });
 
+  it("shows a hover tooltip explaining the mention (@) button", async () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const mentionButton = screen.getByRole("button", { name: "提及上下文" });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.pointerMove(mentionButton, { pointerType: "mouse" });
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("提及上下文");
+  });
+
   it("hides the project row for locked dock composers in existing conversations", () => {
     const { container } = render(
       <AgentComposer

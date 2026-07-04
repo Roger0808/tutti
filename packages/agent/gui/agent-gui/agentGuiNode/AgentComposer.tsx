@@ -3325,34 +3325,42 @@ export function AgentComposer({
                     </Tooltip>
                   </TooltipProvider>
                 )}
-                <button
-                  type="button"
-                  aria-label={labels.mentionPalette}
-                  title={labels.mentionPalette}
-                  disabled={composerControlsHardDisabled || inputDisabled}
-                  className={cn(
-                    styles.composerMenuTrigger,
-                    styles.composerReferenceTrigger,
-                    "group w-auto justify-center text-[var(--agent-gui-text-secondary)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:shrink-0"
-                  )}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={handleMentionPaletteButton}
-                >
-                  <span
-                    aria-hidden
-                    className="inline-block size-3.5 bg-[var(--text-secondary)] transition-colors group-hover:bg-[var(--text-primary)] group-focus-visible:bg-[var(--text-primary)]"
-                    style={{
-                      WebkitMaskImage: `url("${atLinedIconUrl}")`,
-                      WebkitMaskPosition: "center",
-                      WebkitMaskRepeat: "no-repeat",
-                      WebkitMaskSize: "contain",
-                      maskImage: `url("${atLinedIconUrl}")`,
-                      maskPosition: "center",
-                      maskRepeat: "no-repeat",
-                      maskSize: "contain"
-                    }}
-                  />
-                </button>
+                <TooltipProvider delayDuration={120}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={labels.mentionPalette}
+                        disabled={composerControlsHardDisabled || inputDisabled}
+                        className={cn(
+                          styles.composerMenuTrigger,
+                          styles.composerReferenceTrigger,
+                          "group w-auto justify-center text-[var(--agent-gui-text-secondary)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:shrink-0"
+                        )}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={handleMentionPaletteButton}
+                      >
+                        <span
+                          aria-hidden
+                          className="inline-block size-3.5 bg-[var(--text-secondary)] transition-colors group-hover:bg-[var(--text-primary)] group-focus-visible:bg-[var(--text-primary)]"
+                          style={{
+                            WebkitMaskImage: `url("${atLinedIconUrl}")`,
+                            WebkitMaskPosition: "center",
+                            WebkitMaskRepeat: "no-repeat",
+                            WebkitMaskSize: "contain",
+                            maskImage: `url("${atLinedIconUrl}")`,
+                            maskPosition: "center",
+                            maskRepeat: "no-repeat",
+                            maskSize: "contain"
+                          }}
+                        />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      {labels.mentionPalette}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
               {showProviderSelect && selectedProviderSwitchTarget ? (
                 <Select
