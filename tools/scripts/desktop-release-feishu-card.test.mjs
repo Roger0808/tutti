@@ -34,6 +34,11 @@ test("release Feishu card marks rc tags as prereleases", () => {
   assert.match(resolveIntroText("v1.12.19-rc.0"), /GitHub RC Pre-release/);
 });
 
+test("release Feishu card marks beta tags as prereleases", () => {
+  assert.equal(resolveReleaseKind("v1.12.19-beta.0"), "Beta prerelease");
+  assert.match(resolveIntroText("v1.12.19-beta.0"), /GitHub Beta Pre-release/);
+});
+
 test("release Feishu card includes tsh-aligned release context fields", () => {
   const payload = buildCardPayload({
     actor: "jomeswang",

@@ -15,13 +15,14 @@ on:
         default: patch_rc_release
         options:
           - unsigned_dry_run
+          - patch_beta_release
           - patch_rc_release
           - patch_release
           - minor_release
           - major_release
           - explicit_version_release
       version:
-        description: Release semver for explicit_version_release, such as 0.1.0 or 0.1.0-rc.0
+        description: Release semver for explicit_version_release, such as 0.1.0, 0.1.0-rc.0, or 0.1.0-beta.0
         required: false
         type: string
       target_commitish:
@@ -52,6 +53,7 @@ jobs:
       release_tag: ${{ steps.release.outputs.release_tag }}
       release_target: ${{ steps.target.outputs.release_target }}
       release_version: ${{ steps.release.outputs.release_version }}
+      release_channel: ${{ steps.release.outputs.release_channel }}
       notify_feishu: ${{ steps.notify.outputs.notify_feishu }}
 
     steps:
@@ -96,6 +98,9 @@ jobs:
               ;;
             patch_release)
               strategy=patch
+              ;;
+            patch_beta_release)
+              strategy=patch_beta
               ;;
             minor_release)
               strategy=minor
@@ -158,10 +163,12 @@ jobs:
           release_prerelease="$(node -e "process.stdout.write(String(JSON.parse(process.argv[1]).prerelease))" "${release_json}")"
           release_tag="$(node -e "process.stdout.write(JSON.parse(process.argv[1]).tag)" "${release_json}")"
           release_version="$(node -e "process.stdout.write(JSON.parse(process.argv[1]).version)" "${release_json}")"
+          release_channel="$(node -e "process.stdout.write(JSON.parse(process.argv[1]).channel)" "${release_json}")"
           echo "release_make_latest=${release_make_latest}" >> "$GITHUB_OUTPUT"
           echo "release_prerelease=${release_prerelease}" >> "$GITHUB_OUTPUT"
           echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
           echo "release_version=${release_version}" >> "$GITHUB_OUTPUT"
+          echo "release_channel=${release_channel}" >> "$GITHUB_OUTPUT"
 
       - name: Resolve Feishu notification
         id: notify
@@ -176,6 +183,7 @@ jobs:
       TUTTI_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
       TUTTI_DESKTOP_RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
       TUTTI_DESKTOP_DRY_RUN: ${{ needs.resolve.outputs.release_dry_run }}
+      TUTTI_DESKTOP_RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
 
     steps:
       - name: Checkout
@@ -294,14 +302,14 @@ jobs:
             pnpm --filter @tutti-os/desktop build:mac:signed
           fi
 
-      - name: Materialize RC updater metadata
-        if: ${{ needs.resolve.outputs.release_prerelease == 'true' }}
+      - name: Materialize prerelease updater metadata
+        if: ${{ needs.resolve.outputs.release_channel != 'stable' }}
         run: |
           if [[ ! -f apps/desktop/dist/latest-mac.yml ]]; then
-            echo "latest-mac.yml is required before creating rc-mac.yml." >&2
+            echo "latest-mac.yml is required before creating ${TUTTI_DESKTOP_RELEASE_CHANNEL}-mac.yml." >&2
             exit 1
           fi
-          cp apps/desktop/dist/latest-mac.yml apps/desktop/dist/rc-mac.yml
+          cp apps/desktop/dist/latest-mac.yml "apps/desktop/dist/${TUTTI_DESKTOP_RELEASE_CHANNEL}-mac.yml"
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v7
@@ -423,7 +431,7 @@ jobs:
       - name: Generate desktop release summary
         env:
           AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
-          RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_prerelease == 'true' && 'rc' || 'stable' }}
+          RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
           RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
           RELEASE_TARGET: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
         run: |

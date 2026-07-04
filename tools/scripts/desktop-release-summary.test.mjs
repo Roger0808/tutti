@@ -33,8 +33,10 @@ test("desktop release summary maps technical headings to user-facing sections", 
 test("desktop release summary resolves channel from version shape", () => {
   assert.equal(normalizeVersion("v1.2.4"), "1.2.4");
   assert.equal(normalizeVersion("tutti-desktop-v1.2.4-rc.1"), "1.2.4-rc.1");
+  assert.equal(normalizeVersion("tutti-desktop-v1.2.4-beta.1"), "1.2.4-beta.1");
   assert.equal(resolveChannel({ version: "1.2.4" }), "stable");
   assert.equal(resolveChannel({ version: "1.2.4-rc.1" }), "rc");
+  assert.equal(resolveChannel({ version: "1.2.4-beta.1" }), "beta");
 });
 
 test("desktop release summary fallback emits zh and en sections", () => {

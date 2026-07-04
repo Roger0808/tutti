@@ -68,7 +68,7 @@ test("desktop release workflow publishes rc tags as prereleases and keeps stable
   assert.match(workflow, /default:\s*patch_rc_release/);
   assert.match(
     workflow,
-    /release_mode:[\s\S]*?options:\s*\n\s*-\s*unsigned_dry_run\n\s*-\s*patch_rc_release\n\s*-\s*patch_release\n\s*-\s*minor_release\n\s*-\s*major_release\n\s*-\s*explicit_version_release/
+    /release_mode:[\s\S]*?options:\s*\n\s*-\s*unsigned_dry_run\n\s*-\s*patch_beta_release\n\s*-\s*patch_rc_release\n\s*-\s*patch_release\n\s*-\s*minor_release\n\s*-\s*major_release\n\s*-\s*explicit_version_release/
   );
   assert.match(
     workflow,
@@ -78,6 +78,8 @@ test("desktop release workflow publishes rc tags as prereleases and keeps stable
     workflow,
     /make_latest:\s+\${{\s*needs\.resolve\.outputs\.release_make_latest\s*==\s*'true'\s*}}/
   );
+  assert.match(workflow, /release_channel:\s+\${{\s*steps\.release\.outputs\.release_channel\s*}}/);
+  assert.match(workflow, /patch_beta_release\)\s*\n\s*strategy=patch_beta/);
 });
 
 test("desktop release workflow schedules a daily Beijing 4:16am rc release", async () => {
@@ -379,14 +381,14 @@ test("desktop package generates updater metadata for every release channel", asy
   const workflow = await readFile(workflowPath, "utf8");
 
   assert.equal(packageJson.build?.generateUpdatesFilesForAllChannels, true);
-  assert.match(workflow, /Materialize RC updater metadata/);
+  assert.match(workflow, /Materialize prerelease updater metadata/);
   assert.match(
     workflow,
-    /needs\.resolve\.outputs\.release_prerelease\s*==\s*'true'/
+    /needs\.resolve\.outputs\.release_channel\s*!=\s*'stable'/
   );
   assert.match(
     workflow,
-    /cp apps\/desktop\/dist\/latest-mac\.yml apps\/desktop\/dist\/rc-mac\.yml/
+    /cp apps\/desktop\/dist\/latest-mac\.yml "apps\/desktop\/dist\/\$\{TUTTI_DESKTOP_RELEASE_CHANNEL\}-mac\.yml"/
   );
 });
 

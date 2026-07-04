@@ -55,8 +55,12 @@ function isPrereleaseVersion(version) {
 }
 
 function resolveChannel({ channel = "", version }) {
-  if (channel === "stable" || channel === "rc") {
+  if (channel === "stable" || channel === "rc" || channel === "beta") {
     return channel;
+  }
+  const prereleaseMatch = /^.+-(rc|beta)\.(0|[1-9]\d*)$/u.exec(version);
+  if (prereleaseMatch) {
+    return prereleaseMatch[1];
   }
   return isPrereleaseVersion(version) ? "rc" : "stable";
 }
@@ -80,7 +84,7 @@ function listReleaseTags() {
 }
 
 function parseStableCore(version) {
-  const match = /^(?<core>\d+\.\d+\.\d+)(?:-rc\.\d+)?$/u.exec(version);
+  const match = /^(?<core>\d+\.\d+\.\d+)(?:-(?:rc|beta)\.\d+)?$/u.exec(version);
   return match?.groups?.core ?? "";
 }
 
@@ -95,7 +99,7 @@ function resolvePreviousTag({ channel, tag, version }) {
     tags.find((candidate) => {
       const candidateVersion = normalizeVersion(candidate);
       return (
-        candidateVersion.startsWith(`${stableCore}-rc.`) &&
+        candidateVersion.startsWith(`${stableCore}-${channel}.`) &&
         isPrereleaseVersion(candidateVersion)
       );
     }) ??
@@ -209,7 +213,7 @@ function normalizeSectionTitle(title, language) {
       return "Bug Fixes";
     }
     if (
-      /release|update|download|install|installer|channel|stable/i.test(value) ||
+      /release|update|download|install|installer|channel|stable|beta/i.test(value) ||
       /\brc\b/i.test(value)
     ) {
       return "Release and Updates";
@@ -226,7 +230,7 @@ function normalizeSectionTitle(title, language) {
   if (/修复|问题|错误|崩溃|异常|bug/i.test(value)) {
     return "问题修复";
   }
-  if (/发布|更新|下载|安装|渠道|稳定版|正式版|预发布|RC/i.test(value)) {
+  if (/发布|更新|下载|安装|渠道|稳定版|正式版|预发布|RC|Beta/i.test(value)) {
     return "发布与更新";
   }
   if (/新增|新功能|支持|能力|功能/i.test(value)) {

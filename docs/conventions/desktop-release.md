@@ -4,10 +4,11 @@ This document defines the durable release conventions for the Tutti desktop app.
 
 ## Scope
 
-Desktop releases for `apps/desktop` use two GitHub Release shapes:
+Desktop releases for `apps/desktop` use three GitHub Release shapes:
 
 - stable releases such as `v1.12.20`, which should become `Latest`
 - release candidates such as `v1.12.19-rc.0`, which should remain `Pre-release`
+- beta releases such as `v1.12.19-beta.0`, which should remain `Pre-release`
 
 The current release flow intentionally includes:
 
@@ -15,6 +16,7 @@ The current release flow intentionally includes:
 - macOS, Windows, and Linux desktop artifacts
 - Electron auto-update metadata
 - release candidate (`rc`) prereleases
+- beta prereleases for development-branch packaging
 - Feishu release notification
 
 The current release flow intentionally excludes:
@@ -49,10 +51,11 @@ Supported triggers:
 Supported manual modes:
 
 - `patch_rc_release`: default manual mode, used for the usual next RC such as `1.12.21-rc.0` then `1.12.21-rc.1`
+- `patch_beta_release`: resolve the next patch beta tag, publish it as an isolated development-branch prerelease, and keep it out of stable latest metadata
 - `patch_release`: resolve the next patch stable tag and publish it
 - `minor_release`: resolve the next minor stable tag and publish it
 - `major_release`: resolve the next major stable tag and publish it
-- `explicit_version_release`: publish an explicit release semver such as `0.1.0`, `0.1.0-rc.0`, `1.13.0-rc.0`, or `2.0.0`
+- `explicit_version_release`: publish an explicit release semver such as `0.1.0`, `0.1.0-beta.0`, `0.1.0-rc.0`, `1.13.0-rc.0`, or `2.0.0`
 - `unsigned_dry_run`: build unsigned artifacts without publishing a GitHub Release
 
 Less common RC bump shapes are still supported by the release resolver, but the manual workflow form intentionally keeps `minor_rc_release` and `major_rc_release` behind explicit version entry to reduce operator choice overload.
@@ -69,7 +72,11 @@ Stable releases must use plain semver such as `1.12.20`.
 
 Release candidates must use the `-rc.<n>` suffix, such as `1.12.19-rc.0`.
 
-Do not introduce nightly-only desktop version suffixes. Use `rc` prereleases instead when a build should be published ahead of the next stable release.
+Beta builds must use the `-beta.<n>` suffix, such as `1.12.19-beta.0`.
+
+Use beta for earlier development-branch packaging that should not affect RC validation or stable public downloads. Use RC for release-candidate validation after the team believes a stable release is close.
+
+Do not introduce nightly-only desktop version suffixes. Use `beta` or `rc` prereleases instead when a build should be published ahead of the next stable release.
 
 ## Artifacts
 
@@ -116,6 +123,7 @@ Current updater behavior:
 
 - stable release channel is the public default
 - `rc` release channel is available as an internal opt-in from developer settings
+- beta release artifacts can be published independently, but beta auto-update is not exposed in developer settings yet
 - packaged builds only
 - default policy is `prompt`
 - scheduled update check interval is three hours
@@ -125,16 +133,19 @@ Channel meanings:
 
 - `stable`: maps to electron-updater `channel="latest"` with `allowPrerelease=false`
 - `rc`: maps to electron-updater `channel="rc"` with `allowPrerelease=true`
+- `beta`: reserved for beta prerelease artifacts such as `v1.12.19-beta.0`; expose it in developer settings only if the team decides beta users should auto-update between beta builds
 
 New installs default to `stable`. Existing stored `rc` defaults from older builds are migrated back to `stable` once. After that migration, users who explicitly select `rc` in developer settings keep that preference.
 
-RC auto-update depends on both release shape and update metadata:
+Prerelease auto-update depends on both release shape and update metadata:
 
 - RC tags must use semver prerelease shape, such as `v1.12.21-rc.1`
+- beta tags must use semver prerelease shape, such as `v1.12.21-beta.1`
 - RC GitHub Releases must remain `Pre-release` and must not become GitHub `Latest`
-- RC build artifacts must include RC updater metadata such as `rc-mac.yml`; the release workflow materializes `rc-mac.yml` from the generated macOS updater metadata before uploading RC artifacts
+- beta GitHub Releases must remain `Pre-release` and must not become GitHub `Latest`
+- prerelease build artifacts must include channel updater metadata such as `rc-mac.yml` or `beta-mac.yml`; the release workflow materializes `${channel}-mac.yml` from the generated macOS updater metadata before uploading prerelease artifacts
 
-macOS auto-update metadata must keep x64, arm64, and universal zip entries in `latest-mac.yml` and RC channel equivalents such as `rc-mac.yml`. The file names must include `${arch}` so `electron-updater` can distinguish `mac-x64`, `mac-arm64`, and `mac-universal` assets.
+macOS auto-update metadata must keep x64, arm64, and universal zip entries in `latest-mac.yml` and prerelease channel equivalents such as `rc-mac.yml` or `beta-mac.yml`. The file names must include `${arch}` so `electron-updater` can distinguish `mac-x64`, `mac-arm64`, and `mac-universal` assets.
 
 For automatic updates, electron-updater should download the same-architecture zip first: Intel Macs use `mac-x64.zip`, Apple Silicon Macs use `mac-arm64.zip`, and `mac-universal.zip` remains a fallback and the primary manual download. Do not make universal the only auto-update zip while architecture-specific packages exist.
 
@@ -173,17 +184,17 @@ Stable mirrored desktop releases also write mutable `latest.json` metadata at th
 https://<asset-base-url>/latest.json
 ```
 
-The prefix-root `latest.json` is a public stable contract. Release candidates may upload immutable assets under their tag directory, but they must not update the prefix-root `latest.json`.
+The prefix-root `latest.json` is a public stable contract. Release candidates and beta builds may upload immutable assets under their tag directory, but they must not update the prefix-root `latest.json`.
 
 The `latest.json` metadata must include stable-identifying fields:
 
 - `channel: "stable"`
 - `prerelease: false`
-- a plain semver `version`, without `-rc`
+- a plain semver `version`, without `-rc` or `-beta`
 - a stable `tag`, such as `v1.12.20`
 - `preferredDownloads.macosUniversalDmg`
 
-External download workers should treat these fields as a fail-closed contract. If the metadata is missing, malformed, or points at an RC tag, the worker must not return that package as the public download.
+External download workers should treat these fields as a fail-closed contract. If the metadata is missing, malformed, or points at an RC or beta tag, the worker must not return that package as the public download.
 
 Stable mirrored releases also update the aggregate changelog feed:
 
@@ -191,7 +202,7 @@ Stable mirrored releases also update the aggregate changelog feed:
 https://<asset-base-url>/changelog.json
 ```
 
-`changelog.json` is updated only for stable releases. RC builds can still generate per-run summaries for Feishu and GitHub Release notes, but they should not appear on the public changelog feed unless that policy is changed explicitly.
+`changelog.json` is updated only for stable releases. RC and beta builds can still generate per-run summaries for Feishu and GitHub Release notes, but they should not appear on the public changelog feed unless that policy is changed explicitly.
 
 ## Release Summaries
 
@@ -267,7 +278,7 @@ Use `build:unpack` to verify that the Electron bundle can be assembled locally a
 
 Stable releases should remain the only builds that claim the GitHub `Latest` slot.
 
-Release candidates should always publish as GitHub prereleases and must not replace the current stable `Latest` release.
+Release candidates and beta builds should always publish as GitHub prereleases and must not replace the current stable `Latest` release.
 
 Workspace app runtime artifacts are a separate release surface owned by [Workspace App Runtime](./workspace-app-runtime.md). Do not publish or rebuild those artifacts from the desktop release workflow.
 

@@ -98,3 +98,26 @@ test("desktop release latest metadata rejects prerelease tags", async () => {
     await rm(dir, { force: true, recursive: true });
   }
 });
+
+test("desktop release latest metadata rejects beta tags", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "desktop-release-latest-"));
+  try {
+    await writeFile(
+      path.join(dir, "Tutti-1.2.3-beta.1-mac-universal.dmg"),
+      "uni"
+    );
+
+    await assert.rejects(
+      () =>
+        buildDesktopReleaseLatest({
+          assetDirPath: dir,
+          releaseAssetBaseUrl:
+            "https://d111111abcdef8.cloudfront.net/desktop-release-assets/",
+          releaseTag: "v1.2.3-beta.1"
+        }),
+      /latest metadata can only be built for stable releases/
+    );
+  } finally {
+    await rm(dir, { force: true, recursive: true });
+  }
+});

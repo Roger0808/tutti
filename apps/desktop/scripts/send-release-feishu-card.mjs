@@ -47,15 +47,23 @@ function resolveDisplayValue(value, fallback = "unknown") {
 }
 
 function resolveReleaseKind(tag) {
-  return /-rc\.(0|[1-9]\d*)$/i.test(tag)
-    ? "Release candidate prerelease"
-    : "Stable latest release";
+  if (/-rc\.(0|[1-9]\d*)$/i.test(tag)) {
+    return "Release candidate prerelease";
+  }
+  if (/-beta\.(0|[1-9]\d*)$/i.test(tag)) {
+    return "Beta prerelease";
+  }
+  return "Stable latest release";
 }
 
 function resolveIntroText(tag) {
-  return /-rc\.(0|[1-9]\d*)$/i.test(tag)
-    ? `**${tag}** 已构建并发布为 GitHub RC Pre-release，可从下方入口下载安装包。`
-    : `**${tag}** 已构建并发布为 GitHub Release，可从下方入口下载安装包。`;
+  if (/-rc\.(0|[1-9]\d*)$/i.test(tag)) {
+    return `**${tag}** 已构建并发布为 GitHub RC Pre-release，可从下方入口下载安装包。`;
+  }
+  if (/-beta\.(0|[1-9]\d*)$/i.test(tag)) {
+    return `**${tag}** 已构建并发布为 GitHub Beta Pre-release，可从下方入口下载安装包。`;
+  }
+  return `**${tag}** 已构建并发布为 GitHub Release，可从下方入口下载安装包。`;
 }
 
 function normalizeBaseUrl(value) {
