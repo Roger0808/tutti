@@ -1237,12 +1237,10 @@ snapshot still resolves to omitted `providerTargets`, letting AgentGUI preserve
 the static catalog for picker/display compatibility instead of hiding the rail.
 Future providers in the static provider catalog, such as Tutti, Hermes, and
 OpenClaw, must render as disabled/coming-soon targets rather than clickable
-launch targets until their real `/agents` targets are supported; AgentGUI also
-keeps explicit targets for those providers disabled at normalization time.
+launch targets until their real `/agents` targets are supported.
 Static catalog targets do not change the legacy activation contract: AgentGUI
 does not persist or send their `providerTargetRef`. For system local Codex and
-Claude Code
-targets, the synthesized targets may expose `local:codex` and
+Claude Code targets, the synthesized targets may expose `local:codex` and
 `local:claude-code` as `agentTargetId`, matching the legacy local
 `providerTargetId` format so old node state can fall back without remapping.
 

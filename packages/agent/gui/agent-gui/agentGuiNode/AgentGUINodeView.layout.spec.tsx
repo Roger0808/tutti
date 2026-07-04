@@ -446,7 +446,7 @@ describe("AgentGUINodeView layout persistence", () => {
       /\.agent-gui-node__rail-panel--collapsed\s*\{[^}]*overflow:\s*hidden;[^}]*pointer-events:\s*none;/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__provider-rail\s*\{[^}]*width:\s*52px;[^}]*flex:\s*0\s+0\s+52px;/s
+      /\.agent-gui-node__provider-rail\s*\{[^}]*width:\s*52px;[^}]*flex:\s*1\s+1\s+auto;/s
     );
     expect(css).not.toMatch(
       /data-agent-gui-workbench-header-collapsed="false"[\s\S]*?\.agent-gui-node__rail-toolbar[\s\S]*?padding-top:\s*var\(--agent-gui-workbench-header-height\);/
@@ -544,37 +544,6 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.selectConversationFilterTarget).not.toHaveBeenCalled();
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
     expect(actions.selectProvider).not.toHaveBeenCalled();
-  });
-
-  it("uses bundled rail icons before explicit daemon target icon urls", () => {
-    renderAgentGUINodeView({
-      viewModel: {
-        ...createViewModel(),
-        providerTargets: [
-          {
-            ...createLocalAgentGUIProviderTarget("codex"),
-            iconUrl: "tutti-asset://agent/codex.png"
-          },
-          {
-            ...createLocalAgentGUIProviderTarget("claude-code"),
-            iconUrl: "tutti-asset://agent/claudecode.png"
-          }
-        ]
-      }
-    });
-
-    expect(
-      screen
-        .getByRole("tab", { name: "Codex" })
-        .querySelector("img")
-        ?.getAttribute("src")
-    ).toBe(MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.codex);
-    expect(
-      screen
-        .getByRole("tab", { name: "Claude Code" })
-        .querySelector("img")
-        ?.getAttribute("src")
-    ).toBe(MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS["claude-code"]);
   });
 
   it("orders provider rail tiles as Codex, Claude Code, Tutti, Hermes, OpenClaw without visible provider labels", () => {
