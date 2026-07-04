@@ -100,8 +100,14 @@ test("WorkspaceLaunchpad renders one generic Agent entry", () => {
   );
 });
 
-test("workspace shell leaves AgentGUI provider targets on static catalog mode", () => {
-  assert.doesNotMatch(shellRuntimeSource, /loadAgentGuiProviderTargets/);
-  assert.match(shellRuntimeSource, /providerTargets:\s*undefined/);
-  assert.match(shellRuntimeSource, /providerTargetsLoading:\s*false/);
+test("workspace shell loads AgentGUI provider targets while preserving static catalog for empty loads", () => {
+  assert.match(shellRuntimeSource, /loadAgentGuiProviderTargets/);
+  assert.match(
+    shellRuntimeSource,
+    /agentGuiProviderTargets && agentGuiProviderTargets\.length > 0\s*\?\s*agentGuiProviderTargets\s*:\s*undefined/s
+  );
+  assert.doesNotMatch(
+    shellRuntimeSource,
+    /const resolvedAgentGuiProviderTargets = useMemo\(\s*\(\) => agentGuiProviderTargets \?\? \[\]/s
+  );
 });

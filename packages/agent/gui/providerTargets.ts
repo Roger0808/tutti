@@ -22,11 +22,14 @@ export const agentGUIDefaultTargetProviders = [
   "openclaw"
 ] as const satisfies readonly AgentGUIProvider[];
 
-const agentGUIDisabledPlaceholderProviders = [
+const agentGUIDisabledProviders = [
   "nexight",
   "hermes",
   "openclaw"
 ] as const satisfies readonly AgentGUIProvider[];
+const agentGUIDisabledProviderSet = new Set<AgentGUIProvider>(
+  agentGUIDisabledProviders
+);
 
 export function createLocalAgentGUIProviderTarget(
   provider: AgentGUIProvider
@@ -68,7 +71,7 @@ function createStaticAgentGUIProviderTargets(
 ): AgentGUIProviderTarget[] {
   const disabledProviders = new Set<AgentGUIProvider>(
     options?.includeDisabledPlaceholders === true
-      ? agentGUIDisabledPlaceholderProviders
+      ? agentGUIDisabledProviders
       : []
   );
   return providers.map((provider) =>
@@ -129,7 +132,7 @@ export function normalizeAgentGUIProviderTargets(
     normalizedTargets.push(normalized);
   }
   if (includeDisabledPlaceholders && normalizedTargets.length > 0) {
-    for (const provider of agentGUIDisabledPlaceholderProviders) {
+    for (const provider of agentGUIDisabledProviders) {
       if (seenProviders.has(provider)) {
         continue;
       }
@@ -228,6 +231,9 @@ function normalizeAgentGUIProviderTarget(
       : {}),
     ...(target.unavailableReason?.trim()
       ? { unavailableReason: target.unavailableReason.trim() }
+      : {}),
+    ...(agentGUIDisabledProviderSet.has(target.provider)
+      ? { disabled: true }
       : {})
   };
 }

@@ -1231,19 +1231,19 @@ those meanings stay outside AgentGUI.
 
 When `providerTargets` is omitted, package-level AgentGUI hosts synthesize local
 targets from the static provider catalog for picker/display compatibility.
-Desktop workbench currently leaves `providerTargets` omitted and does not feed
-the renderer `AgentsService` `/agents` snapshot into AgentGUI. This avoids a
-hybrid runtime where durable targets list only a subset of the providers while
-the rail silently patches in the rest from local static data. When the daemon
-`/agents` contract covers the full provider set needed by AgentGUI, desktop
-should switch the rail, composer `@` agent target contributor, and mention
-hydration to the same service-backed snapshot in one change. Until then,
-future providers in the static provider catalog, such as Hermes and OpenClaw,
-must render as disabled/coming-soon targets rather than clickable launch
-targets. Static catalog targets do not change the legacy activation contract:
-AgentGUI does not persist or send their `providerTargetRef`. For system local
-Codex and Claude Code targets, the synthesized targets may expose `local:codex`
-and `local:claude-code` as `agentTargetId`, matching the legacy local
+Desktop workbench feeds the renderer `AgentsService` `/agents` snapshot into
+AgentGUI so Codex and Claude Code can use service-backed agent targets. An empty
+snapshot still resolves to omitted `providerTargets`, letting AgentGUI preserve
+the static catalog for picker/display compatibility instead of hiding the rail.
+Future providers in the static provider catalog, such as Tutti, Hermes, and
+OpenClaw, must render as disabled/coming-soon targets rather than clickable
+launch targets until their real `/agents` targets are supported; AgentGUI also
+keeps explicit targets for those providers disabled at normalization time.
+Static catalog targets do not change the legacy activation contract: AgentGUI
+does not persist or send their `providerTargetRef`. For system local Codex and
+Claude Code
+targets, the synthesized targets may expose `local:codex` and
+`local:claude-code` as `agentTargetId`, matching the legacy local
 `providerTargetId` format so old node state can fall back without remapping.
 
 ### Conversation Projection

@@ -177,6 +177,58 @@ describe("agent gui provider targets", () => {
     ]);
   });
 
+  it("keeps future providers disabled when they come from explicit targets", () => {
+    const targets = normalizeAgentGUIProviderTargets([
+      {
+        targetId: "openclaw-target",
+        agentTargetId: "openclaw-target",
+        provider: "openclaw",
+        ref: {
+          kind: "shared-agent",
+          provider: "openclaw",
+          sharedAgentId: "openclaw-1"
+        },
+        label: "OpenClaw",
+        disabled: false
+      },
+      {
+        targetId: "hermes-target",
+        agentTargetId: "hermes-target",
+        provider: "hermes",
+        ref: {
+          kind: "shared-agent",
+          provider: "hermes",
+          sharedAgentId: "hermes-1"
+        },
+        label: "Hermes",
+        disabled: false
+      },
+      {
+        targetId: "tutti-target",
+        agentTargetId: "tutti-target",
+        provider: "nexight",
+        ref: {
+          kind: "shared-agent",
+          provider: "nexight",
+          sharedAgentId: "tutti-1"
+        },
+        label: "Tutti Agent",
+        disabled: false
+      }
+    ]);
+
+    expect(
+      targets.map((target) => ({
+        disabled: target.disabled === true,
+        provider: target.provider
+      }))
+    ).toEqual([
+      { disabled: true, provider: "openclaw" },
+      { disabled: true, provider: "hermes" },
+      { disabled: true, provider: "nexight" }
+    ]);
+  });
+
   it("can normalize explicit targets without static catalog targets", () => {
     const targets = normalizeAgentGUIProviderTargets([], {
       useStaticCatalog: false

@@ -130,6 +130,7 @@ export interface IWorkspaceWorkbenchHostService {
     themeAppearance: DesktopThemeAppearance;
     workspaceId: string;
   }): WorkspaceWorkbenchHostInput;
+  loadAgentGuiProviderTargets(): Promise<readonly AgentGUIProviderTarget[]>;
   createWorkspaceAppExternalFileReferenceAdapter(
     workspaceId: string
   ): WorkspaceFileReferenceAdapter;
