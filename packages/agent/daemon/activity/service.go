@@ -67,6 +67,10 @@ type Option func(*Store)
 // sync states. Loaded states seed TrackRoom, updates are written through on
 // every sync-state transition, and entries are deleted when a session is
 // hidden. Without this option sync states live in memory only.
+//
+// Store keys are the scope identifier passed to TrackRoom: tutti side =
+// workspace ID, external daemons (tsh) = control-plane room ID; workspace ≡
+// room, one-to-one, no implicit translation.
 func WithSyncStateStore(store SyncStateStore) Option {
 	return func(svc *Store) {
 		if svc != nil {
@@ -80,6 +84,10 @@ func WithSyncStateStore(store SyncStateStore) Option {
 // pulls where it left off, cursor advances are written through, and entries
 // are deleted when a session is hidden. Without this option cursors live in
 // memory only.
+//
+// Store keys are the scope identifier passed to TrackRoom: tutti side =
+// workspace ID, external daemons (tsh) = control-plane room ID; workspace ≡
+// room, one-to-one, no implicit translation.
 func WithMessageCursorStore(store MessageCursorStore) Option {
 	return func(svc *Store) {
 		if svc != nil {

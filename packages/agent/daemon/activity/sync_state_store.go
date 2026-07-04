@@ -13,10 +13,12 @@ import (
 
 // FileAgentSyncStateStore is a file-backed SyncStateStore and
 // MessageCursorStore. Each room is stored as one JSON document under the root
-// directory (file name derived from the room id), tracking per-session sync
-// status, pending report counts, failure counters, last error, and message
-// sync cursors. Writes are atomic (temp file + rename) and guarded by a
-// process-wide mutex, so a single store instance is safe for concurrent use.
+// directory (file name derived from the roomID scope identifier: tutti side =
+// workspace ID, external daemons (tsh) = control-plane room ID; workspace ≡
+// room, one-to-one), tracking per-session sync status, pending report counts,
+// failure counters, last error, and message sync cursors. Writes are atomic
+// (temp file + rename) and guarded by a process-wide mutex, so a single store
+// instance is safe for concurrent use.
 type FileAgentSyncStateStore struct {
 	root string
 	mu   sync.Mutex

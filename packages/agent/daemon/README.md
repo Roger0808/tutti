@@ -66,10 +66,15 @@ restores the last cursor on resume.
 ## Cloud Projection Extension Points
 
 External daemons (for example tsh desktopd) can project local agent activity to
-a remote controlplane without forking any `activity/` code. Note on naming: a
-controlplane _room_ is the same identifier this package calls a _workspace_ —
-`roomID` in store interfaces equals the `WorkspaceID` on report inputs and is
-sent on the wire as `roomId`.
+a remote controlplane without forking any `activity/` code.
+
+**Scope ID semantics (RFC hard constraint):** the scope identifier in these
+shared contracts is opaque — on the tutti side it is the **workspace ID**, for
+external daemons such as tsh it is the **control-plane room ID**. workspace ≡
+room, one-to-one, with no implicit translation anywhere: `roomID` in the store
+interfaces is exactly the `WorkspaceID` on report inputs and is sent on the
+wire as `roomId`. External daemons must pass the control-plane room ID directly
+and must not introduce a second mapping in between.
 
 - **`SyncStateStore`** — inject persistence for per-session sync states
   (pending counts, failure counters, last error) via

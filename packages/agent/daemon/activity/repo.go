@@ -20,12 +20,13 @@ type ReadRepository interface {
 // inject their own persistence via WithSyncStateStore. FileAgentSyncStateStore
 // is a ready-made file-backed implementation.
 //
-// All methods are keyed by room id. A room is the controlplane-side name for
-// what this codebase calls a workspace: roomID here is always the same value
-// as the WorkspaceID carried by report inputs, and is what goes on the wire as
-// roomId. Implementations must be safe for concurrent use. When no store is
-// injected the Store keeps sync states in memory only, matching historical
-// behavior.
+// All methods are keyed by roomID, an opaque scope identifier: on the tutti
+// side it is the workspace ID; for external daemons such as tsh it is the
+// control-plane room ID. workspace ≡ room, one-to-one — the same value as the
+// WorkspaceID carried by report inputs (sent on the wire as roomId), with no
+// implicit translation anywhere. Implementations must be safe for concurrent
+// use. When no store is injected the Store keeps sync states in memory only,
+// matching historical behavior.
 type SyncStateStore interface {
 	// LoadRoomSyncStates returns the persisted sync states for a room keyed by
 	// agent session id. A nil map with a nil error means nothing is persisted.
@@ -44,11 +45,12 @@ type SyncStateStore interface {
 // version zero. Without one, cursors live in memory only (historical
 // behavior).
 //
-// Like SyncStateStore, all methods are keyed by room id, which is identical to
-// the workspace id used elsewhere in this package (room is the controlplane
-// name for a workspace). Implementations must be safe for concurrent use, and
-// deleting an absent cursor must not be an error. FileAgentSyncStateStore
-// implements this interface alongside SyncStateStore.
+// Like SyncStateStore, all methods are keyed by roomID, an opaque scope
+// identifier: tutti side = workspace ID, external daemons (tsh) = control-plane
+// room ID; workspace ≡ room, one-to-one, no implicit translation.
+// Implementations must be safe for concurrent use, and deleting an absent
+// cursor must not be an error. FileAgentSyncStateStore implements this
+// interface alongside SyncStateStore.
 type MessageCursorStore interface {
 	// LoadRoomMessageCursors returns the persisted cursors for a room keyed by
 	// agent session id. A nil map with a nil error means nothing is persisted.
