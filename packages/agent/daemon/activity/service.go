@@ -2082,13 +2082,19 @@ func (s *Store) appendSessionMessages(
 	}
 
 	entry.mu.Lock()
-	cursorBefore := entry.remoteMessageVersionBySession[agentSessionID]
+	// The locked append resolves provider aliases, so read the cursor under
+	// the canonical session id.
+	canonicalID := resolveKnownOrProviderAliasSessionID(entry.state.Sessions, agentSessionID, "", "", "", "")
+	cursorBefore := entry.remoteMessageVersionBySession[canonicalID]
 	changed := appendSessionMessagesLocked(entry, agentSessionID, messages, latestVersion)
-	cursorAfter := entry.remoteMessageVersionBySession[agentSessionID]
-	entry.mu.Unlock()
-	if cursorAfter > cursorBefore {
-		s.saveMessageCursor(roomID, agentSessionID, cursorAfter)
+	cursorAfter := entry.remoteMessageVersionBySession[canonicalID]
+	// Persist while holding entry.mu so cursor writes serialize with
+	// HideAgentSession's delete (also under entry.mu): a save must never land
+	// after the delete and resurrect a hidden session's cursor.
+	if cursorAfter > cursorBefore && !isHiddenAgentSession(entry, canonicalID) {
+		s.saveMessageCursor(roomID, canonicalID, cursorAfter)
 	}
+	entry.mu.Unlock()
 	if changed {
 		s.notifyRoomUpdate(roomID)
 	}

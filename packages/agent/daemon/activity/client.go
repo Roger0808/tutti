@@ -545,6 +545,8 @@ func marshalReportSessionMessagesRequestsForUpload(req reportSessionMessagesRequ
 
 	base := reportSessionMessagesRequest{
 		WorkspaceID:   req.WorkspaceID,
+		AgentTargetID: req.AgentTargetID,
+		DeviceID:      req.DeviceID,
 		SessionOrigin: req.SessionOrigin,
 		Connector:     req.Connector,
 		Source:        req.Source,

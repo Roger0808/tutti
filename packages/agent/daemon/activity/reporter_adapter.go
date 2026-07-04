@@ -224,8 +224,12 @@ func (a *SessionActivityReporterAdapter) updateSyncState(
 	}
 	next := update(current, a.adapterNow().UnixMilli())
 	current.state = next
-	a.mu.Unlock()
+	// Persist while holding a.mu so the persisted order matches the
+	// transition order under concurrent Reports: a stale pending write must
+	// never land after a newer synced/failed write, or a restart would
+	// resurrect it as a spurious failure.
 	a.persistSyncState(roomID, next)
+	a.mu.Unlock()
 }
 
 func (a *SessionActivityReporterAdapter) roomStatesLocked(roomID string) map[string]*agentSessionSyncState {

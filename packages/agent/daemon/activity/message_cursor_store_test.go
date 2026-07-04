@@ -137,6 +137,34 @@ func TestStoreWithoutCursorStoreStartsFromZeroAfterRestart(t *testing.T) {
 	}
 }
 
+func TestAppendSessionMessagesDoesNotPersistCursorForHiddenSession(t *testing.T) {
+	cursorStore := NewFileAgentSyncStateStore(t.TempDir())
+	client := newFakeSyncerRepository()
+	client.snapshots["room-1"] = &WorkspaceAgentSnapshot{}
+
+	svc := New(client, WithMessageCursorStore(cursorStore))
+	svc.TrackRoom("room-1")
+	svc.HideAgentSession("room-1", "session-1")
+
+	// A late-arriving sync result for a hidden session must not resurrect
+	// its persisted cursor.
+	svc.appendSessionMessages("room-1", "session-1", []WorkspaceAgentSessionMessage{{
+		AgentSessionID: "session-1",
+		MessageID:      "message-1",
+		Role:           "assistant",
+		Kind:           "text",
+		Version:        4,
+	}}, 4)
+
+	cursors, err := cursorStore.LoadRoomMessageCursors(context.Background(), "room-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cursors) != 0 {
+		t.Fatalf("cursors after hidden-session append = %#v, want empty", cursors)
+	}
+}
+
 func TestHideAgentSessionDeletesPersistedCursor(t *testing.T) {
 	cursorStore := NewFileAgentSyncStateStore(t.TempDir())
 	client := newFakeSyncerRepository()

@@ -3,8 +3,11 @@ package agentsessionstore
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -84,6 +87,85 @@ func TestReportSessionStateOmitsMetadataKeysWhenUnset(t *testing.T) {
 	}
 	if _, present := source["deviceId"]; present {
 		t.Fatalf("source unexpectedly contains deviceId: %s", raw["source"])
+	}
+}
+
+func TestReportSessionStateRequestBodyIsByteIdenticalWhenMetadataUnset(t *testing.T) {
+	var raw []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw = body
+		_, _ = w.Write([]byte(`{"accepted":true}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{BaseURL: server.URL, HTTPClient: server.Client()})
+	_, err := client.ReportSessionState(context.Background(), ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		SessionOrigin:  WorkspaceAgentSessionOriginRuntime,
+		Source:         EventSource{Provider: "codex"},
+		State:          WorkspaceAgentSessionStateUpdate{LifecycleStatus: "active"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Golden body: exactly what this request serialized to before the
+	// optional AgentTargetID/DeviceID inputs existed. Guards the hard
+	// constraint that unset metadata leaves the wire byte-for-byte unchanged.
+	want := `{"roomId":"ws-1","agentSessionId":"session-1",` +
+		`"sessionOrigin":"WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",` +
+		`"source":{"provider":"codex"},"state":{"lifecycleStatus":"active"}}`
+	if string(raw) != want {
+		t.Fatalf("request body = %s, want %s", raw, want)
+	}
+}
+
+func TestReportSessionMessagesSplitBatchesPreserveMetadata(t *testing.T) {
+	rawText := strings.Repeat("x", maxUpstreamToolPayloadStringBytes+512)
+	var requestCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var got reportSessionMessagesRequest
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		requestCount++
+		if got.AgentTargetID != "target-1" || got.DeviceID != "device-1" {
+			t.Fatalf("batch %d metadata = %q/%q, want target-1/device-1", requestCount, got.AgentTargetID, got.DeviceID)
+		}
+		_, _ = w.Write([]byte(`{"acceptedCount":` + strconv.Itoa(len(got.Updates)) + `}`))
+	}))
+	defer server.Close()
+
+	updates := make([]WorkspaceAgentSessionMessageUpdate, 0, 80)
+	for i := 0; i < 80; i++ {
+		updates = append(updates, WorkspaceAgentSessionMessageUpdate{
+			MessageID: "message-" + strconv.Itoa(i),
+			TurnID:    "turn-1",
+			Role:      "assistant",
+			Kind:      "tool_call",
+			Payload: map[string]any{
+				"input":  map[string]any{"stdout": rawText},
+				"output": map[string]any{"stdout": rawText},
+			},
+		})
+	}
+
+	client := NewClient(Config{BaseURL: server.URL, HTTPClient: server.Client()})
+	if _, err := client.ReportSessionMessages(context.Background(), ReportSessionMessagesInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "target-1",
+		DeviceID:       "device-1",
+		Updates:        updates,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if requestCount < 2 {
+		t.Fatalf("requestCount = %d, want oversized request split into multiple uploads", requestCount)
 	}
 }
 
