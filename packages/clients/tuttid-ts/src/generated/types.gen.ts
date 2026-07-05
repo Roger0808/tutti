@@ -272,6 +272,7 @@ export type DesktopAppCatalogChannel = "production" | "staging";
 
 export type DesktopPreferences = {
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+  agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
   agentDockLayout: DesktopAgentDockLayout;
@@ -304,6 +305,7 @@ export type DesktopAgentComposerDefaults = {
   model?: string;
   permissionModeId?: string;
   reasoningEffort?: string;
+  speed?: string;
 };
 
 export type DesktopAgentConversationDetailMode = "coding" | "general";
@@ -317,6 +319,10 @@ export type DesktopAgentComposerDefaultsByProvider = {
   gemini?: DesktopAgentComposerDefaults;
   hermes?: DesktopAgentComposerDefaults;
   openclaw?: DesktopAgentComposerDefaults;
+};
+
+export type DesktopAgentComposerDefaultsByAgentTarget = {
+  [key: string]: DesktopAgentComposerDefaults;
 };
 
 export type DesktopAgentGuiConversationRailCollapsedByProvider = {
@@ -708,6 +714,7 @@ export type WorkspaceAppFactoryJob = {
   appId: string | null;
   displayName: string;
   description: string | null;
+  agentTargetId: string | null;
   provider: string | null;
   model: string | null;
   reasoningEffort: string | null;
@@ -725,6 +732,10 @@ export type CreateWorkspaceAppFactoryJobRequest = {
   prompt: string;
   displayName: string;
   description?: string;
+  agentTargetId: string;
+  /**
+   * @deprecated
+   */
   provider?: string;
   model?: string;
   permissionModeId?: string;
@@ -909,7 +920,7 @@ export type GetAgentProviderComposerOptionsRequest = {
   settings?: AgentSessionComposerSettings;
 };
 
-export type GetWorkspaceAppFactoryProviderComposerOptionsRequest = {
+export type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest = {
   locale?: DesktopLocale;
   settings?: AgentSessionComposerSettings;
 };
@@ -1852,6 +1863,7 @@ export type IssueManagerRun = {
   workspaceId: string;
   requesterUserId: string;
   agentUserId: string;
+  agentTargetId: string;
   agentSessionId: string;
   agentProvider: string;
   status: IssueManagerStatus;
@@ -2072,7 +2084,11 @@ export type AddIssueManagerContextRefsRequest = {
 
 export type CreateIssueManagerRunRequest = {
   runId?: string;
-  agentProvider: string;
+  agentTargetId: string;
+  /**
+   * Legacy display/provider analytics hint. New run authority is agentTargetId.
+   */
+  agentProvider?: string;
   agentUserId?: string;
   agentSessionId?: string;
   executionDirectory?: string;
@@ -4362,17 +4378,17 @@ export type CreateWorkspaceAppFactoryJobResponses = {
 export type CreateWorkspaceAppFactoryJobResponse =
   CreateWorkspaceAppFactoryJobResponses[keyof CreateWorkspaceAppFactoryJobResponses];
 
-export type GetWorkspaceAppFactoryProviderComposerOptionsData = {
-  body?: GetWorkspaceAppFactoryProviderComposerOptionsRequest;
+export type GetWorkspaceAppFactoryAgentTargetComposerOptionsData = {
+  body?: GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest;
   path: {
     workspaceID: string;
-    provider: WorkspaceAgentProvider;
+    agentTargetID: string;
   };
   query?: never;
-  url: "/v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options";
+  url: "/v1/workspaces/{workspaceID}/app-factory/agent-targets/{agentTargetID}/composer-options";
 };
 
-export type GetWorkspaceAppFactoryProviderComposerOptionsErrors = {
+export type GetWorkspaceAppFactoryAgentTargetComposerOptionsErrors = {
   /**
    * Request payload or parameters are invalid
    */
@@ -4399,18 +4415,18 @@ export type GetWorkspaceAppFactoryProviderComposerOptionsErrors = {
   503: ApiErrorResponse;
 };
 
-export type GetWorkspaceAppFactoryProviderComposerOptionsError =
-  GetWorkspaceAppFactoryProviderComposerOptionsErrors[keyof GetWorkspaceAppFactoryProviderComposerOptionsErrors];
+export type GetWorkspaceAppFactoryAgentTargetComposerOptionsError =
+  GetWorkspaceAppFactoryAgentTargetComposerOptionsErrors[keyof GetWorkspaceAppFactoryAgentTargetComposerOptionsErrors];
 
-export type GetWorkspaceAppFactoryProviderComposerOptionsResponses = {
+export type GetWorkspaceAppFactoryAgentTargetComposerOptionsResponses = {
   /**
-   * App Factory provider composer options
+   * App Factory agent target composer options
    */
   200: AgentProviderComposerOptionsResponse;
 };
 
-export type GetWorkspaceAppFactoryProviderComposerOptionsResponse =
-  GetWorkspaceAppFactoryProviderComposerOptionsResponses[keyof GetWorkspaceAppFactoryProviderComposerOptionsResponses];
+export type GetWorkspaceAppFactoryAgentTargetComposerOptionsResponse =
+  GetWorkspaceAppFactoryAgentTargetComposerOptionsResponses[keyof GetWorkspaceAppFactoryAgentTargetComposerOptionsResponses];
 
 export type DeleteWorkspaceAppFactoryJobData = {
   body?: never;

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
@@ -63,6 +64,7 @@ type ComposerSettings struct {
 }
 
 type ComposerOptionsInput struct {
+	AgentTargetID            string
 	Cwd                      string
 	Locale                   string
 	Provider                 string
@@ -110,6 +112,19 @@ type ComposerOptions struct {
 
 func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsInput) (ComposerOptions, error) {
 	provider := agentprovider.Normalize(input.Provider)
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	if agentTargetID != "" {
+		launch, err := s.resolveCreateSessionLaunch(ctx, CreateSessionInput{
+			AgentTargetID: agentTargetID,
+			Provider:      provider,
+		})
+		if err != nil {
+			return ComposerOptions{}, err
+		}
+		provider = agentprovider.Normalize(launch.Provider)
+		input.Provider = provider
+		input.AgentTargetID = agentTargetID
+	}
 	if provider == "" {
 		return ComposerOptions{}, ErrInvalidArgument
 	}
@@ -141,6 +156,9 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		"permissionModeId": nullableString(effectiveSettings.PermissionModeID),
 		"reasoningEffort":  nullableString(effectiveSettings.ReasoningEffort),
 		"speed":            nullableString(effectiveSettings.Speed),
+	}
+	if agentTargetID != "" {
+		runtimeContext["agentTargetId"] = agentTargetID
 	}
 	skills := s.discoverComposerSkillOptions(provider, input.Cwd, nil)
 	capabilityCatalog := []ComposerCapabilityOption{}
@@ -614,6 +632,13 @@ func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCata
 	}
 	result, err := catalog.ListModels(ctx, provider)
 	if err != nil {
+		// The model list drives the composer's model selector; when it fails the
+		// selector renders empty. Surface the cause instead of swallowing it so a
+		// "no model options" report is diagnosable from the daemon logs.
+		slog.Warn("composer model catalog lookup failed",
+			"provider", provider,
+			"error", err,
+		)
 		return nil, "", false
 	}
 	options := make([]map[string]string, 0, len(result.Models)+1)
