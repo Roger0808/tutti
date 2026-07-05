@@ -81,6 +81,7 @@ func (r codexAppServerReducer) ReduceNotification(
 						threadID: firstNonEmpty(asString(params["threadId"]), session.ProviderSessionID),
 					}, session, activeTurn, providerTurnID, "queued cancel")
 				}
+				a.confirmSessionActiveTurnStarted(session.AgentSessionID)
 			}
 		} else if turn := payloadObject(params["turn"]); turn != nil {
 			// Server-initiated turn with no registered turn context: codex
