@@ -1558,6 +1558,26 @@ func TestCodexAppServerAdapterExecSteeredTurnSettlesOnRunningTurnCompletion(t *t
 	}
 }
 
+func TestCodexAppServerAdapterConfirmActiveTurnStartedScopedToBoundID(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+	adapter.setSessionActiveTurnID(session.AgentSessionID, "turn-bound")
+
+	// A turn/started for a different turn (e.g. racing with a steered
+	// turn/start rebinding the id in between) must not confirm the current
+	// binding — a stub confirmed by mistake would re-wedge the settle path.
+	adapter.confirmSessionActiveTurnStarted(session.AgentSessionID, "turn-other")
+	if adapter.sessionActiveTurnStartConfirmed(session.AgentSessionID) {
+		t.Fatalf("confirmation with a stale provider turn id must not confirm the bound id")
+	}
+
+	adapter.confirmSessionActiveTurnStarted(session.AgentSessionID, "turn-bound")
+	if !adapter.sessionActiveTurnStartConfirmed(session.AgentSessionID) {
+		t.Fatalf("confirmation with the bound provider turn id should confirm")
+	}
+}
+
 func TestCodexAppServerAdapterClientDeathSettlesTurn(t *testing.T) {
 	t.Parallel()
 

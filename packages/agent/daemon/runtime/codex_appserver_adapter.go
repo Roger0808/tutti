@@ -2081,7 +2081,7 @@ func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, provid
 	}
 	a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID)
 	// The adopted id comes from the turn/started notification itself.
-	a.confirmSessionActiveTurnStarted(session.AgentSessionID)
+	a.confirmSessionActiveTurnStarted(session.AgentSessionID, providerTurnID)
 	slog.Info("agent session app-server goal turn adopted",
 		"event", "agent_session.app_server.goal.turn_adopted",
 		"agent_session_id", session.AgentSessionID,
@@ -2970,17 +2970,34 @@ func (a *CodexAppServerAdapter) setSessionActiveTurnID(agentSessionID string, tu
 // confirmSessionActiveTurnStarted marks the recorded provider turn id as
 // confirmed by a turn/started notification. Stub ids from a steered
 // turn/start never receive turn/started, so they stay unconfirmed and the
-// settle path may adopt the running turn's terminal for them.
-func (a *CodexAppServerAdapter) confirmSessionActiveTurnStarted(agentSessionID string) {
+// settle path may adopt the running turn's terminal for them. The
+// confirmation is scoped to the turn the notification named: a concurrent
+// rebinding (steered turn/start racing the read loop) must not get its stub
+// id confirmed by another turn's start.
+func (a *CodexAppServerAdapter) confirmSessionActiveTurnStarted(agentSessionID string, providerTurnID string) {
 	if a == nil {
+		return
+	}
+	providerTurnID = strings.TrimSpace(providerTurnID)
+	if providerTurnID == "" {
 		return
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
-	if appSession != nil && strings.TrimSpace(appSession.activeTurnID) != "" {
+	if appSession != nil && strings.TrimSpace(appSession.activeTurnID) == providerTurnID {
 		appSession.activeTurnStartConfirmed = true
 	}
+}
+
+func (a *CodexAppServerAdapter) sessionActiveTurnStartConfirmed(agentSessionID string) bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	return appSession != nil && appSession.activeTurnStartConfirmed
 }
 
 // sessionMarkerTurnID resolves the turn id to stamp on child lifecycle
