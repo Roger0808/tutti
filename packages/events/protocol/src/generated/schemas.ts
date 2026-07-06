@@ -669,7 +669,6 @@ export const agentActivityUpdatedPayloadSchema = {
         },
         data: {
           type: "object",
-          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -717,7 +716,6 @@ export const agentActivityUpdatedPayloadSchema = {
         },
         data: {
           type: "object",
-          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -762,7 +760,6 @@ export const agentActivityUpdatedPayloadSchema = {
         },
         data: {
           type: "object",
-          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -795,7 +792,6 @@ export const agentActivityUpdatedPayloadSchema = {
               type: "array",
               items: {
                 type: "object",
-                additionalProperties: false,
                 required: [
                   "agentSessionId",
                   "id",
@@ -887,7 +883,6 @@ export const agentActivityUpdatedPayloadSchema = {
         },
         data: {
           type: "object",
-          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -949,9 +944,24 @@ export const agentActivityUpdatedPayloadSchema = {
               type: "integer",
               minimum: 0
             },
+            runtimeContext: {
+              type: "object"
+            },
+            submitAvailability: {
+              type: "object",
+              required: ["state"],
+              properties: {
+                state: {
+                  type: "string",
+                  minLength: 1
+                },
+                reason: {
+                  type: "string"
+                }
+              }
+            },
             turn: {
               type: "object",
-              additionalProperties: false,
               required: ["turnId"],
               properties: {
                 turnId: {
@@ -972,6 +982,19 @@ export const agentActivityUpdatedPayloadSchema = {
                 completedAtUnixMs: {
                   type: "integer",
                   minimum: 0
+                },
+                submitAvailability: {
+                  type: "object",
+                  required: ["state"],
+                  properties: {
+                    state: {
+                      type: "string",
+                      minLength: 1
+                    },
+                    reason: {
+                      type: "string"
+                    }
+                  }
                 }
               }
             }
