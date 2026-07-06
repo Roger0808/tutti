@@ -283,6 +283,10 @@ export type AgentActivityUpdatedPayloadV1 =
         lastError?: string;
         startedAtUnixMs?: number;
         endedAtUnixMs?: number;
+        submitAvailability?: {
+          state: string;
+          reason?: string;
+        };
         turn?: {
           turnId: string;
           phase?: string;
@@ -290,6 +294,10 @@ export type AgentActivityUpdatedPayloadV1 =
           fileChanges?: unknown;
           startedAtUnixMs?: number;
           completedAtUnixMs?: number;
+          submitAvailability?: {
+            state: string;
+            reason?: string;
+          };
         };
       };
     };
