@@ -52,5 +52,6 @@ describe("managed agent icon assets", () => {
     expect(agentGuiDockIconUrls.hermes).toBe(hermesRoundedUrl);
     expect(agentGuiDockIconUrls.nexight).toBe(tuttiDocRoundedUrl);
     expect(agentGuiDockIconUrls.openclaw).toBe(openclawRoundedUrl);
+    expect(agentGuiDockIconUrls.opencode).toBe(tuttiDocRoundedUrl);
   });
 });

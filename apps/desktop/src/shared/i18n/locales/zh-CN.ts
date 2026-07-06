@@ -704,6 +704,10 @@ export const zhCN = {
           "在应用内展示 Cursor Agent。Cursor 支持处于预览阶段，默认关闭。",
         enableCursorAgentLabel: "启用 Cursor Agent",
         enableCursorAgentSaveFailed: "暂时无法更新 Cursor Agent 设置。",
+        enableOpenCodeAgentDescription:
+          "在应用内展示 OpenCode Agent。OpenCode 支持处于预览阶段，默认关闭。",
+        enableOpenCodeAgentLabel: "启用 OpenCode Agent",
+        enableOpenCodeAgentSaveFailed: "暂时无法更新 OpenCode Agent 设置。",
         exportLogs: "导出日志",
         exportLogsDialogTitle: "导出日志",
         exportLogsFileType: "Zip 压缩包",
@@ -833,6 +837,7 @@ export const zhCN = {
         manageProviderGemini: "Gemini CLI",
         manageProviderHermes: "Hermes",
         manageProviderOpenClaw: "OpenClaw",
+        manageProviderOpenCode: "OpenCode",
         manageProviderTutti: "Tutti",
         manageStatusAuthRequired: "需要登录",
         manageStatusAvailable: "可连接",

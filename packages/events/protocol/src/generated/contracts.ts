@@ -83,6 +83,12 @@ export interface PreferencesDesktopPreferencesV1 {
       reasoningEffort?: string;
       speed?: string;
     };
+    opencode?: {
+      model?: string;
+      permissionModeId?: string;
+      reasoningEffort?: string;
+      speed?: string;
+    };
   };
   agentComposerDefaultsByAgentTarget?: Record<
     string,
@@ -101,6 +107,7 @@ export interface PreferencesDesktopPreferencesV1 {
     gemini?: boolean;
     hermes?: boolean;
     openclaw?: boolean;
+    opencode?: boolean;
   };
   agentConversationDetailMode: "coding" | "general";
   agentDockLayout: "legacySplit" | "unified";
@@ -113,7 +120,8 @@ export interface PreferencesDesktopPreferencesV1 {
     | "nexight"
     | "gemini"
     | "hermes"
-    | "openclaw";
+    | "openclaw"
+    | "opencode";
   dockIconStyle: "default" | "flat";
   dockPlacement: "bottom" | "left";
   fileDefaultOpenersByExtension: Record<
@@ -125,6 +133,7 @@ export interface PreferencesDesktopPreferencesV1 {
   sleepPreventionMode: "never" | "whileAgentRunning" | "always";
   showAppDeveloperSources: boolean;
   enableCursorAgent: boolean;
+  enableOpenCodeAgent: boolean;
   themeSource: "system" | "dark" | "light";
   updateChannel: "stable" | "rc";
   updatePolicy: "off" | "prompt" | "auto";

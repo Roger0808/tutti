@@ -7,7 +7,8 @@ export type AgentGuiWorkbenchProvider =
   | "nexight"
   | "gemini"
   | "hermes"
-  | "openclaw";
+  | "openclaw"
+  | "opencode";
 
 export const agentGuiWorkbenchOpenSessionActivationType =
   "agent-gui:open-session";

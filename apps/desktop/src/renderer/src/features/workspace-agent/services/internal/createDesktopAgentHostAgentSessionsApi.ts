@@ -538,6 +538,8 @@ function localAgentTargetIdForProvider(provider: string): string | null {
       return "local:codex";
     case "cursor":
       return "local:cursor";
+    case "opencode":
+      return "local:opencode";
     default:
       return null;
   }

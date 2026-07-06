@@ -1248,7 +1248,10 @@ the static catalog for picker/display compatibility instead of hiding the rail.
 Future providers in the static provider catalog, such as Tutti, Hermes, and
 OpenClaw, must render as selectable disabled/coming-soon targets: provider rail
 clicks may select their empty composer state, but launch/send controls stay
-disabled until their real `/agents` targets are supported.
+disabled until their real `/agents` targets are supported. OpenCode is not a
+future placeholder: it is a real local provider target backed by `local:opencode`,
+but desktop hides it behind the `enableOpenCodeAgent` developer preference until
+the preview is enabled.
 Static catalog targets do not change the legacy activation contract: AgentGUI
 does not persist or send their `providerTargetRef`. Synthesized local targets
 may expose stable `local:<provider>` values as `agentTargetId`, including

@@ -489,6 +489,8 @@ func parseAuthStatusCommandOutput(provider string, output []byte) (AuthInfo, boo
 		return parseCodexAuthStatusOutput(output)
 	case agentprovider.Cursor:
 		return parseCursorAuthStatusOutput(output)
+	case agentprovider.OpenCode:
+		return parseOpenCodeAuthStatusOutput(output)
 	default:
 		return AuthInfo{}, false
 	}
@@ -536,6 +538,21 @@ func parseCursorAuthStatusOutput(output []byte) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
 	return AuthInfo{}, false
+}
+
+func parseOpenCodeAuthStatusOutput(output []byte) (AuthInfo, bool) {
+	normalized := strings.ToLower(string(bytes.TrimSpace(output)))
+	if normalized == "" {
+		return AuthInfo{}, false
+	}
+	if strings.Contains(normalized, "not logged in") ||
+		strings.Contains(normalized, "not authenticated") ||
+		strings.Contains(normalized, "no authenticated") ||
+		strings.Contains(normalized, "no providers") ||
+		strings.Contains(normalized, "unauthenticated") {
+		return AuthInfo{Status: AuthRequired}, true
+	}
+	return AuthInfo{Status: AuthAuthenticated}, true
 }
 
 func parseClaudeAuthStatusOutput(output []byte) (AuthInfo, bool) {

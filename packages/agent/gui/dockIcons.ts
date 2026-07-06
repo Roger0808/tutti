@@ -17,5 +17,6 @@ export const agentGuiDockIconUrls = {
   gemini: geminiRoundedUrl,
   hermes: hermesRoundedUrl,
   nexight: manageAgentTuttiUrl,
-  openclaw: openclawRoundedUrl
+  openclaw: openclawRoundedUrl,
+  opencode: manageAgentTuttiUrl
 } as const;

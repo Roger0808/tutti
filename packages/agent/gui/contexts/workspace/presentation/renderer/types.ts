@@ -63,6 +63,7 @@ export type AgentGUIProvider = Extract<
   | "nexight"
   | "gemini"
   | "hermes"
+  | "opencode"
   | "openclaw"
 >;
 

@@ -396,6 +396,7 @@ const (
 	AgentTargetProviderClaudeCode AgentTargetProvider = "claude-code"
 	AgentTargetProviderCodex      AgentTargetProvider = "codex"
 	AgentTargetProviderCursor     AgentTargetProvider = "cursor"
+	AgentTargetProviderOpencode   AgentTargetProvider = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the AgentTargetProvider enum.
@@ -406,6 +407,8 @@ func (e AgentTargetProvider) Valid() bool {
 	case AgentTargetProviderCodex:
 		return true
 	case AgentTargetProviderCursor:
+		return true
+	case AgentTargetProviderOpencode:
 		return true
 	default:
 		return false
@@ -1090,6 +1093,7 @@ const (
 	WorkspaceAgentProviderHermes     WorkspaceAgentProvider = "hermes"
 	WorkspaceAgentProviderNexight    WorkspaceAgentProvider = "nexight"
 	WorkspaceAgentProviderOpenclaw   WorkspaceAgentProvider = "openclaw"
+	WorkspaceAgentProviderOpencode   WorkspaceAgentProvider = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentProvider enum.
@@ -1108,6 +1112,8 @@ func (e WorkspaceAgentProvider) Valid() bool {
 	case WorkspaceAgentProviderNexight:
 		return true
 	case WorkspaceAgentProviderOpenclaw:
+		return true
+	case WorkspaceAgentProviderOpencode:
 		return true
 	default:
 		return false
@@ -2548,6 +2554,7 @@ type DesktopAgentComposerDefaultsByProvider struct {
 	Hermes     *DesktopAgentComposerDefaults `json:"hermes,omitempty"`
 	Nexight    *DesktopAgentComposerDefaults `json:"nexight,omitempty"`
 	Openclaw   *DesktopAgentComposerDefaults `json:"openclaw,omitempty"`
+	Opencode   *DesktopAgentComposerDefaults `json:"opencode,omitempty"`
 }
 
 // DesktopAgentConversationDetailMode defines model for DesktopAgentConversationDetailMode.
@@ -2565,6 +2572,7 @@ type DesktopAgentGuiConversationRailCollapsedByProvider struct {
 	Hermes     *bool `json:"hermes,omitempty"`
 	Nexight    *bool `json:"nexight,omitempty"`
 	Openclaw   *bool `json:"openclaw,omitempty"`
+	Opencode   *bool `json:"opencode,omitempty"`
 }
 
 // DesktopAppCatalogChannel defines model for DesktopAppCatalogChannel.
@@ -2604,6 +2612,7 @@ type DesktopPreferences struct {
 	DockIconStyle                               DesktopDockIconStyle                               `json:"dockIconStyle"`
 	DockPlacement                               DesktopDockPlacement                               `json:"dockPlacement"`
 	EnableCursorAgent                           bool                                               `json:"enableCursorAgent"`
+	EnableOpenCodeAgent                         bool                                               `json:"enableOpenCodeAgent"`
 	FileDefaultOpenersByExtension               DesktopFileDefaultOpenersByExtension               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      DesktopLocale                                      `json:"locale"`
 	MinimizeAnimation                           DesktopMinimizeAnimation                           `json:"minimizeAnimation"`

@@ -470,6 +470,9 @@ export function WorkspaceSettingsPanel({
                   desktopPreferencesState.fileDefaultOpenersByExtension
                 }
                 enableCursorAgent={desktopPreferencesState.enableCursorAgent}
+                enableOpenCodeAgent={
+                  desktopPreferencesState.enableOpenCodeAgent
+                }
                 showAppDeveloperSources={
                   desktopPreferencesState.showAppDeveloperSources
                 }
@@ -509,6 +512,9 @@ export function WorkspaceSettingsPanel({
                 }}
                 onEnableCursorAgentChange={(enable) => {
                   void settingsService.changeEnableCursorAgent(enable);
+                }}
+                onEnableOpenCodeAgentChange={(enable) => {
+                  void settingsService.changeEnableOpenCodeAgent(enable);
                 }}
                 onExportLogs={() => {
                   void settingsService.exportDeveloperLogs();
@@ -1524,6 +1530,7 @@ function WorkspaceDeveloperSettingsSection({
   developerLogs,
   developerPanelVisible,
   enableCursorAgent,
+  enableOpenCodeAgent,
   fileDefaultOpenersByExtension,
   showAppDeveloperSources,
   tuttiAgentSwitchEnabled,
@@ -1534,6 +1541,7 @@ function WorkspaceDeveloperSettingsSection({
   onClearLogs,
   onDeveloperPanelVisibleChange,
   onEnableCursorAgentChange,
+  onEnableOpenCodeAgentChange,
   onExportLogs,
   onFileDefaultOpenersChange,
   onShowAppDeveloperSourcesChange,
@@ -1548,6 +1556,7 @@ function WorkspaceDeveloperSettingsSection({
   developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
   developerPanelVisible: boolean;
   enableCursorAgent: boolean;
+  enableOpenCodeAgent: boolean;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   showAppDeveloperSources: boolean;
   tuttiAgentSwitchEnabled: boolean;
@@ -1558,6 +1567,7 @@ function WorkspaceDeveloperSettingsSection({
   onClearLogs: () => void;
   onDeveloperPanelVisibleChange: (visible: boolean) => void;
   onEnableCursorAgentChange: (enable: boolean) => void;
+  onEnableOpenCodeAgentChange: (enable: boolean) => void;
   onExportLogs: () => void;
   onFileDefaultOpenersChange: (
     openersByExtension: DesktopFileDefaultOpenersByExtension
@@ -1658,6 +1668,24 @@ function WorkspaceDeveloperSettingsSection({
           aria-label={t("workspace.settings.developer.enableCursorAgentLabel")}
           checked={enableCursorAgent}
           onCheckedChange={onEnableCursorAgentChange}
+        />
+      </div>
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.developer.enableOpenCodeAgentLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.settings.developer.enableOpenCodeAgentDescription")}
+          </p>
+        </div>
+        <Switch
+          aria-label={t(
+            "workspace.settings.developer.enableOpenCodeAgentLabel"
+          )}
+          checked={enableOpenCodeAgent}
+          onCheckedChange={onEnableOpenCodeAgentChange}
         />
       </div>
 

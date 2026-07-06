@@ -63,7 +63,8 @@ const providerLabelKeys = {
   gemini: "workspace.workbenchDesktop.agentProviders.manageProviderGemini",
   hermes: "workspace.workbenchDesktop.agentProviders.manageProviderHermes",
   nexight: "workspace.workbenchDesktop.agentProviders.manageProviderTutti",
-  openclaw: "workspace.workbenchDesktop.agentProviders.manageProviderOpenClaw"
+  openclaw: "workspace.workbenchDesktop.agentProviders.manageProviderOpenClaw",
+  opencode: "workspace.workbenchDesktop.agentProviders.manageProviderOpenCode"
 } as const satisfies Record<WorkspaceAgentProvider, DesktopI18nKey>;
 
 const statusLabelKeys = {
@@ -92,10 +93,14 @@ export function DesktopAgentProviderManageDialog({
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
   const hiddenProviders = useMemo<ReadonlySet<WorkspaceAgentProvider>>(
     () =>
-      new Set<WorkspaceAgentProvider>(
-        desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]
-      ),
-    [desktopPreferencesState.enableCursorAgent]
+      new Set<WorkspaceAgentProvider>([
+        ...(desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]),
+        ...(desktopPreferencesState.enableOpenCodeAgent ? [] : ["opencode"])
+      ] as WorkspaceAgentProvider[]),
+    [
+      desktopPreferencesState.enableCursorAgent,
+      desktopPreferencesState.enableOpenCodeAgent
+    ]
   );
   const rowElementsRef = useRef(
     new Map<WorkspaceAgentProvider, HTMLDivElement>()

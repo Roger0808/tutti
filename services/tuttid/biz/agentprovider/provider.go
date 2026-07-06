@@ -10,6 +10,7 @@ const (
 	Hermes     = "hermes"
 	Nexight    = "nexight"
 	OpenClaw   = "openclaw"
+	OpenCode   = "opencode"
 )
 
 var allProviders = []string{
@@ -20,6 +21,7 @@ var allProviders = []string{
 	Gemini,
 	Hermes,
 	OpenClaw,
+	OpenCode,
 }
 
 func All() []string {
@@ -42,6 +44,8 @@ func Normalize(provider string) string {
 		return Nexight
 	case "open-claw", OpenClaw:
 		return OpenClaw
+	case "open-code", "opencode-ai", OpenCode:
+		return OpenCode
 	default:
 		return ""
 	}

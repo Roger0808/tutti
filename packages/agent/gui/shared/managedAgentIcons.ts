@@ -27,7 +27,8 @@ export const MANAGED_AGENT_ICON_URLS: Record<string, string> = {
   gemini: manageAgentGeminiUrl,
   hermes: manageAgentHermesUrl,
   tutti: manageAgentTuttiUrl,
-  openclaw: manageAgentOpenclawUrl
+  openclaw: manageAgentOpenclawUrl,
+  opencode: manageAgentTuttiUrl
 };
 
 /** Colorful provider rail icons used by AgentGUI's left provider filter. */
@@ -36,7 +37,8 @@ export const MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS: Record<string, string> = {
   codex: providerRailCodexColorfulUrl,
   cursor: cursorRoundedUrl,
   hermes: providerRailHermesColorfulUrl,
-  tutti: providerRailTuttiUrl
+  tutti: providerRailTuttiUrl,
+  opencode: providerRailTuttiUrl
 };
 
 /** Rounded avatars for Room status / room activity panel only. */
@@ -47,7 +49,8 @@ export const MANAGED_AGENT_ICON_ROUNDED_URLS: Record<string, string> = {
   gemini: geminiRoundedUrl,
   hermes: hermesRoundedUrl,
   tutti: tuttiDocRoundedUrl,
-  openclaw: openclawRoundedUrl
+  openclaw: openclawRoundedUrl,
+  opencode: tuttiDocRoundedUrl
 };
 
 /** 与 Manage Agents 列表用的方图区分；房间预览弹幕条等仅用圆图 */

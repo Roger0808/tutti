@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:c8cc9d6c0d853a47"
+	BusinessEventCatalogRevision = "sha256:3169f2dee7a29dfd"
 )
 
 type Topic string
@@ -102,6 +102,12 @@ type PreferencesDesktopPreferences struct {
 			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
 			Speed            *string `json:"speed,omitempty"`
 		} `json:"openclaw,omitempty"`
+		Opencode *struct {
+			Model            *string `json:"model,omitempty"`
+			PermissionModeId *string `json:"permissionModeId,omitempty"`
+			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+			Speed            *string `json:"speed,omitempty"`
+		} `json:"opencode,omitempty"`
 	} `json:"agentComposerDefaultsByProvider"`
 	AgentComposerDefaultsByAgentTarget *map[string]struct {
 		Model            *string `json:"model,omitempty"`
@@ -117,6 +123,7 @@ type PreferencesDesktopPreferences struct {
 		Gemini     *bool `json:"gemini,omitempty"`
 		Hermes     *bool `json:"hermes,omitempty"`
 		Openclaw   *bool `json:"openclaw,omitempty"`
+		Opencode   *bool `json:"opencode,omitempty"`
 	} `json:"agentGuiConversationRailCollapsedByProvider"`
 	AgentConversationDetailMode   string            `json:"agentConversationDetailMode"`
 	AgentDockLayout               string            `json:"agentDockLayout"`
@@ -131,6 +138,7 @@ type PreferencesDesktopPreferences struct {
 	SleepPreventionMode           string            `json:"sleepPreventionMode"`
 	ShowAppDeveloperSources       bool              `json:"showAppDeveloperSources"`
 	EnableCursorAgent             bool              `json:"enableCursorAgent"`
+	EnableOpenCodeAgent           bool              `json:"enableOpenCodeAgent"`
 	ThemeSource                   string            `json:"themeSource"`
 	UpdateChannel                 string            `json:"updateChannel"`
 	UpdatePolicy                  string            `json:"updatePolicy"`

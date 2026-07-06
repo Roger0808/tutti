@@ -99,6 +99,15 @@ default `sdk` runtime checks the `claude` CLI plus the Claude SDK sidecar entry
 and Node runtime, while `acp` keeps using the legacy `claude-acp` package from
 the ACP External Agent Registry.
 
+OpenCode provider availability checks the `opencode` CLI directly and launches
+sessions through the official `opencode acp` command. Do not add model,
+agent, or auto-mode CLI flags to that ACP command. Session model selection must
+be passed through OpenCode config; Tutti injects `OPENCODE_CONFIG_CONTENT` with
+`{"model":"provider/model"}` when a session model override is present. The
+custom-provider environment allowlist for OpenCode includes `OPENCODE_CONFIG`,
+`OPENCODE_CONFIG_DIR`, `OPENCODE_CONFIG_CONTENT`, and `OPENCODE_PERMISSION`
+so operator-supplied OpenCode config stays explicit and provider-owned.
+
 ## Desktop Renderer Diagnostics
 
 | Variable                               | Owner document                          | Purpose                                                                                       |

@@ -88,10 +88,14 @@ export function WorkspaceLaunchpadOverlay({
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
   const hiddenAgentProviders = useMemo<ReadonlySet<WorkspaceAgentProvider>>(
     () =>
-      new Set<WorkspaceAgentProvider>(
-        desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]
-      ),
-    [desktopPreferencesState.enableCursorAgent]
+      new Set<WorkspaceAgentProvider>([
+        ...(desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]),
+        ...(desktopPreferencesState.enableOpenCodeAgent ? [] : ["opencode"])
+      ] as WorkspaceAgentProvider[]),
+    [
+      desktopPreferencesState.enableCursorAgent,
+      desktopPreferencesState.enableOpenCodeAgent
+    ]
   );
   const wasOpenRef = useRef(false);
   const launchpadAnalytics = useMemo(

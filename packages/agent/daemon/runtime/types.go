@@ -13,6 +13,7 @@ const (
 	ProviderGemini     = "gemini"
 	ProviderHermes     = "hermes"
 	ProviderOpenClaw   = "openclaw"
+	ProviderOpenCode   = "opencode"
 
 	SessionStatusReady     = "ready"
 	SessionStatusWorking   = "working"
