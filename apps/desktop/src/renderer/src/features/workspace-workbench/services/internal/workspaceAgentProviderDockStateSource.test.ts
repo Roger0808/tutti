@@ -422,7 +422,7 @@ test("agent provider dock state source puts OpenClaw last when setup is required
   );
 
   assert.equal(claudeState?.order, 100);
-  assert.equal(openClawState?.order, 207);
+  assert.equal(openClawState?.order, 206);
   assert.equal(openClawState?.visibility, "never");
   assert.ok((openClawState?.order ?? 0) > (claudeState?.order ?? 0));
 });
@@ -446,7 +446,7 @@ test("agent provider dock state source keeps ready OpenClaw with installed provi
     workspaceAgentGuiDockEntryId("openclaw")
   );
 
-  assert.equal(openClawState?.order, 7);
+  assert.equal(openClawState?.order, 6);
   assert.equal(openClawState?.visibility, "always");
 });
 
@@ -580,40 +580,6 @@ test("agent provider dock state source hides non-default providers until ready",
 
   assert.equal(
     source.getEntryState(workspaceAgentGuiDockEntryId("openclaw"))?.visibility,
-    "always"
-  );
-});
-
-test("agent provider dock state source exposes Nexight only when ready", () => {
-  const service = createAgentProviderStatusService({
-    statuses: [
-      createStatus({
-        actions: [],
-        availability: "auth_required",
-        provider: "nexight"
-      })
-    ]
-  });
-  const source = createWorkspaceAgentProviderDockStateSource({
-    agentProviderStatusService: service,
-    i18n: createI18n()
-  });
-
-  assert.equal(
-    source.getEntryState(workspaceAgentGuiDockEntryId("nexight"))?.visibility,
-    "never"
-  );
-
-  service.setStatuses([
-    createStatus({
-      actions: [],
-      availability: "ready",
-      provider: "nexight"
-    })
-  ]);
-
-  assert.equal(
-    source.getEntryState(workspaceAgentGuiDockEntryId("nexight"))?.visibility,
     "always"
   );
 });

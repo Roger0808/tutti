@@ -1274,15 +1274,17 @@ Desktop workbench feeds the renderer `AgentsService` `/agents` snapshot into
 AgentGUI so Codex and Claude Code can use service-backed agent targets. An empty
 snapshot still resolves to omitted `providerTargets`, letting AgentGUI preserve
 the static catalog for picker/display compatibility instead of hiding the rail.
-Future providers in the static provider catalog, such as Tutti, Hermes, and
-OpenClaw, must render as selectable disabled/coming-soon targets: provider rail
-clicks may select their empty composer state, but launch/send controls stay
-disabled until their real `/agents` targets are supported.
+Future providers in the static provider catalog, such as Hermes and OpenClaw,
+must render as selectable disabled/coming-soon targets: provider rail clicks
+may select their empty composer state, but launch/send controls stay disabled
+until their real `/agents` targets are supported. The historical `nexight`
+"Tutti" placeholder must not be synthesized into the default AgentGUI rail; use
+the first-party `tutti-agent` provider path for Tutti Agent entry points.
 Static catalog targets do not change the legacy activation contract: AgentGUI
 does not persist or send their `providerTargetRef`. Synthesized local targets
-may expose stable `local:<provider>` values as `agentTargetId`, including
-coming-soon placeholders, so the conversation rail can scope to an empty
-provider-specific list without falling back to All.
+may expose stable `local:<provider>` values as `agentTargetId` for supported
+default and coming-soon placeholders, so the conversation rail can scope to an
+empty provider-specific list without falling back to All.
 
 Desktop workbench may apply product entry gates before passing target data into
 AgentGUI. The Tutti Agent switch (`tuttiAgentSwitchEnabled`) is one such gate:

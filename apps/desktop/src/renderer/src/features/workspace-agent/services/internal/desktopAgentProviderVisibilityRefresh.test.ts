@@ -60,7 +60,6 @@ test("bindDesktopManagedAgentProviderVisibilityRefresh refreshes managed provide
       "codex",
       "tutti-agent",
       "cursor",
-      "nexight",
       "gemini",
       "hermes",
       "openclaw"

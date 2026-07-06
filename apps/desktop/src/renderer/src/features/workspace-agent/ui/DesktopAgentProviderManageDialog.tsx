@@ -62,7 +62,6 @@ const providerLabelKeys = {
   cursor: "workspace.workbenchDesktop.agentProviders.manageProviderCursor",
   gemini: "workspace.workbenchDesktop.agentProviders.manageProviderGemini",
   hermes: "workspace.workbenchDesktop.agentProviders.manageProviderHermes",
-  nexight: "workspace.workbenchDesktop.agentProviders.manageProviderNexight",
   openclaw: "workspace.workbenchDesktop.agentProviders.manageProviderOpenClaw",
   "tutti-agent":
     "workspace.workbenchDesktop.agentProviders.manageProviderTuttiAgent"

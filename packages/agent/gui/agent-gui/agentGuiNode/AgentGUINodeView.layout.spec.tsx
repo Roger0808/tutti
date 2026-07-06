@@ -1031,23 +1031,13 @@ describe("AgentGUINodeView layout persistence", () => {
       screen.getByRole("tab", { name: "Claude Code" })
     ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Cursor" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Tutti" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Hermes" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "OpenClaw" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Tutti" })).not.toBeDisabled();
     expect(screen.getByRole("tab", { name: "Hermes" })).not.toBeDisabled();
     expect(screen.getByRole("tab", { name: "OpenClaw" })).not.toBeDisabled();
     expect(
       screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
-    ).toEqual([
-      "All",
-      "Codex",
-      "Claude Code",
-      "Cursor",
-      "Tutti",
-      "Hermes",
-      "OpenClaw"
-    ]);
+    ).toEqual(["All", "Codex", "Claude Code", "Cursor", "Hermes", "OpenClaw"]);
   });
 
   it("keeps the provider rail to the default agent tiles for static provider catalogs", () => {
@@ -1067,7 +1057,6 @@ describe("AgentGUINodeView layout persistence", () => {
       "Claude Code",
       "Tutti Agent",
       "Cursor",
-      "Tutti",
       "Hermes",
       "OpenClaw"
     ]);

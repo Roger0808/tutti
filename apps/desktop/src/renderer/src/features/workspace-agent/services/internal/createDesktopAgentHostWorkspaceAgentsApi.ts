@@ -24,7 +24,6 @@ const desktopAgentGUIPresenceProviders = [
   "codex",
   "tutti-agent",
   "cursor",
-  "nexight",
   "gemini",
   "hermes",
   "openclaw"

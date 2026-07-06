@@ -10,6 +10,7 @@ Current documents:
 - [Analytics Tracking](./analytics-tracking.md)
 - [Agent Activity Packages](./agent-activity-packages.md)
 - [AgentGuiNode Architecture and Troubleshooting](./agent-gui-node.md)
+- [Tutti Agent Readiness Bootstrap](./tutti-agent-readiness-bootstrap.md)
 - [Tutti Agent Integration Plan](./tutti-agent-integration-plan.md)
 - [Business Event Stream](./business-event-stream.md)
 - [Browser Node Package](./browser-node-package.md)

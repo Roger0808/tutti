@@ -26,7 +26,6 @@ describe("agent gui provider targets", () => {
       "local:claude-code",
       "local:tutti-agent",
       "local:cursor",
-      "local:nexight",
       "local:hermes",
       "local:openclaw"
     ]);
@@ -83,12 +82,6 @@ describe("agent gui provider targets", () => {
         disabled: false,
         label: "Claude Code",
         provider: "claude-code"
-      },
-      {
-        agentTargetId: "local:nexight",
-        disabled: true,
-        label: "Tutti Agent",
-        provider: "nexight"
       },
       {
         agentTargetId: "local:hermes",
@@ -183,7 +176,6 @@ describe("agent gui provider targets", () => {
       { disabled: false, provider: "claude-code" },
       { disabled: false, provider: "tutti-agent" },
       { disabled: false, provider: "cursor" },
-      { disabled: true, provider: "nexight" },
       { disabled: true, provider: "hermes" },
       { disabled: true, provider: "openclaw" }
     ]);

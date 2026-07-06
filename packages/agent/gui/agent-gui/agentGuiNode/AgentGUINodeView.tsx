@@ -4509,7 +4509,6 @@ const agentGUIProviderRailDefaultProviders = [
   "codex",
   "claude-code",
   "cursor",
-  "nexight",
   "hermes",
   "openclaw"
 ] as const satisfies readonly AgentGUIProvider[];

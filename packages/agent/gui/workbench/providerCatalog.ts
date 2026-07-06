@@ -5,7 +5,6 @@ export const agentGuiWorkbenchProviders = [
   "codex",
   "tutti-agent",
   "cursor",
-  "nexight",
   "hermes",
   "gemini",
   "openclaw"
