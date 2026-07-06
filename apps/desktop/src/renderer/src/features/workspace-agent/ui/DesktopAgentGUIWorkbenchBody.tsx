@@ -29,6 +29,7 @@ import {
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { WorkspaceLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import { requestWorkspaceAgentGuiLaunch } from "../services/workspaceAgentGuiLaunchCoordinator.ts";
+import { registerWorkspaceAgentGuiOpenSession } from "../../workspace-workbench/services/workspaceAgentGuiOpenSessionCoordinator.ts";
 import {
   workbenchFocusInputActivationType,
   type WorkbenchDockPreviewCache,
@@ -560,6 +561,20 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   ]);
   const nodeStateRef = useRef(nodeState);
   nodeStateRef.current = nodeState;
+  // Lets the waiting-decision toast know this session's conversation is
+  // already visible, so it can skip a redundant in-app interruption.
+  useEffect(() => {
+    const agentSessionId = workbenchState.lastActiveAgentSessionId?.trim();
+    if (previewMode || !agentSessionId || context.node.isMinimized) {
+      return undefined;
+    }
+    return registerWorkspaceAgentGuiOpenSession(workspaceId, agentSessionId);
+  }, [
+    context.node.isMinimized,
+    previewMode,
+    workbenchState.lastActiveAgentSessionId,
+    workspaceId
+  ]);
   const [agentProbeDemandBySource, setAgentProbeDemandBySource] = useState<
     Record<string, string>
   >({});
@@ -829,6 +844,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           ...current,
           agentTargetId: request.agentTargetId ?? current.agentTargetId ?? null,
           lastActiveAgentSessionId: null,
+          lastActiveConversationTitle: null,
           provider: request.provider ?? current.provider,
           providerTargetId: null,
           providerTargetRef: null
@@ -839,7 +855,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
             ? current
             : {
                 ...current,
-                lastActiveAgentSessionId: null
+                lastActiveAgentSessionId: null,
+                lastActiveConversationTitle: null
               }
         );
       }
