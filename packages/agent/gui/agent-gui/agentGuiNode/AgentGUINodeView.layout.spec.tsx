@@ -1246,6 +1246,103 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toEqual(["All", "Codex", "Claude Code", "Cursor", "Hermes", "OpenClaw"]);
   });
 
+  it("renders exactly the provided targets in exact rail mode", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerRailMode: "exact",
+        providerTargets: [
+          {
+            targetId: "shared-agent:alice-codex",
+            provider: "codex",
+            ref: {
+              kind: "shared-agent",
+              provider: "codex",
+              sharedAgentId: "alice-codex"
+            },
+            label: "Alice's Codex"
+          },
+          {
+            targetId: "shared-agent:bob-claude",
+            provider: "claude-code",
+            ref: {
+              kind: "shared-agent",
+              provider: "claude-code",
+              sharedAgentId: "bob-claude"
+            },
+            label: "Bob's Claude"
+          }
+        ],
+        providerTargetsLoading: false
+      }
+    });
+
+    // "All" tile + exactly the two shared agents — no placeholders, no padding.
+    expect(
+      screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
+    ).toEqual(["All", "Alice's Codex", "Bob's Claude"]);
+    expect(screen.queryByRole("tab", { name: "Cursor" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Hermes" })).toBeNull();
+  });
+
+  it("preserves the host-provided target order in exact rail mode", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerRailMode: "exact",
+        // claude-code first, then codex — the built-in provider order would flip
+        // these; exact mode must keep the caller's order.
+        providerTargets: [
+          {
+            targetId: "shared-agent:bob-claude",
+            provider: "claude-code",
+            ref: {
+              kind: "shared-agent",
+              provider: "claude-code",
+              sharedAgentId: "bob-claude"
+            },
+            label: "Bob's Claude"
+          },
+          {
+            targetId: "shared-agent:alice-codex",
+            provider: "codex",
+            ref: {
+              kind: "shared-agent",
+              provider: "codex",
+              sharedAgentId: "alice-codex"
+            },
+            label: "Alice's Codex"
+          }
+        ],
+        providerTargetsLoading: false
+      }
+    });
+
+    expect(
+      screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
+    ).toEqual(["All", "Bob's Claude", "Alice's Codex"]);
+  });
+
+  it("renders the host empty state in exact rail mode when no targets are provided", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerRailMode: "exact",
+        providerTargets: [],
+        providerTargetsLoading: false
+      },
+      renderProviderRailEmpty: () => (
+        <div data-testid="exact-rail-empty">No shared agents</div>
+      )
+    });
+
+    expect(screen.getByTestId("exact-rail-empty")).toBeInTheDocument();
+    // No static local catalog fallback.
+    expect(screen.queryByRole("tab", { name: "Codex" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Cursor" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "All" })).toBeNull();
+  });
+
   it("keeps the provider rail to the default agent tiles for static provider catalogs", () => {
     renderAgentGUINodeView({
       viewModel: {
@@ -4197,6 +4294,7 @@ interface RenderAgentGUINodeViewOptions {
   labels?: AgentGUIViewLabels;
   onOpenConversationWindow?: AgentGUINodeViewProps["onOpenConversationWindow"];
   renderSidebarFooter?: AgentGUINodeViewProps["renderSidebarFooter"];
+  renderProviderRailEmpty?: AgentGUINodeViewProps["renderProviderRailEmpty"];
   slashStatusLimits?: AgentGUINodeViewProps["slashStatusLimits"];
 }
 
@@ -4214,6 +4312,7 @@ function buildAgentGUINodeViewElement({
   labels = createLabels(),
   onOpenConversationWindow,
   renderSidebarFooter,
+  renderProviderRailEmpty,
   slashStatusLimits = []
 }: RenderAgentGUINodeViewOptions = {}) {
   return (
@@ -4221,6 +4320,7 @@ function buildAgentGUINodeViewElement({
       <AgentGUINodeView
         viewModel={viewModel}
         renderSidebarFooter={renderSidebarFooter}
+        renderProviderRailEmpty={renderProviderRailEmpty}
         onLinkAction={onLinkAction}
         isActive={isActive}
         isAgentProviderReady={isAgentProviderReady}
@@ -4499,6 +4599,7 @@ function createViewModel(
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
+    providerRailMode: "catalog",
     comingSoonProviders: [],
     conversationFilter: { kind: "all" },
     conversations: [],

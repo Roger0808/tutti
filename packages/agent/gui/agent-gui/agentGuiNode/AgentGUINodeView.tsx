@@ -593,6 +593,8 @@ export interface AgentGUIViewLabels {
 interface AgentGUINodeViewProps {
   viewModel: AgentGUINodeViewModel;
   renderSidebarFooter?: AgentGUISidebarFooterRenderer;
+  /** Renders the provider rail empty state in "exact" mode. See the type doc. */
+  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: (input: {
     agentTargetId?: string | null;
@@ -1044,9 +1046,18 @@ export type AgentGUISidebarFooterRenderer = (
   ctx: AgentGUISidebarFooterContext
 ) => ReactNode;
 
+/**
+ * Renders the provider rail body when the rail is in "exact" mode and the
+ * host-provided target list is empty (and not loading). Lets the host fully own
+ * the empty state (e.g. a "no shared agents" message or a create-agent prompt)
+ * instead of the library falling back to the static local catalog.
+ */
+export type AgentGUIProviderRailEmptyRenderer = () => ReactNode;
+
 export function AgentGUINodeView({
   viewModel,
   renderSidebarFooter,
+  renderProviderRailEmpty,
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
@@ -1653,6 +1664,8 @@ export function AgentGUINodeView({
               selectedProviderTarget={viewModel.selectedProviderTarget}
               providerTargets={viewModel.providerTargets}
               providerTargetsLoading={viewModel.providerTargetsLoading}
+              providerRailMode={viewModel.providerRailMode}
+              renderProviderRailEmpty={renderProviderRailEmpty}
               comingSoonProviders={viewModel.comingSoonProviders}
               onSelectConversationFilterTarget={
                 actions.selectConversationFilterTarget
@@ -4677,10 +4690,16 @@ function agentGUIProviderTargetMatchesConversationFilter(
 function agentGUIProviderRailTargets(
   providerTargets: AgentGUINodeViewModel["providerTargets"],
   providerTargetsLoading: boolean,
-  comingSoonProviders: AgentGUINodeViewModel["comingSoonProviders"]
+  comingSoonProviders: AgentGUINodeViewModel["comingSoonProviders"],
+  providerRailMode: AgentGUINodeViewModel["providerRailMode"]
 ): AgentGUINodeViewModel["providerTargets"] {
   if (providerTargetsLoading) {
     return [];
+  }
+  // Exact mode renders precisely the provided targets — no backfilling to the
+  // default provider catalog, no local/placeholder padding.
+  if (providerRailMode === "exact") {
+    return providerTargets;
   }
   const comingSoon = new Set(comingSoonProviders);
   const source =
@@ -4729,6 +4748,8 @@ interface AgentGUIProviderRailProps {
   selectedProviderTarget: AgentGUINodeViewModel["selectedProviderTarget"];
   providerTargets: AgentGUINodeViewModel["providerTargets"];
   providerTargetsLoading: AgentGUINodeViewModel["providerTargetsLoading"];
+  providerRailMode: AgentGUINodeViewModel["providerRailMode"];
+  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
   comingSoonProviders: AgentGUINodeViewModel["comingSoonProviders"];
   onRequestComposerFocus: () => void;
   onSelectConversationFilterTarget: AgentGUINodeViewProps["actions"]["selectConversationFilterTarget"];
@@ -4744,6 +4765,8 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   selectedProviderTarget,
   providerTargets,
   providerTargetsLoading,
+  providerRailMode,
+  renderProviderRailEmpty,
   comingSoonProviders,
   onRequestComposerFocus,
   onSelectConversationFilterTarget,
@@ -4755,12 +4778,23 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
       agentGUIProviderRailTargets(
         providerTargets,
         providerTargetsLoading,
-        comingSoonProviders
+        comingSoonProviders,
+        providerRailMode
       ),
-    [comingSoonProviders, providerTargets, providerTargetsLoading]
+    [
+      comingSoonProviders,
+      providerRailMode,
+      providerTargets,
+      providerTargetsLoading
+    ]
   );
   const providerTiles = useMemo(() => {
     const targets = [...railProviderTargets];
+    // Exact mode is host-orchestrated: preserve the caller's order verbatim
+    // (the built-in provider order would otherwise reshuffle across providers).
+    if (providerRailMode === "exact") {
+      return targets;
+    }
     const originalIndexByTarget = new Map<string, number>();
     targets.forEach((target, index) => {
       originalIndexByTarget.set(
@@ -4783,7 +4817,7 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         ) ?? 0)
       );
     });
-  }, [railProviderTargets]);
+  }, [providerRailMode, railProviderTargets]);
   const visibleProviderTiles = useMemo(() => {
     if (!providerTiles.some((target) => target.provider === "tutti-agent")) {
       return providerTiles;
@@ -4826,6 +4860,27 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
     },
     [onRequestComposerFocus, onSelectConversationFilterTarget]
   );
+
+  // Exact mode with no targets (and not loading): hand the rail body to the
+  // host-provided empty renderer instead of the static local catalog fallback.
+  if (
+    providerRailMode === "exact" &&
+    !providerTargetsLoading &&
+    visibleProviderTiles.length === 0 &&
+    renderProviderRailEmpty
+  ) {
+    return (
+      <div
+        className={styles.providerRail}
+        role="tablist"
+        aria-label={labels.providerSwitchLabel}
+        aria-busy={providerTargetsLoading}
+        data-empty="true"
+      >
+        {renderProviderRailEmpty()}
+      </div>
+    );
+  }
 
   return (
     <div className={styles.providerRail}>
