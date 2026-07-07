@@ -2123,7 +2123,7 @@ func logClaudeSDKSidecarDebugStderr(content []byte) {
 		if payloadJSON == "" {
 			payloadJSON = "{}"
 		}
-		slog.Warn(claudeSDKAuthRefreshLogPrefix,
+		slog.Debug(claudeSDKAuthRefreshLogPrefix,
 			"event", "agent_session.claude_sdk.auth_refresh_debug",
 			"payload_json", payloadJSON,
 		)
