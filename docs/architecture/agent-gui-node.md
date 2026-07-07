@@ -205,6 +205,10 @@ Provider rail containers and tiles are interactive workbench chrome: they must
 explicitly release host/window drag regions with `nodrag` and
 `-webkit-app-region: no-drag`, otherwise clicks near the window edge can be
 captured as drag gestures before AgentGUI sees the provider filter action.
+Provider rail target ordering is also UI-local chrome state. Drag sorting may
+persist a workspace-scoped order in browser-local storage, but must not write
+that preference into controller state, session state, or durable AgentGUI node
+data. The aggregate `All` target stays fixed above provider-specific targets.
 Provider-scoped rail footer affordances, such as usage limits and environment
 setup, follow the rail's active provider filter target in multi-provider scope;
 when the rail filter is `All`, they should stay hidden because there is no

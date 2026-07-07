@@ -2,6 +2,7 @@ import {
   Fragment,
   memo,
   type CSSProperties,
+  type DragEvent,
   type KeyboardEvent,
   type PointerEvent,
   type ReactNode,
@@ -157,6 +158,13 @@ import {
 } from "./agentGuiNodeViewConversation";
 import { buildAgentGUIConversationSummaries } from "./model/agentGuiConversationModel";
 import { filterAgentGUIConversationSummaries } from "./model/agentGuiConversationFilter";
+import {
+  agentGUIProviderRailOrderStorageKey,
+  applyAgentGUIProviderRailOrder,
+  parseAgentGUIProviderRailOrder,
+  reorderAgentGUIProviderRailOrder,
+  serializeAgentGUIProviderRailOrder
+} from "./model/agentGuiProviderRailOrder";
 import styles from "./AgentGUINode.styles";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import type {
@@ -1653,6 +1661,7 @@ export function AgentGUINodeView({
               conversationFilter={viewModel.conversationFilter}
               labels={labels}
               previewMode={previewMode}
+              workspaceId={viewModel.workspaceId}
               selectedProviderTarget={viewModel.selectedProviderTarget}
               providerTargets={viewModel.providerTargets}
               providerTargetsLoading={viewModel.providerTargetsLoading}
@@ -4740,6 +4749,7 @@ interface AgentGUIProviderRailProps {
   conversationFilter: AgentGUINodeViewModel["conversationFilter"];
   labels: AgentGUIViewLabels;
   previewMode: boolean;
+  workspaceId: string;
   selectedProviderTarget: AgentGUINodeViewModel["selectedProviderTarget"];
   providerTargets: AgentGUINodeViewModel["providerTargets"];
   providerTargetsLoading: AgentGUINodeViewModel["providerTargetsLoading"];
@@ -4753,10 +4763,19 @@ interface AgentGUIProviderRailProps {
   ) => void;
 }
 
+const AGENT_GUI_PROVIDER_RAIL_DRAG_HYSTERESIS_PX = 8;
+
+type AgentGUIProviderRailDragState = {
+  draggedTargetId: string;
+  overTargetId: string | null;
+  position: "before" | "after" | null;
+};
+
 const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   conversationFilter,
   labels,
   previewMode,
+  workspaceId,
   selectedProviderTarget,
   providerTargets,
   providerTargetsLoading,
@@ -4768,6 +4787,46 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   onUpdateConversationFilter
 }: AgentGUIProviderRailProps): React.JSX.Element {
   "use memo";
+  const providerRailOrderStorageKey = useMemo(
+    () => agentGUIProviderRailOrderStorageKey(workspaceId),
+    [workspaceId]
+  );
+  const [providerRailOrder, setProviderRailOrder] = useState<readonly string[]>(
+    () =>
+      parseAgentGUIProviderRailOrder(
+        globalThis.localStorage?.getItem(providerRailOrderStorageKey)
+      )
+  );
+  const [dragState, setDragState] =
+    useState<AgentGUIProviderRailDragState | null>(null);
+  const dragStateRef = useRef<AgentGUIProviderRailDragState | null>(null);
+  const setProviderRailDragState = useCallback(
+    (nextDragState: AgentGUIProviderRailDragState | null) => {
+      dragStateRef.current = nextDragState;
+      setDragState(nextDragState);
+    },
+    []
+  );
+
+  useEffect(() => {
+    setProviderRailOrder(
+      parseAgentGUIProviderRailOrder(
+        globalThis.localStorage?.getItem(providerRailOrderStorageKey)
+      )
+    );
+  }, [providerRailOrderStorageKey]);
+
+  const persistProviderRailOrder = useCallback(
+    (nextOrder: readonly string[]) => {
+      setProviderRailOrder(nextOrder);
+      globalThis.localStorage?.setItem(
+        providerRailOrderStorageKey,
+        serializeAgentGUIProviderRailOrder(nextOrder)
+      );
+    },
+    [providerRailOrderStorageKey]
+  );
+
   const railProviderTargets = useMemo(
     () =>
       agentGUIProviderRailTargets(
@@ -4785,34 +4844,36 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   );
   const providerTiles = useMemo(() => {
     const targets = [...railProviderTargets];
-    // Exact mode is host-orchestrated: preserve the caller's order verbatim
-    // (the built-in provider order would otherwise reshuffle across providers).
-    if (providerRailMode === "exact") {
-      return targets;
-    }
-    const originalIndexByTarget = new Map<string, number>();
-    targets.forEach((target, index) => {
-      originalIndexByTarget.set(
-        `${target.provider}\u0000${target.targetId}`,
-        index
-      );
-    });
-    return targets.sort((left, right) => {
-      const orderDelta =
-        agentGUIProviderRailOrderIndex(left.provider) -
-        agentGUIProviderRailOrderIndex(right.provider);
-      if (orderDelta !== 0) {
-        return orderDelta;
-      }
-      return (
-        (originalIndexByTarget.get(`${left.provider}\u0000${left.targetId}`) ??
-          0) -
-        (originalIndexByTarget.get(
-          `${right.provider}\u0000${right.targetId}`
-        ) ?? 0)
-      );
-    });
-  }, [providerRailMode, railProviderTargets]);
+    const orderedTargets =
+      providerRailMode === "exact"
+        ? targets
+        : (() => {
+            const originalIndexByTarget = new Map<string, number>();
+            targets.forEach((target, index) => {
+              originalIndexByTarget.set(
+                `${target.provider}\u0000${target.targetId}`,
+                index
+              );
+            });
+            return targets.sort((left, right) => {
+              const orderDelta =
+                agentGUIProviderRailOrderIndex(left.provider) -
+                agentGUIProviderRailOrderIndex(right.provider);
+              if (orderDelta !== 0) {
+                return orderDelta;
+              }
+              return (
+                (originalIndexByTarget.get(
+                  `${left.provider}\u0000${left.targetId}`
+                ) ?? 0) -
+                (originalIndexByTarget.get(
+                  `${right.provider}\u0000${right.targetId}`
+                ) ?? 0)
+              );
+            });
+          })();
+    return applyAgentGUIProviderRailOrder(orderedTargets, providerRailOrder);
+  }, [providerRailMode, providerRailOrder, railProviderTargets]);
   const visibleProviderTiles = useMemo(() => {
     if (!providerTiles.some((target) => target.provider === "tutti-agent")) {
       return providerTiles;
@@ -4855,6 +4916,216 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
     },
     [onRequestComposerFocus, onSelectConversationFilterTarget]
   );
+  const clearProviderRailDragState = useCallback(() => {
+    setProviderRailDragState(null);
+  }, [setProviderRailDragState]);
+  const handleProviderRailDragStart = useCallback(
+    (
+      event: DragEvent<HTMLButtonElement>,
+      target: AgentGUINodeViewModel["providerTargets"][number]
+    ) => {
+      if (previewMode || providerTargetsLoading) {
+        event.preventDefault();
+        return;
+      }
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", target.targetId);
+      setProviderRailDragState({
+        draggedTargetId: target.targetId,
+        overTargetId: null,
+        position: null
+      });
+    },
+    [previewMode, providerTargetsLoading, setProviderRailDragState]
+  );
+  const handleProviderRailDragOver = useCallback(
+    (
+      event: DragEvent<HTMLButtonElement>,
+      target: AgentGUINodeViewModel["providerTargets"][number]
+    ) => {
+      if (previewMode || providerTargetsLoading || !dragState) {
+        return;
+      }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      if (dragState.draggedTargetId === target.targetId) {
+        return;
+      }
+      const bounds = event.currentTarget.getBoundingClientRect();
+      const midpointY = bounds.top + bounds.height / 2;
+      let position: "before" | "after";
+      if (dragState.overTargetId === target.targetId && dragState.position) {
+        if (
+          dragState.position === "before" &&
+          event.clientY <=
+            midpointY + AGENT_GUI_PROVIDER_RAIL_DRAG_HYSTERESIS_PX
+        ) {
+          position = "before";
+        } else if (
+          dragState.position === "after" &&
+          event.clientY >=
+            midpointY - AGENT_GUI_PROVIDER_RAIL_DRAG_HYSTERESIS_PX
+        ) {
+          position = "after";
+        } else {
+          position = event.clientY > midpointY ? "after" : "before";
+        }
+      } else {
+        position = event.clientY > midpointY ? "after" : "before";
+      }
+      setProviderRailDragState({
+        draggedTargetId: dragState.draggedTargetId,
+        overTargetId: target.targetId,
+        position
+      });
+    },
+    [dragState, previewMode, providerTargetsLoading, setProviderRailDragState]
+  );
+  const commitProviderRailDragDrop = useCallback(
+    (event: DragEvent<HTMLElement>) => {
+      const fallbackDraggedTargetId = event.dataTransfer
+        .getData("text/plain")
+        .trim();
+      const activeDragState =
+        dragStateRef.current ??
+        dragState ??
+        (fallbackDraggedTargetId
+          ? {
+              draggedTargetId: fallbackDraggedTargetId,
+              overTargetId: null,
+              position: null
+            }
+          : null);
+      if (previewMode || providerTargetsLoading || !activeDragState) {
+        clearProviderRailDragState();
+        return;
+      }
+      let overTargetId = activeDragState.overTargetId;
+      let dropPosition = activeDragState.position ?? "before";
+      if (!overTargetId || overTargetId === activeDragState.draggedTargetId) {
+        const dropTargets = Array.from(
+          event.currentTarget.querySelectorAll<HTMLButtonElement>(
+            "[data-provider-tile='true']"
+          )
+        )
+          .map((element) => {
+            const targetId = element.dataset.providerTargetId?.trim() ?? "";
+            if (!targetId || targetId === activeDragState.draggedTargetId) {
+              return null;
+            }
+            const bounds = element.getBoundingClientRect();
+            const midpointY = bounds.top + bounds.height / 2;
+            return {
+              midpointY,
+              targetId
+            };
+          })
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+          .sort((left, right) => left.midpointY - right.midpointY);
+        const firstTarget = dropTargets[0];
+        const lastTarget = dropTargets[dropTargets.length - 1];
+        if (firstTarget && lastTarget) {
+          const inferredTarget =
+            event.clientY <= firstTarget.midpointY
+              ? firstTarget
+              : event.clientY >= lastTarget.midpointY
+                ? lastTarget
+                : (dropTargets.find(
+                    (entry) => event.clientY <= entry.midpointY
+                  ) ?? lastTarget);
+          overTargetId = inferredTarget.targetId;
+          dropPosition =
+            event.clientY > inferredTarget.midpointY ? "after" : "before";
+        }
+      }
+      if (!overTargetId || overTargetId === activeDragState.draggedTargetId) {
+        const droppedOnRailGap = event.target === event.currentTarget;
+        const finalTargetId = visibleProviderTiles
+          .map((tile) => tile.targetId)
+          .filter((targetId) => targetId !== activeDragState.draggedTargetId)
+          .at(-1);
+        if (droppedOnRailGap && finalTargetId) {
+          overTargetId = finalTargetId;
+          dropPosition = "after";
+        }
+      }
+      if (!overTargetId || overTargetId === activeDragState.draggedTargetId) {
+        clearProviderRailDragState();
+        return;
+      }
+      event.preventDefault();
+      const nextOrder = reorderAgentGUIProviderRailOrder({
+        currentTargetIds: visibleProviderTiles.map((tile) => tile.targetId),
+        draggedTargetId: activeDragState.draggedTargetId,
+        dropPosition,
+        overTargetId
+      });
+      persistProviderRailOrder(nextOrder);
+      clearProviderRailDragState();
+    },
+    [
+      clearProviderRailDragState,
+      dragState,
+      persistProviderRailOrder,
+      previewMode,
+      providerTargetsLoading,
+      visibleProviderTiles
+    ]
+  );
+  const handleProviderRailContainerDragOver = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      const activeDragState = dragStateRef.current ?? dragState;
+      if (!activeDragState || previewMode || providerTargetsLoading) {
+        return;
+      }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      const tileElements = Array.from(
+        event.currentTarget.querySelectorAll<HTMLButtonElement>(
+          "[data-provider-tile='true']"
+        )
+      );
+      const dropTargets = tileElements
+        .map((element) => {
+          const targetId = element.dataset.providerTargetId?.trim() ?? "";
+          if (!targetId || targetId === activeDragState.draggedTargetId) {
+            return null;
+          }
+          const bounds = element.getBoundingClientRect();
+          const midpointY = bounds.top + bounds.height / 2;
+          return {
+            distance: Math.abs(event.clientY - midpointY),
+            midpointY,
+            targetId
+          };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+        .sort((left, right) => left.midpointY - right.midpointY);
+      if (dropTargets.length === 0) {
+        return;
+      }
+      const firstTarget = dropTargets[0];
+      const lastTarget = dropTargets[dropTargets.length - 1];
+      if (!firstTarget || !lastTarget) {
+        return;
+      }
+      const inferredTarget =
+        event.clientY <= firstTarget.midpointY
+          ? firstTarget
+          : event.clientY >= lastTarget.midpointY
+            ? lastTarget
+            : (dropTargets.find((entry) => event.clientY <= entry.midpointY) ??
+              lastTarget);
+      const position =
+        event.clientY > inferredTarget.midpointY ? "after" : "before";
+      setProviderRailDragState({
+        draggedTargetId: activeDragState.draggedTargetId,
+        overTargetId: inferredTarget.targetId,
+        position
+      });
+    },
+    [dragState, previewMode, providerTargetsLoading, setProviderRailDragState]
+  );
 
   // Exact mode with no targets (and not loading): hand the rail body to the
   // host-provided empty renderer instead of the static local catalog fallback.
@@ -4884,6 +5155,8 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         role="tablist"
         aria-label={labels.providerSwitchLabel}
         aria-busy={providerTargetsLoading}
+        onDragOver={handleProviderRailContainerDragOver}
+        onDrop={commitProviderRailDragDrop}
       >
         <button
           type="button"
@@ -4943,10 +5216,27 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
               aria-selected={providerSelected}
               className={styles.providerRailTile}
               data-disabled={target.disabled === true ? "true" : undefined}
+              data-drag-over={
+                dragState?.overTargetId === target.targetId
+                  ? dragState.position
+                  : undefined
+              }
+              data-dragging={
+                dragState?.draggedTargetId === target.targetId
+                  ? "true"
+                  : undefined
+              }
               data-provider-tile="true"
+              data-provider-target-id={target.targetId}
               data-selected={providerSelected ? "true" : "false"}
               disabled={previewMode}
+              draggable={!previewMode && !providerTargetsLoading}
               onClick={() => selectAgentTargetTile(target)}
+              onDragEnd={clearProviderRailDragState}
+              onDragOver={(event) => handleProviderRailDragOver(event, target)}
+              onDragStart={(event) =>
+                handleProviderRailDragStart(event, target)
+              }
             >
               <span className={styles.providerRailAvatar}>
                 <AgentGUIProviderIconVisual
