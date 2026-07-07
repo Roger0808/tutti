@@ -3321,6 +3321,102 @@ describe("useAgentGUINodeController", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
+  it("scopes the rail to the handoff target for prefilled draft prompts", async () => {
+    const unactivate = vi.fn(async () => undefined);
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          agentTargetId: "local:codex",
+          provider: "codex"
+        })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      unactivate
+    });
+    const onDataChange = vi.fn();
+
+    type PrefillPromptRequest = Parameters<
+      typeof useAgentGUINodeController
+    >[0]["prefillPromptRequest"];
+    const { result, rerender } = renderHook(
+      (props: { prefillPromptRequest?: PrefillPromptRequest }) =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          data: agentGuiData("session-1", "codex", {
+            agentTargetId: "local:codex"
+          }),
+          providerTargets: [
+            {
+              targetId: "local:codex",
+              agentTargetId: "local:codex",
+              provider: "codex",
+              ref: { kind: "local-provider", provider: "codex" },
+              label: "Codex"
+            },
+            {
+              targetId: "local:cursor",
+              agentTargetId: "local:cursor",
+              provider: "cursor",
+              ref: { kind: "local-provider", provider: "cursor" },
+              label: "Cursor"
+            }
+          ],
+          onDataChange,
+          ...props
+        }),
+      {
+        initialProps: {
+          prefillPromptRequest: null as PrefillPromptRequest
+        }
+      }
+    );
+
+    rerender({
+      prefillPromptRequest: {
+        agentTargetId: "local:cursor",
+        draftPrompt: " Continue in Cursor ",
+        provider: "cursor",
+        sequence: 1
+      }
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(null);
+      expect(result.current.viewModel.draftPrompt).toBe("Continue in Cursor");
+      expect(result.current.viewModel.conversationFilter).toEqual({
+        kind: "agentTarget",
+        agentTargetId: "local:cursor"
+      });
+      expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+        provider: "cursor",
+        targetId: "local:cursor"
+      });
+    });
+
+    expect(unactivate).toHaveBeenCalledWith({
+      agentSessionId: "session-1",
+      workspaceId: "room-1"
+    });
+    const nextData = onDataChange.mock.calls
+      .map(([updater]) =>
+        updater(
+          agentGuiData("session-1", "codex", {
+            agentTargetId: "local:codex"
+          })
+        )
+      )
+      .find((candidate) => candidate.provider === "cursor");
+    expect(nextData).toMatchObject({
+      provider: "cursor",
+      agentTargetId: "local:cursor",
+      lastActiveAgentSessionId: null
+    });
+  });
+
   it("tracks active conversation project setting changes through the host reporter", async () => {
     const trackSettingsProjectChange = vi.fn(async () => undefined);
     installAgentHostApi({
@@ -11757,7 +11853,18 @@ describe("useAgentGUINodeController", () => {
 
   it("shows a warning tip when an active session settings update requires a new session", async () => {
     const updateSettings = vi.fn(async () => {
-      throw createAppError("agent.settings_require_new_session");
+      throw Object.assign(
+        new Error(
+          "agent session settings update requires a new session to preserve context"
+        ),
+        {
+          code: "invalid_request",
+          name: "TuttidProtocolError",
+          reason: "agent.settings_require_new_session",
+          retryable: false,
+          statusCode: 400
+        }
+      );
     });
     const onShowMessage = vi.fn();
     installAgentHostApi({
@@ -11832,7 +11939,7 @@ describe("useAgentGUINodeController", () => {
         "warning"
       );
     });
-    expect(result.current.viewModel.detailError).toBe(
+    expect(result.current.viewModel.detailError).not.toBe(
       "This model can only be used in a new session to preserve context."
     );
     expect(
