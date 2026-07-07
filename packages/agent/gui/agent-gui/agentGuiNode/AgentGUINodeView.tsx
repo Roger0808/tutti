@@ -1238,6 +1238,9 @@ export function AgentGUINodeView({
     localComposerFocusRequestSequence === 0
       ? composerFocusRequestSequence
       : (composerFocusRequestSequence ?? 0) + localComposerFocusRequestSequence;
+  const requestComposerFocus = useCallback(() => {
+    setLocalComposerFocusRequestSequence((current) => current + 1);
+  }, []);
   const requestCreateConversation = useCallback(
     (options?: { projectPath?: string | null; source?: string }) => {
       if (previewMode) {
@@ -1254,11 +1257,12 @@ export function AgentGUINodeView({
       } else {
         createConversationAction({ source: source ?? "rail_toolbar" });
       }
-      setLocalComposerFocusRequestSequence((current) => current + 1);
+      requestComposerFocus();
     },
     [
       createConversationAction,
       previewMode,
+      requestComposerFocus,
       viewModel.composerSettings.selectedProjectPath
     ]
   );
@@ -1606,6 +1610,7 @@ export function AgentGUINodeView({
                 actions.selectConversationFilterTarget
               }
               onUpdateConversationFilter={actions.updateConversationFilter}
+              onRequestComposerFocus={requestComposerFocus}
             />
             {renderSidebarFooter ? (
               <div
@@ -4667,6 +4672,7 @@ interface AgentGUIProviderRailProps {
   providerTargets: AgentGUINodeViewModel["providerTargets"];
   providerTargetsLoading: AgentGUINodeViewModel["providerTargetsLoading"];
   comingSoonProviders: AgentGUINodeViewModel["comingSoonProviders"];
+  onRequestComposerFocus: () => void;
   onSelectConversationFilterTarget: AgentGUINodeViewProps["actions"]["selectConversationFilterTarget"];
   onUpdateConversationFilter: (
     filter: AgentGUINodeViewModel["conversationFilter"]
@@ -4681,6 +4687,7 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   providerTargets,
   providerTargetsLoading,
   comingSoonProviders,
+  onRequestComposerFocus,
   onSelectConversationFilterTarget,
   onUpdateConversationFilter
 }: AgentGUIProviderRailProps): React.JSX.Element {
@@ -4735,8 +4742,10 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         });
       }
     }
+    onRequestComposerFocus();
   }, [
     onSelectConversationFilterTarget,
+    onRequestComposerFocus,
     onUpdateConversationFilter,
     railProviderTargets,
     selectedProviderTargetIsPlaceholder
@@ -4747,8 +4756,9 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         provider: target.provider,
         providerTargetId: target.targetId
       });
+      onRequestComposerFocus();
     },
-    [onSelectConversationFilterTarget]
+    [onRequestComposerFocus, onSelectConversationFilterTarget]
   );
 
   return (
