@@ -187,6 +187,10 @@ provider target immediately, including the empty-state artwork, model options,
 and permission modes. Generic home composer overrides are single-target draft
 state and must be cleared when the selected provider target changes; provider-
 or target-scoped defaults may still provide the next settings.
+Host feature switches that disable a provider for new conversations should keep
+the provider target present with `disabled: true` when another surface still
+needs to show the provider in a disabled state. Filter the target out only for
+surfaces that should completely hide it.
 When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
@@ -201,6 +205,10 @@ Provider rail containers and tiles are interactive workbench chrome: they must
 explicitly release host/window drag regions with `nodrag` and
 `-webkit-app-region: no-drag`, otherwise clicks near the window edge can be
 captured as drag gestures before AgentGUI sees the provider filter action.
+Provider rail target ordering is also UI-local chrome state. Drag sorting may
+persist a workspace-scoped order in browser-local storage, but must not write
+that preference into controller state, session state, or durable AgentGUI node
+data. The aggregate `All` target stays fixed above provider-specific targets.
 Provider-scoped rail footer affordances, such as usage limits and environment
 setup, follow the rail's active provider filter target in multi-provider scope;
 when the rail filter is `All`, they should stay hidden because there is no
@@ -519,6 +527,12 @@ already-rendered row props locally while preserving backend section membership.
 First-page section refetches are reserved for workspace, rail filter, user
 project, or session membership changes; Show more continues to use the section
 page endpoint.
+During rail-filter refetches, keep the previously rendered section chrome in
+place for short reloads. Provider/agent switching should not briefly unmount
+the project rail header or replace a populated rail with an empty/skeleton
+rail; if the new first page takes longer than the rail skeleton delay, show the
+skeleton so the user sees loading feedback. Only workspace changes may clear
+the section cache immediately.
 Conversation-list read-state metadata is notification-style UI state. Historical
 imports that carry `runtimeContext.imported === true` should remain visible in
 the rail, but they must not seed unread completion lamps as though they just
@@ -1302,15 +1316,31 @@ Desktop workbench feeds the renderer `AgentsService` `/agents` snapshot into
 AgentGUI so Codex and Claude Code can use service-backed agent targets. An empty
 snapshot still resolves to omitted `providerTargets`, letting AgentGUI preserve
 the static catalog for picker/display compatibility instead of hiding the rail.
-Future providers in the static provider catalog, such as Tutti, Hermes, and
-OpenClaw, must render as selectable disabled/coming-soon targets: provider rail
-clicks may select their empty composer state, but launch/send controls stay
-disabled until their real `/agents` targets are supported.
+Future providers in the static provider catalog, such as Hermes and OpenClaw,
+must render as selectable disabled/coming-soon targets: provider rail clicks
+may select their empty composer state, but launch/send controls stay disabled
+until their real `/agents` targets are supported. The historical `nexight`
+"Tutti" placeholder must not be synthesized into the default AgentGUI rail; use
+the first-party `tutti-agent` provider path for Tutti Agent entry points.
 Static catalog targets do not change the legacy activation contract: AgentGUI
 does not persist or send their `providerTargetRef`. Synthesized local targets
-may expose stable `local:<provider>` values as `agentTargetId`, including
-coming-soon placeholders, so the conversation rail can scope to an empty
-provider-specific list without falling back to All.
+may expose stable `local:<provider>` values as `agentTargetId` for supported
+default and coming-soon placeholders, so the conversation rail can scope to an
+empty provider-specific list without falling back to All.
+
+Desktop workbench may apply product entry gates before passing target data into
+AgentGUI. The Tutti Agent switch (`tuttiAgentSwitchEnabled`) is one such gate:
+when off, desktop removes `local:tutti-agent` from new-session targets, unified
+dock launch, launchpad, provider rail/composer entry points, and workspace-app
+mention candidates. This gate must not filter session/activity snapshots or
+direct session-open paths; existing `tutti-agent` sessions remain readable and
+their provider identity stays `tutti-agent`.
+
+`nexight` remains a historical/runtime provider identity for old activity data
+and compatibility code, but it is no longer a desktop new-entry AgentGUI
+provider. Do not reintroduce `agent-nexight` or the old "Tutti" pseudo-app as a
+launch surface; use the first-party `agent-tutti-agent` / `local:tutti-agent`
+path instead.
 
 ### Conversation Projection
 

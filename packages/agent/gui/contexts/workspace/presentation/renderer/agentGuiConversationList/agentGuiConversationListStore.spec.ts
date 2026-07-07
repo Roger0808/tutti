@@ -165,6 +165,53 @@ describe("agentGuiConversationListStore", () => {
     });
   });
 
+  it("does not retain other-provider legacy sessions under a cursor agent target filter", async () => {
+    const cursorQuery: AgentGUIConversationListQuery = {
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: "local:cursor"
+      },
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex",
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    };
+    const snapshot: WorkspaceAgentActivitySnapshot = {
+      ...emptySnapshot(),
+      sessions: [
+        runtimeSession("cursor-tagged", 3_000, {
+          agentTargetId: "local:cursor",
+          provider: "cursor",
+          title: "Cursor tagged"
+        }),
+        runtimeSession("cursor-legacy", 2_500, {
+          provider: "cursor",
+          title: "Cursor legacy"
+        }),
+        runtimeSession("codex-legacy", 2_000, {
+          provider: "codex",
+          title: "Codex legacy"
+        })
+      ]
+    };
+    setAgentActivityRuntimeForTests({
+      getSnapshot: () => snapshot,
+      load: async () => snapshot,
+      subscribe: () => () => {}
+    } as Partial<AgentActivityRuntime> as AgentActivityRuntime);
+
+    ensureAgentGUIConversationListQuery(cursorQuery);
+    scheduleAgentGUIConversationListProjection(cursorQuery, "projection-sync");
+
+    await waitFor(() => {
+      expect(
+        getAgentGUIConversationListQuerySnapshot(
+          cursorQuery
+        )?.conversations.map((item) => item.id)
+      ).toEqual(["cursor-tagged", "cursor-legacy"]);
+    });
+  });
+
   it("releases local-created conversations that do not match the query's agent target filter", async () => {
     const codexQuery: AgentGUIConversationListQuery = {
       conversationFilter: { kind: "agentTarget", agentTargetId: "local:codex" },
@@ -317,6 +364,26 @@ describe("agentGuiConversationListStore", () => {
     expect(allCodexKey).toBe(allClaudeKey);
     expect(targetCodexKey).toBe(targetClaudeKey);
     expect(legacyCodexKey).not.toBe(legacyClaudeKey);
+  });
+
+  it("splits query keys by sessionOrigin so local and shared runtimes stay isolated", () => {
+    const localQuery: AgentGUIConversationListQuery = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex",
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    };
+    const sharedQuery: AgentGUIConversationListQuery = {
+      ...localQuery,
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_SHARED"
+    };
+
+    const localKey = createAgentGUIConversationListQueryKey(localQuery);
+    const sharedKey = createAgentGUIConversationListQueryKey(sharedQuery);
+
+    expect(localKey).not.toBeNull();
+    expect(sharedKey).not.toBeNull();
+    expect(localKey).not.toBe(sharedKey);
   });
 
   it("projects explicit conversation filters from the current runtime snapshot without reloading sessions", async () => {

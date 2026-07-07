@@ -592,7 +592,7 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.providerReadinessGate).toBeNull();
   });
 
-  it("keeps the active conversation target stable while an empty rail target transition starts", async () => {
+  it("opens the selected target home composer when the active conversation is outside the new rail filter", async () => {
     const unactivate = vi.fn();
     installAgentHostApi({
       list: vi.fn(async () => ({
@@ -669,10 +669,11 @@ describe("useAgentGUINodeController", () => {
         agentTargetId: "local:claude-code"
       });
     });
-    expect(result.current.viewModel.activeConversationId).toBe("codex-session");
-    expect(result.current.viewModel.data.provider).toBe("codex");
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBeNull();
+    });
     expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
-      "codex"
+      "claude-code"
     );
     await waitFor(() => {
       expect(unactivate).toHaveBeenCalledWith({
@@ -852,6 +853,160 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
       "claude-code"
     );
+  });
+
+  it("carries the home composer draft over to an agent with an empty input", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex", {
+          agentTargetId: "local:codex"
+        }),
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local-provider", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local-provider", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.updateDraftContent(draftContent("carry me over"));
+    });
+    expect(result.current.viewModel.draftPrompt).toBe("carry me over");
+
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "claude-code",
+        providerTargetId: "local:claude-code"
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+        "claude-code"
+      );
+    });
+    // Empty target inherits the current input.
+    expect(result.current.viewModel.draftPrompt).toBe("carry me over");
+
+    // The target the user typed under keeps its own draft.
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "codex",
+        providerTargetId: "local:codex"
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+        "codex"
+      );
+    });
+    expect(result.current.viewModel.draftPrompt).toBe("carry me over");
+  });
+
+  it("keeps an agent's own draft instead of overwriting it on switch", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex", {
+          agentTargetId: "local:codex"
+        }),
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local-provider", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local-provider", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        onDataChange: vi.fn()
+      })
+    );
+
+    // Give Claude Code its own draft first.
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "claude-code",
+        providerTargetId: "local:claude-code"
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+        "claude-code"
+      );
+    });
+    act(() => {
+      result.current.actions.updateDraftContent(draftContent("claude draft"));
+    });
+
+    // Type something under Codex, then switch back to Claude Code.
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "codex",
+        providerTargetId: "local:codex"
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+        "codex"
+      );
+    });
+    act(() => {
+      result.current.actions.updateDraftContent(draftContent("codex draft"));
+    });
+
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "claude-code",
+        providerTargetId: "local:claude-code"
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+        "claude-code"
+      );
+    });
+    // Claude Code keeps its own draft; it is not clobbered by the Codex input.
+    expect(result.current.viewModel.draftPrompt).toBe("claude draft");
   });
 
   it("syncs a scoped rail target when switching the empty composer provider", async () => {
@@ -2882,6 +3037,77 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.providerTargets.length).toBeGreaterThan(1);
   });
 
+  it("renders exactly the provided targets in exact rail mode (no placeholders or catalog padding)", () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        providerRailMode: "exact",
+        providerTargets: [
+          {
+            targetId: "shared-agent:alice-codex",
+            provider: "codex",
+            ref: {
+              kind: "shared-agent",
+              provider: "codex",
+              sharedAgentId: "alice-codex"
+            },
+            label: "Alice's Codex"
+          },
+          {
+            targetId: "shared-agent:bob-claude",
+            provider: "claude-code",
+            ref: {
+              kind: "shared-agent",
+              provider: "claude-code",
+              sharedAgentId: "bob-claude"
+            },
+            label: "Bob's Claude"
+          }
+        ],
+        onDataChange: vi.fn()
+      })
+    );
+
+    expect(result.current.viewModel.providerRailMode).toBe("exact");
+    expect(
+      result.current.viewModel.providerTargets.map((target) => target.targetId)
+    ).toEqual(["shared-agent:alice-codex", "shared-agent:bob-claude"]);
+  });
+
+  it("keeps the provider rail empty in exact mode when no targets are provided", () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        providerRailMode: "exact",
+        providerTargets: [],
+        onDataChange: vi.fn()
+      })
+    );
+
+    expect(result.current.viewModel.providerRailMode).toBe("exact");
+    expect(result.current.viewModel.providerTargets).toEqual([]);
+  });
+
   it("sends fallback local agent target ids without provider target refs when provider targets are omitted", async () => {
     const activate = vi.fn(
       async (input: AgentHostActivateAgentSessionInput) => ({
@@ -3762,9 +3988,18 @@ describe("useAgentGUINodeController", () => {
       list: vi.fn(async () => ({
         presences: [],
         sessions: [
-          workspaceAgentSession("session-1", { title: "2132" }),
-          workspaceAgentSession("session-2", { title: "hi" }),
-          workspaceAgentSession("session-3", { title: "这是什么?" })
+          workspaceAgentSession("session-1", {
+            title: "2132",
+            updatedAtUnixMs: 3_000
+          }),
+          workspaceAgentSession("session-2", {
+            title: "hi",
+            updatedAtUnixMs: 2_000
+          }),
+          workspaceAgentSession("session-3", {
+            title: "这是什么?",
+            updatedAtUnixMs: 1_000
+          })
         ]
       })),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),

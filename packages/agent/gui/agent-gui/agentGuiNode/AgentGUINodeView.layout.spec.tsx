@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -20,6 +21,7 @@ import {
   createLocalAgentGUIProviderTarget,
   createLocalAgentGUIProviderTargets
 } from "../../providerTargets";
+import { agentGUIProviderRailOrderStorageKey } from "./model/agentGuiProviderRailOrder";
 import {
   AgentActivityRuntimeProvider,
   type AgentActivityRuntime,
@@ -93,6 +95,33 @@ function ensurePointerCaptureApi(): void {
       value: () => {}
     });
   }
+}
+
+function createDataTransferStub(): DataTransfer {
+  const store = new Map<string, string>();
+  return {
+    dropEffect: "none",
+    effectAllowed: "none",
+    files: [] as unknown as FileList,
+    items: [] as unknown as DataTransferItemList,
+    get types() {
+      return [...store.keys()];
+    },
+    clearData(format?: string) {
+      if (format) {
+        store.delete(format);
+      } else {
+        store.clear();
+      }
+    },
+    getData(format: string) {
+      return store.get(format) ?? "";
+    },
+    setData(format: string, data: string) {
+      store.set(format, data);
+    },
+    setDragImage() {}
+  };
 }
 
 vi.mock("./AgentSessionChrome", () => ({
@@ -184,6 +213,8 @@ describe("AgentGUINodeView layout persistence", () => {
     conversationMetaMock.calls = [];
     composerMock.calls = [];
     statusDotMock.calls = [];
+    globalThis.localStorage.clear();
+    vi.useRealTimers();
   });
 
   it("does not persist the initial layout callback on mount", () => {
@@ -284,7 +315,6 @@ describe("AgentGUINodeView layout persistence", () => {
       container.querySelector(".agent-gui-node__provider-rail-panel")
     ).toContainElement(footer);
     expect(providerTileScrollArea).not.toContainElement(footer);
-    expect(providerTileScrollArea.nextElementSibling).toBe(footer);
     expect(
       container.querySelector(".agent-gui-node__rail")
     ).not.toContainElement(footer);
@@ -304,6 +334,170 @@ describe("AgentGUINodeView layout persistence", () => {
     );
 
     expect(onConversationRailWidthChanged).not.toHaveBeenCalled();
+  });
+
+  it("renders the account menu and refreshes it on open", async () => {
+    const onOpenChange = vi.fn();
+    const onSettings = vi.fn();
+    const openedUrls: string[] = [];
+
+    renderAgentGUINodeView({
+      accountMenuState: {
+        user: {
+          userId: "user-1",
+          name: "Jane",
+          email: "jane@example.com",
+          avatar: null
+        },
+        membershipLabel: "Pro",
+        creditsLabel: "2,450",
+        loading: false,
+        error: null,
+        links: {
+          planUrl: "https://tutti.sh/profile/plan",
+          usageUrl: "https://tutti.sh/profile/usage",
+          settingsUrl: "https://tutti.sh/profile/settings"
+        },
+        onOpenChange,
+        onLogin: vi.fn(),
+        onLogout: vi.fn(),
+        onSettings,
+        onOpenExternal(url) {
+          openedUrls.push(url);
+        }
+      }
+    });
+
+    const trigger = screen.getByRole("button", { name: "Jane" });
+    expect(trigger).toHaveTextContent("Jane");
+    expect(trigger).toHaveTextContent("Pro");
+    expect(trigger).not.toHaveTextContent("jane@example.com");
+    expect(
+      trigger.querySelector("[data-account-membership-badge='true']")
+    ).not.toBeNull();
+    fireEvent.click(trigger);
+
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+    const menu = await screen.findByTestId("agent-gui-account-menu");
+    expect(menu).toHaveTextContent("Jane");
+    expect(menu).toHaveTextContent("Pro");
+    expect(
+      menu.querySelector("[data-account-membership-badge='true']")
+    ).not.toBeNull();
+    expect(menu).toHaveTextContent("Upgrade");
+    expect(menu).toHaveTextContent("2,450");
+    expect(menu).toHaveTextContent("Settings");
+
+    fireEvent.click(within(menu).getByText("Member"));
+    expect(openedUrls).toEqual(["https://tutti.sh/profile/plan"]);
+    fireEvent.click(within(menu).getByText("Settings"));
+    expect(onSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders a dismissible registration credits toast above the account row", () => {
+    const onDismiss = vi.fn();
+    renderAgentGUINodeView({
+      accountMenuState: {
+        user: {
+          userId: "user-1",
+          name: "Jane",
+          email: "jane@example.com",
+          avatar: null
+        },
+        membershipLabel: "Free",
+        creditsLabel: "500",
+        loading: false,
+        error: null,
+        registrationCreditsToast: {
+          id: "registrationCreditsToastShown:user-1:grant-1",
+          creditsLabel: "500",
+          visible: true,
+          autoDismissMs: 120_000,
+          onDismiss
+        },
+        links: {
+          planUrl: "https://tutti.sh/profile/plan",
+          usageUrl: "https://tutti.sh/profile/usage",
+          settingsUrl: "https://tutti.sh/profile/settings"
+        },
+        onOpenChange: vi.fn(),
+        onLogin: vi.fn(),
+        onLogout: vi.fn(),
+        onOpenExternal: vi.fn()
+      }
+    });
+
+    const toast = screen.getByTestId("agent-gui-account-reward-toast");
+    expect(toast).toHaveTextContent("New user credits");
+    expect(toast).toHaveTextContent("+500 credits");
+    expect(toast).toHaveTextContent("Added to account balance");
+    expect(screen.queryByText("Account center")).toBeNull();
+
+    fireEvent.click(
+      within(toast).getByRole("button", {
+        name: "Close credits reward notification"
+      })
+    );
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the account rail menu when no signed-in user is available", () => {
+    const { container } = renderAgentGUINodeView({
+      accountMenuState: {
+        user: null,
+        membershipLabel: "",
+        creditsLabel: null,
+        loading: false,
+        error: null,
+        links: {
+          planUrl: "https://tutti.sh/profile/plan",
+          usageUrl: "https://tutti.sh/profile/usage",
+          settingsUrl: "https://tutti.sh/profile/settings"
+        },
+        onOpenChange: vi.fn(),
+        onLogin: vi.fn(),
+        onLogout: vi.fn(),
+        onOpenExternal: vi.fn()
+      }
+    });
+
+    expect(
+      container.querySelector("[data-account-menu-trigger='true']")
+    ).toBeNull();
+    expect(screen.queryByText("Tutti Agent")).toBeNull();
+    expect(screen.queryByText("Free")).toBeNull();
+  });
+
+  it("shows a localized account data warning for partial summary failures", async () => {
+    renderAgentGUINodeView({
+      accountMenuState: {
+        user: {
+          userId: "user-1",
+          name: "Jane",
+          email: "jane@example.com",
+          avatar: null
+        },
+        membershipLabel: "",
+        creditsLabel: null,
+        loading: false,
+        error: null,
+        partialError: true,
+        links: {
+          planUrl: "https://tutti.sh/profile/plan",
+          usageUrl: "https://tutti.sh/profile/usage",
+          settingsUrl: "https://tutti.sh/profile/settings"
+        },
+        onOpenChange: vi.fn(),
+        onLogin: vi.fn(),
+        onLogout: vi.fn(),
+        onOpenExternal: vi.fn()
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Jane" }));
+
+    const menu = await screen.findByTestId("agent-gui-account-menu");
+    expect(menu).toHaveTextContent("Some account data is unavailable");
   });
 
   it("sets the controlled rail width on the grid layout", () => {
@@ -605,6 +799,26 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
+  it("hides the legacy disabled Tutti rail target when Tutti Agent is available", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("tutti-agent"),
+          {
+            ...createLocalAgentGUIProviderTarget("nexight"),
+            disabled: true
+          }
+        ]
+      }
+    });
+
+    expect(screen.getAllByRole("tab", { name: "Tutti Agent" })).toHaveLength(1);
+    expect(
+      screen.queryByRole("tab", { name: "Tutti" })
+    ).not.toBeInTheDocument();
+  });
+
   it("orders provider rail tiles as Codex, Claude Code, Cursor, Tutti, Hermes, OpenClaw without visible provider labels", () => {
     renderAgentGUINodeView({
       viewModel: {
@@ -668,6 +882,99 @@ describe("AgentGUINodeView layout persistence", () => {
         .querySelector("img")
         ?.getAttribute("src")
     ).toBe(MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.tutti);
+  });
+
+  it("persists provider rail tile order after drag sorting", async () => {
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const cursorTarget = createLocalAgentGUIProviderTarget("cursor");
+    const dataTransfer = createDataTransferStub();
+
+    const { rerender } = renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: [codexTarget, claudeTarget, cursorTarget]
+      }
+    });
+
+    const providerTileLabels = () =>
+      screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"));
+
+    expect(providerTileLabels()).toEqual([
+      "All",
+      "Codex",
+      "Claude Code",
+      "Cursor",
+      "Hermes",
+      "OpenClaw"
+    ]);
+
+    const codexTile = screen.getByRole("tab", { name: "Codex" });
+    const cursorTile = screen.getByRole("tab", { name: "Cursor" });
+    const providerRail = screen.getByRole("tablist");
+    vi.spyOn(codexTile, "getBoundingClientRect").mockReturnValue({
+      bottom: 52,
+      height: 52,
+      left: 0,
+      right: 52,
+      top: 0,
+      width: 52,
+      x: 0,
+      y: 0,
+      toJSON: () => ({})
+    });
+
+    fireEvent.dragStart(cursorTile, { dataTransfer });
+    fireEvent.dragOver(codexTile, {
+      clientY: 8,
+      dataTransfer
+    });
+    fireEvent.dragOver(codexTile, {
+      clientY: 30,
+      dataTransfer
+    });
+    fireEvent.dragOver(cursorTile, { dataTransfer });
+    fireEvent.dragOver(providerRail, { dataTransfer });
+    fireEvent.drop(providerRail, {
+      clientY: 372,
+      dataTransfer
+    });
+
+    expect(providerTileLabels()).toEqual([
+      "All",
+      "Cursor",
+      "Codex",
+      "Claude Code",
+      "Hermes",
+      "OpenClaw"
+    ]);
+    expect(
+      globalThis.localStorage.getItem(
+        agentGUIProviderRailOrderStorageKey("room-1")
+      )
+    ).toBe(
+      '["local:cursor","local:codex","local:claude-code","local:hermes","local:openclaw"]'
+    );
+
+    rerender(
+      buildAgentGUINodeViewElement({
+        viewModel: {
+          ...createViewModel(),
+          providerTargets: [codexTarget, claudeTarget, cursorTarget]
+        }
+      })
+    );
+
+    await waitFor(() => {
+      expect(providerTileLabels()).toEqual([
+        "All",
+        "Cursor",
+        "Codex",
+        "Claude Code",
+        "Hermes",
+        "OpenClaw"
+      ]);
+    });
   });
 
   it("uses Cursor colorful artwork for the provider rail even when the target has a session icon", () => {
@@ -1052,23 +1359,110 @@ describe("AgentGUINodeView layout persistence", () => {
       screen.getByRole("tab", { name: "Claude Code" })
     ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Cursor" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Tutti" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Hermes" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "OpenClaw" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Tutti" })).not.toBeDisabled();
     expect(screen.getByRole("tab", { name: "Hermes" })).not.toBeDisabled();
     expect(screen.getByRole("tab", { name: "OpenClaw" })).not.toBeDisabled();
     expect(
       screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
-    ).toEqual([
-      "All",
-      "Codex",
-      "Claude Code",
-      "Cursor",
-      "Tutti",
-      "Hermes",
-      "OpenClaw"
-    ]);
+    ).toEqual(["All", "Codex", "Claude Code", "Cursor", "Hermes", "OpenClaw"]);
+  });
+
+  it("renders exactly the provided targets in exact rail mode", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerRailMode: "exact",
+        providerTargets: [
+          {
+            targetId: "shared-agent:alice-codex",
+            provider: "codex",
+            ref: {
+              kind: "shared-agent",
+              provider: "codex",
+              sharedAgentId: "alice-codex"
+            },
+            label: "Alice's Codex"
+          },
+          {
+            targetId: "shared-agent:bob-claude",
+            provider: "claude-code",
+            ref: {
+              kind: "shared-agent",
+              provider: "claude-code",
+              sharedAgentId: "bob-claude"
+            },
+            label: "Bob's Claude"
+          }
+        ],
+        providerTargetsLoading: false
+      }
+    });
+
+    // "All" tile + exactly the two shared agents — no placeholders, no padding.
+    expect(
+      screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
+    ).toEqual(["All", "Alice's Codex", "Bob's Claude"]);
+    expect(screen.queryByRole("tab", { name: "Cursor" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Hermes" })).toBeNull();
+  });
+
+  it("preserves the host-provided target order in exact rail mode", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerRailMode: "exact",
+        // claude-code first, then codex — the built-in provider order would flip
+        // these; exact mode must keep the caller's order.
+        providerTargets: [
+          {
+            targetId: "shared-agent:bob-claude",
+            provider: "claude-code",
+            ref: {
+              kind: "shared-agent",
+              provider: "claude-code",
+              sharedAgentId: "bob-claude"
+            },
+            label: "Bob's Claude"
+          },
+          {
+            targetId: "shared-agent:alice-codex",
+            provider: "codex",
+            ref: {
+              kind: "shared-agent",
+              provider: "codex",
+              sharedAgentId: "alice-codex"
+            },
+            label: "Alice's Codex"
+          }
+        ],
+        providerTargetsLoading: false
+      }
+    });
+
+    expect(
+      screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
+    ).toEqual(["All", "Bob's Claude", "Alice's Codex"]);
+  });
+
+  it("renders the host empty state in exact rail mode when no targets are provided", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerRailMode: "exact",
+        providerTargets: [],
+        providerTargetsLoading: false
+      },
+      renderProviderRailEmpty: () => (
+        <div data-testid="exact-rail-empty">No shared agents</div>
+      )
+    });
+
+    expect(screen.getByTestId("exact-rail-empty")).toBeInTheDocument();
+    // No static local catalog fallback.
+    expect(screen.queryByRole("tab", { name: "Codex" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Cursor" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "All" })).toBeNull();
   });
 
   it("keeps the provider rail to the default agent tiles for static provider catalogs", () => {
@@ -1087,7 +1481,7 @@ describe("AgentGUINodeView layout persistence", () => {
       "Codex",
       "Claude Code",
       "Cursor",
-      "Tutti",
+      "Tutti Agent",
       "Hermes",
       "OpenClaw"
     ]);
@@ -1704,12 +2098,33 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toHaveAttribute("data-slot", "tooltip-trigger");
   });
 
-  it("renders a fishbone loading skeleton for the initial conversation list load", () => {
+  it("delays the conversation list skeleton during initial loading", async () => {
+    vi.useFakeTimers();
+
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
         isLoadingConversations: true
       }
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.queryByTestId("agent-gui-conversation-list-loading-skeleton")
+    ).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(299);
+    });
+
+    expect(
+      screen.queryByTestId("agent-gui-conversation-list-loading-skeleton")
+    ).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
     });
 
     expect(
@@ -1718,7 +2133,47 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(screen.queryByText("loadingConversations")).not.toBeInTheDocument();
   });
 
-  it("does not render cwd-derived project sections while runtime sections are loading", () => {
+  it("skips the conversation list skeleton when conversations load within 300ms", async () => {
+    vi.useFakeTimers();
+
+    const { rerender } = renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        isLoadingConversations: true
+      }
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(299);
+    });
+
+    rerender(
+      buildAgentGUINodeViewElement({
+        viewModel: {
+          ...createViewModel(),
+          conversations: [createConversationSummary("session-1")]
+        }
+      })
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    expect(
+      screen.queryByTestId("agent-gui-conversation-list-loading-skeleton")
+    ).toBeNull();
+    expect(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    ).toBeInTheDocument();
+  });
+
+  it("does not render cwd-derived project sections while runtime sections are loading", async () => {
+    vi.useFakeTimers();
+
     const project = {
       id: "project-app",
       path: "/workspace/app",
@@ -1757,6 +2212,17 @@ describe("AgentGUINodeView layout persistence", () => {
           }
         ]
       }
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.queryByTestId("agent-gui-conversation-list-loading-skeleton")
+    ).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(300);
     });
 
     expect(
@@ -2234,6 +2700,137 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(listSessionSections).toHaveBeenLastCalledWith(
       expect.objectContaining({ agentTargetId: "local:codex" })
     );
+  });
+
+  it("keeps the project rail header mounted before slow provider-filtered reloads show a skeleton", async () => {
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const claudeAgentTargetId = claudeTarget.agentTargetId ?? "";
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >((input) => {
+      if (input.agentTargetId === claudeAgentTargetId) {
+        return new Promise<AgentActivityRuntimeSessionSectionsResult>(
+          () => undefined
+        );
+      }
+      return Promise.resolve({
+        workspaceId: input.workspaceId,
+        sections: [
+          createRuntimeProjectSection({
+            project,
+            sessions: [
+              {
+                ...createRuntimeSession(
+                  input.workspaceId,
+                  "codex-project-session",
+                  "/workspace/app/package",
+                  {
+                    agentTargetId: codexTarget.agentTargetId ?? undefined,
+                    provider: "codex"
+                  }
+                ),
+                updatedAtUnixMs: 100
+              }
+            ],
+            hasMore: false,
+            workspaceId: input.workspaceId
+          })
+        ]
+      });
+    });
+    const activityRuntime = {
+      ...createNoopAgentActivityRuntime(),
+      listSessionSections,
+      listSessionSectionPage: async (
+        input: Parameters<
+          NonNullable<AgentActivityRuntime["listSessionSectionPage"]>
+        >[0]
+      ) => ({
+        kind: "project" as const,
+        sectionKey: input.sectionKey,
+        userProject: createRuntimeUserProject(project),
+        sessions: [],
+        hasMore: false
+      })
+    };
+    const labels = createLabels();
+    const baseViewModel = {
+      ...createViewModel(),
+      selectedProviderTarget: codexTarget,
+      providerTargets: [codexTarget, claudeTarget],
+      userProjects: [project],
+      conversations: []
+    };
+    const rendered = renderAgentGUINodeView({
+      activityRuntime,
+      labels,
+      viewModel: baseViewModel
+    });
+
+    expect(
+      await screen.findByTestId(
+        "agent-gui-conversation-item-codex-project-session"
+      )
+    ).toBeInTheDocument();
+    const projectHeaderLabel = workspaceUserProjectI18n.tFirst([
+      "projectSelect.projectLabel"
+    ]);
+    const projectHeader = screen
+      .getByText(projectHeaderLabel)
+      .closest(".agent-gui-node__project-rail-header");
+    expect(projectHeader).not.toBeNull();
+
+    vi.useFakeTimers();
+    rendered.rerender(
+      buildAgentGUINodeViewElement({
+        activityRuntime,
+        labels,
+        viewModel: {
+          ...baseViewModel,
+          conversationFilter: {
+            kind: "agentTarget",
+            agentTargetId: claudeAgentTargetId
+          },
+          selectedProviderTarget: claudeTarget
+        }
+      })
+    );
+
+    expect(listSessionSections).toHaveBeenCalledTimes(2);
+    act(() => {
+      vi.advanceTimersByTime(299);
+    });
+    expect(listSessionSections).toHaveBeenLastCalledWith(
+      expect.objectContaining({ agentTargetId: claudeAgentTargetId })
+    );
+    expect(
+      screen.queryByTestId("agent-gui-conversation-list-loading-skeleton")
+    ).toBeNull();
+    expect(
+      screen.getByTestId("agent-gui-conversation-item-codex-project-session")
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getByText(projectHeaderLabel)
+        .closest(".agent-gui-node__project-rail-header")
+    ).toBe(projectHeader);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-conversation-list-loading-skeleton")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("agent-gui-conversation-item-codex-project-session")
+    ).not.toBeInTheDocument();
   });
 
   it("passes the active agent target filter to runtime rail section requests", async () => {
@@ -3815,9 +4412,11 @@ interface RenderAgentGUINodeViewOptions {
   onLinkAction?: AgentGUINodeViewProps["onLinkAction"];
   viewModel?: AgentGUINodeViewModel;
   actions?: AgentGUINodeViewProps["actions"];
+  accountMenuState?: AgentGUINodeViewProps["accountMenuState"];
   labels?: AgentGUIViewLabels;
   onOpenConversationWindow?: AgentGUINodeViewProps["onOpenConversationWindow"];
   renderSidebarFooter?: AgentGUINodeViewProps["renderSidebarFooter"];
+  renderProviderRailEmpty?: AgentGUINodeViewProps["renderProviderRailEmpty"];
   slashStatusLimits?: AgentGUINodeViewProps["slashStatusLimits"];
 }
 
@@ -3831,9 +4430,11 @@ function buildAgentGUINodeViewElement({
   onLinkAction,
   viewModel = createViewModel(),
   actions = createActions(),
+  accountMenuState = null,
   labels = createLabels(),
   onOpenConversationWindow,
   renderSidebarFooter,
+  renderProviderRailEmpty,
   slashStatusLimits = []
 }: RenderAgentGUINodeViewOptions = {}) {
   return (
@@ -3841,10 +4442,12 @@ function buildAgentGUINodeViewElement({
       <AgentGUINodeView
         viewModel={viewModel}
         renderSidebarFooter={renderSidebarFooter}
+        renderProviderRailEmpty={renderProviderRailEmpty}
         onLinkAction={onLinkAction}
         isActive={isActive}
         isAgentProviderReady={isAgentProviderReady}
         slashStatusLimits={slashStatusLimits}
+        accountMenuState={accountMenuState}
         actions={actions}
         workspaceUserProjectI18n={workspaceUserProjectI18n}
         conversationRailCollapsed={conversationRailCollapsed}
@@ -4118,6 +4721,7 @@ function createViewModel(
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
+    providerRailMode: "catalog",
     comingSoonProviders: [],
     conversationFilter: { kind: "all" },
     conversations: [],
@@ -4379,6 +4983,22 @@ function createLabels(): AgentGUIViewLabels {
     empty: "empty",
     conversations: "conversations",
     newConversation: "newConversation",
+    accountMenuTitle: "Tutti Agent",
+    accountMenuMember: "Member",
+    accountMenuUpgrade: "Upgrade",
+    accountMenuCreditsBalance: "Credits",
+    accountMenuAccountCenter: "Account center",
+    accountMenuSettings: "Settings",
+    accountMenuFree: "Free",
+    accountMenuSignIn: "Sign in",
+    accountMenuSignOut: "Sign out",
+    accountMenuLoading: "Loading",
+    accountMenuUnavailable: "--",
+    accountMenuDataUnavailable: "Some account data is unavailable",
+    accountRewardToastTitle: "New user credits",
+    accountRewardToastCreditsUnit: "credits",
+    accountRewardToastDescription: "Added to account balance",
+    accountRewardToastClose: "Close credits reward notification",
     agentConfig: "agentConfig",
     agentSettingsMenu: "agentSettingsMenu",
     agentEnvSetup: "agentEnvSetup",

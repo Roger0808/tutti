@@ -1,6 +1,8 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
 import type {
   AgentGUIProvider,
+  AgentGUIProviderRailMode,
+  AgentGUIProviderRailEmptyRenderer,
   AgentGUIProviderTarget
 } from "@tutti-os/agent-gui";
 import { resolveAgentGuiSessionProviderIconUrl } from "@tutti-os/agent-gui/agentGuiSessionProviderIconUrls";
@@ -72,6 +74,10 @@ export function createWorkspaceAgentGuiContribution(input: {
   >[0]["onCapabilitySettingsRequest"];
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  /** "exact" renders only the provided targets (no static catalog). Defaults to "catalog". */
+  providerRailMode?: AgentGUIProviderRailMode;
+  /** Host-owned empty state for the provider rail in "exact" mode. */
+  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   tuttidClient: TuttidClient;
   platformApi: Pick<
@@ -86,6 +92,12 @@ export function createWorkspaceAgentGuiContribution(input: {
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceId: string;
 }): WorkbenchContribution {
+  const defaultAgentProvider = isWorkspaceAgentGuiProviderEnabledForNewEntry(
+    input.defaultAgentProvider,
+    input.providerTargets
+  )
+    ? input.defaultAgentProvider
+    : null;
   const agentGUIWorkbenchHostInput = createDesktopAgentGUIWorkbenchHostInput({
     hostFilesApi: input.hostFilesApi,
     tuttidClient: input.tuttidClient,
@@ -154,6 +166,8 @@ export function createWorkspaceAgentGuiContribution(input: {
       previewMode: options?.previewMode,
       providerTargets: input.providerTargets,
       providerTargetsLoading: input.providerTargetsLoading,
+      providerRailMode: input.providerRailMode,
+      renderProviderRailEmpty: input.renderProviderRailEmpty,
       comingSoonAgentProviders: input.comingSoonAgentProviders,
       defaultProviderTargetId: input.defaultProviderTargetId,
       contextMentionProviders:
@@ -196,9 +210,7 @@ export function createWorkspaceAgentGuiContribution(input: {
     dockIconUrls: input.dockIconUrls,
     unifiedDockIconUrl: input.unifiedDockIconUrl,
     frame: workspaceAgentGuiNodeFrame,
-    defaultProvider: isAgentGuiWorkbenchProvider(input.defaultAgentProvider)
-      ? input.defaultAgentProvider
-      : null,
+    defaultProvider: defaultAgentProvider,
     defaultProviderTargetId: input.defaultProviderTargetId,
     providerAvailability: resolveWorkspaceAgentGuiProviderAvailability(
       input.agentProviderStatusService
@@ -207,9 +219,7 @@ export function createWorkspaceAgentGuiContribution(input: {
     providerTargetsLoading: input.providerTargetsLoading,
     resolveDockLaunchPayload: () =>
       resolveAgentGuiUnifiedDockLaunchPayload({
-        defaultProvider: isAgentGuiWorkbenchProvider(input.defaultAgentProvider)
-          ? input.defaultAgentProvider
-          : null,
+        defaultProvider: defaultAgentProvider,
         defaultProviderTargetId: input.defaultProviderTargetId,
         providerAvailability: resolveWorkspaceAgentGuiProviderAvailability(
           input.agentProviderStatusService
@@ -252,6 +262,21 @@ export function createWorkspaceAgentGuiContribution(input: {
       }),
     workspaceId: input.workspaceId
   });
+}
+
+function isWorkspaceAgentGuiProviderEnabledForNewEntry(
+  provider: string | null | undefined,
+  providerTargets: readonly AgentGUIProviderTarget[] | null | undefined
+): provider is AgentGuiWorkbenchProvider {
+  if (!isAgentGuiWorkbenchProvider(provider)) {
+    return false;
+  }
+  if (provider !== "tutti-agent") {
+    return true;
+  }
+  return (providerTargets ?? []).some(
+    (target) => target.provider === provider && target.disabled !== true
+  );
 }
 
 function resolveWorkspaceAgentGuiProviderAvailability(

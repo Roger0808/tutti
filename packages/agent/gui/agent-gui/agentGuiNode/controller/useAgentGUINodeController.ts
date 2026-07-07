@@ -55,6 +55,7 @@ import { AGENT_PROVIDER_LABEL } from "../../../contexts/settings/domain/agentSet
 import type {
   AgentGUINodeData,
   AgentGUIProvider,
+  AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderTarget
 } from "../../../types";
@@ -81,6 +82,7 @@ import {
 import {
   createAgentGUIConversationFilterState,
   filterAgentGUIConversationSummaries,
+  matchesAgentGUIConversationSummaryFilter,
   normalizeAgentGUIConversationFilter,
   type AgentGUIConversationFilter
 } from "../model/agentGuiConversationFilter";
@@ -99,6 +101,7 @@ import type {
   OpenclawGatewayViewState
 } from "../model/agentGuiNodeTypes";
 import {
+  agentComposerDraftHasContent,
   agentPromptContentDisplayText,
   agentPromptContentHasImage,
   agentPromptContentToComposerDraft,
@@ -3642,6 +3645,12 @@ interface UseAgentGUINodeControllerInput {
   data: AgentGUINodeData;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  /**
+   * Controls how the provider rail composes its list. Defaults to "catalog"
+   * (static local catalog + placeholders + coming-soon). Use "exact" to render
+   * only the provided targets with no static injection or fallback.
+   */
+  providerRailMode?: AgentGUIProviderRailMode;
   /** Providers gated by the host (feature-gated) — rendered as coming-soon placeholders. */
   comingSoonProviders?: readonly AgentGUIProvider[];
   providerReadinessGates?: Partial<
@@ -3686,6 +3695,7 @@ export function useAgentGUINodeController({
   data,
   providerTargets,
   providerTargetsLoading = false,
+  providerRailMode = "catalog",
   comingSoonProviders,
   providerReadinessGates = null,
   defaultProviderTargetId = null,
@@ -3697,6 +3707,10 @@ export function useAgentGUINodeController({
   onShowMessage
 }: UseAgentGUINodeControllerInput) {
   const agentActivityRuntime = useAgentActivityRuntime();
+  // Stable identity of the injected runtime; drives the conversation-list query
+  // key and every session-view ref so local/shared runtimes stay isolated.
+  const agentActivityRuntimeOrigin =
+    agentActivityRuntime.origin?.trim() || AGENT_GUI_RUNTIME_SESSION_ORIGIN;
   const agentQueuedPromptRuntime = useAgentQueuedPromptRuntime();
   const agentHostApi = useAgentHostApi();
   const agentActivitySnapshot = useAgentActivitySnapshot(workspaceId);
@@ -3707,24 +3721,31 @@ export function useAgentGUINodeController({
         : emptyComingSoonProviders,
     [comingSoonProviders]
   );
-  const normalizedExplicitProviderTargets = useMemo(
-    () =>
-      applyComingSoonProviderTargets(
-        normalizeAgentGUIProviderTargets(providerTargets, {
-          includeDisabledPlaceholders: true,
-          useStaticCatalog: false
-        }),
-        normalizedComingSoonProviders
-      ),
-    [normalizedComingSoonProviders, providerTargets]
-  );
+  const isExactProviderRailMode = providerRailMode === "exact";
+  const normalizedExplicitProviderTargets = useMemo(() => {
+    // Exact mode: render precisely the provided targets — no disabled
+    // placeholders (nexight/hermes/openclaw) and no coming-soon markers.
+    const normalized = normalizeAgentGUIProviderTargets(providerTargets, {
+      includeDisabledPlaceholders: !isExactProviderRailMode,
+      useStaticCatalog: false
+    });
+    return isExactProviderRailMode
+      ? normalized
+      : applyComingSoonProviderTargets(
+          normalized,
+          normalizedComingSoonProviders
+        );
+  }, [isExactProviderRailMode, normalizedComingSoonProviders, providerTargets]);
   const normalizedProviderTargets = useMemo(() => {
     if (providerTargetsLoading) {
       return [];
     }
+    // Exact mode never falls back to the static local catalog — an empty list
+    // stays empty so the host can render its own empty state.
     if (
-      providerTargets === undefined ||
-      normalizedExplicitProviderTargets.length === 0
+      !isExactProviderRailMode &&
+      (providerTargets === undefined ||
+        normalizedExplicitProviderTargets.length === 0)
     ) {
       return applyComingSoonProviderTargets(
         normalizeAgentGUIProviderTargets(null, {
@@ -3735,12 +3756,14 @@ export function useAgentGUINodeController({
     }
     return normalizedExplicitProviderTargets;
   }, [
+    isExactProviderRailMode,
     normalizedExplicitProviderTargets,
     normalizedComingSoonProviders,
     providerTargets,
     providerTargetsLoading
   ]);
   const shouldUseStaticProviderTargets =
+    !isExactProviderRailMode &&
     !providerTargetsLoading &&
     (providerTargets === undefined ||
       normalizedExplicitProviderTargets.length === 0);
@@ -3896,9 +3919,18 @@ export function useAgentGUINodeController({
         workspaceId,
         userId,
         provider: data.provider,
-        sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN
+        // Identity derives from the injected runtime so local/shared runtimes
+        // for the same workspace produce distinct query keys. Legacy runtimes
+        // without an origin fall back to the default origin (no key change).
+        sessionOrigin: agentActivityRuntimeOrigin
       };
-    }, [currentUserId, data.provider, conversationFilter, workspaceId]);
+    }, [
+      agentActivityRuntimeOrigin,
+      currentUserId,
+      data.provider,
+      conversationFilter,
+      workspaceId
+    ]);
   const conversationListState = useAgentGuiConversationList(
     conversationListQuery
   );
@@ -4046,9 +4078,10 @@ export function useAgentGUINodeController({
   const sessionViewRef = useCallback(
     (agentSessionId: string | null | undefined) => ({
       workspaceId,
-      agentSessionId
+      agentSessionId,
+      origin: agentActivityRuntimeOrigin
     }),
-    [workspaceId]
+    [agentActivityRuntimeOrigin, workspaceId]
   );
   const activeSessionView = useAgentSessionView(
     sessionViewRef(activeConversationId)
@@ -4946,11 +4979,26 @@ export function useAgentGUINodeController({
   }, [conversationListQuery, conversations, previewMode]);
   const persistActiveConversation = useCallback(
     (agentSessionId: string | null) => {
-      onDataChangeRef.current((current) =>
-        current.lastActiveAgentSessionId === agentSessionId
-          ? current
-          : { ...current, lastActiveAgentSessionId: agentSessionId }
-      );
+      onDataChangeRef.current((current) => {
+        // Clearing the active session (returning to the home/new-composer state)
+        // must also drop the persisted title. Otherwise the window/dock header
+        // falls back to `lastActiveConversationTitle` and keeps showing the
+        // previous session's title — including after switching to a different
+        // provider that has no active conversation.
+        const nextTitle =
+          agentSessionId === null ? null : current.lastActiveConversationTitle;
+        if (
+          current.lastActiveAgentSessionId === agentSessionId &&
+          (current.lastActiveConversationTitle ?? null) === (nextTitle ?? null)
+        ) {
+          return current;
+        }
+        return {
+          ...current,
+          lastActiveAgentSessionId: agentSessionId,
+          lastActiveConversationTitle: nextTitle
+        };
+      });
     },
     []
   );
@@ -7128,6 +7176,7 @@ export function useAgentGUINodeController({
       dataRef.current.lastActiveAgentSessionId
     );
   }, [
+    conversationFilter,
     currentUserId,
     data.provider,
     previewMode,
@@ -7161,6 +7210,7 @@ export function useAgentGUINodeController({
   useWatchAgentSession({
     workspaceId,
     agentSessionId: activeConversationId,
+    origin: agentActivityRuntimeOrigin,
     enabled: !previewMode && activeConversationId !== null,
     onSubscribe: () => {
       if (!activeConversationId) {
@@ -7203,6 +7253,7 @@ export function useAgentGUINodeController({
   useWatchAgentSessions({
     workspaceId,
     agentSessionIds: backgroundWatchedConversationIds,
+    origin: agentActivityRuntimeOrigin,
     enabled: backgroundWatchedConversationIds.length > 0,
     onEvents: (events) => {
       handleBackgroundActivityStreamEvents(events);
@@ -11292,6 +11343,47 @@ export function useAgentGUINodeController({
         isExplicit: nextTargetIsExplicit,
         target: nextTarget
       });
+      // When switching to another agent from the home composer, carry the
+      // current input over to the target being switched to — but only if that
+      // target's own input box is still empty, so we never clobber a draft the
+      // user already started there.
+      if (activeConversationIdRef.current === null) {
+        const currentTargetData = selectedComposerTargetDataRef.current;
+        const currentDraftKey = nodeDefaultDraftContentKey(
+          currentTargetData.provider,
+          currentTargetData.agentTargetId
+        );
+        const nextDraftKey = nodeDefaultDraftContentKey(
+          nextTargetData.provider,
+          nextTargetData.agentTargetId
+        );
+        if (currentDraftKey !== nextDraftKey) {
+          const drafts = draftBySessionIdRef.current;
+          const currentDraft =
+            drafts[currentDraftKey] ?? EMPTY_AGENT_COMPOSER_DRAFT;
+          const nextDraft = readNodeDefaultDraftContent({
+            data: {
+              ...dataRef.current,
+              provider: nextTargetData.provider,
+              agentTargetId: nextTargetData.agentTargetId
+            },
+            drafts
+          });
+          if (
+            agentComposerDraftHasContent(currentDraft) &&
+            !agentComposerDraftHasContent(nextDraft)
+          ) {
+            draftBySessionIdRef.current = {
+              ...drafts,
+              [nextDraftKey]: currentDraft
+            };
+            setDraftBySessionId((current) => ({
+              ...current,
+              [nextDraftKey]: currentDraft
+            }));
+          }
+        }
+      }
       const shouldSyncScopedRailFilter =
         conversationFilterRef.current.kind === "agentTarget";
       setHomeComposerTargetOverride(nextTarget);
@@ -11386,12 +11478,22 @@ export function useAgentGUINodeController({
         ? { kind: "agentTarget" as const, agentTargetId }
         : { kind: "all" as const };
       setConversationFilter(nextFilter);
-      // Keep the home composer chip in sync with the selected tab. Active
-      // conversations keep owning their target until the target-filtered list
-      // has initialized and proven empty.
-      if (activeConversationIdRef.current === null) {
-        selectHomeComposerAgentTarget(input);
+      const activeId = activeConversationIdRef.current;
+      if (activeId) {
+        const activeSummary = resolveConversationSummaryById(
+          conversationsRef.current,
+          activeId,
+          transientConversationRef.current
+        );
+        if (
+          activeSummary &&
+          !matchesAgentGUIConversationSummaryFilter(activeSummary, nextFilter)
+        ) {
+          selectHomeComposerAgentTarget(input);
+        }
+        return;
       }
+      selectHomeComposerAgentTarget(input);
     },
     [
       agentActivityRuntime,
@@ -11604,6 +11706,7 @@ export function useAgentGUINodeController({
         selectedProviderTarget: effectiveSelectedProviderTarget,
         providerTargets: normalizedProviderTargets,
         providerTargetsLoading,
+        providerRailMode,
         comingSoonProviders: normalizedComingSoonProviders,
         conversationFilter,
         conversations: visibleConversations,
@@ -11680,6 +11783,7 @@ export function useAgentGUINodeController({
       effectiveSelectedProviderTarget,
       normalizedComingSoonProviders,
       normalizedProviderTargets,
+      providerRailMode,
       providerReadinessGate,
       providerTargetsLoading,
       detailError,

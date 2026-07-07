@@ -15,6 +15,8 @@ import type {
   AgentActivityRuntime,
   AgentQueuedPromptRuntime,
   AgentGUIProvider,
+  AgentGUIProviderRailMode,
+  AgentGUIProviderRailEmptyRenderer,
   AgentGUIProviderReadinessGateAction,
   AgentGUIProviderTarget,
   AgentGUIProps,
@@ -39,6 +41,7 @@ import { useTranslation } from "@renderer/i18n";
 import type { IAgentProviderStatusService } from "../services/agentProviderStatusService.interface";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { Toast } from "@renderer/lib/toast";
+import { isDesktopAgentProvider } from "@shared/preferences";
 import type { DesktopComputerUseApi, DesktopRuntimeApi } from "@preload/types";
 import {
   desktopComputerUseStatusesEqual,
@@ -81,6 +84,7 @@ import {
 } from "./desktopAgentGUIWorkbenchStateHelpers.ts";
 import { useDesktopManagedAgentsState } from "./useDesktopManagedAgentsState.ts";
 import { projectDesktopAgentProviderReadinessGates } from "../services/internal/desktopAgentProviderReadinessGate.ts";
+import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
 
 export const DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT =
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT;
@@ -108,6 +112,10 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   previewMode?: boolean;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  /** "exact" renders only the provided targets (no static catalog). Defaults to "catalog". */
+  providerRailMode?: AgentGUIProviderRailMode;
+  /** Host-owned empty state for the provider rail in "exact" mode. */
+  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   defaultProviderTargetId?: string | null;
   contextMentionProviders: NonNullable<
@@ -152,6 +160,7 @@ function handleDesktopAgentGUIShowMessage(
   }
   Toast.tips(message);
 }
+
 const AGENT_PROBE_REFRESH_DEBOUNCE_MS = 300;
 const DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS =
   [] satisfies NonNullable<AgentGUIProps["contextMentionProviders"]>;
@@ -187,6 +196,8 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.previewMode === next.previewMode &&
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
+    previous.providerRailMode === next.providerRailMode &&
+    previous.renderProviderRailEmpty === next.renderProviderRailEmpty &&
     previous.comingSoonAgentProviders === next.comingSoonAgentProviders &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
     previous.contextMentionProviders === next.contextMentionProviders &&
@@ -250,6 +261,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   previewMode = false,
   providerTargets,
   providerTargetsLoading = false,
+  providerRailMode = "catalog",
+  renderProviderRailEmpty,
   comingSoonAgentProviders,
   defaultProviderTargetId = null,
   contextMentionProviders,
@@ -268,6 +281,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   const { i18n, locale } = useTranslation();
   const { service: desktopPreferencesService, state: desktopPreferencesState } =
     useDesktopPreferencesService();
+  const { service: accountService, state: accountState } = useAccountService();
+  const previousAccountLoginStatusRef = useRef<string | null>(null);
+  const previousAccountUserIdRef = useRef<string | null>(null);
   const [computerUseStatus, setComputerUseStatus] =
     useState<DesktopComputerUseStatus | null>(null);
   const appCenterState = useSnapshot(appCenterService.store);
@@ -453,13 +469,34 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       if (!isDesktopManagedAgentProvider(loginProvider)) {
         return;
       }
+      if (loginProvider === "tutti-agent") {
+        void accountService.startLogin();
+        return;
+      }
       void agentProviderStatusService?.runAction(loginProvider, "login", {
         workbenchHost: context.host,
         workspaceId
       });
     },
-    [agentProviderStatusService, context.host, workspaceId]
+    [accountService, agentProviderStatusService, context.host, workspaceId]
   );
+  const accountUserId = accountState.user?.user_id ?? null;
+  useEffect(() => {
+    const previousLoginStatus = previousAccountLoginStatusRef.current;
+    const previousUserId = previousAccountUserIdRef.current;
+    previousAccountLoginStatusRef.current = accountState.loginStatus;
+    previousAccountUserIdRef.current = accountUserId;
+    const loginCompletedChanged =
+      previousLoginStatus === "completed" ||
+      accountState.loginStatus === "completed";
+    const signedInUserChanged =
+      previousUserId !== accountUserId &&
+      (previousUserId !== null || accountUserId !== null);
+    if (!loginCompletedChanged && !signedInUserChanged) {
+      return;
+    }
+    void agentProviderStatusService?.refresh(["tutti-agent"]);
+  }, [accountState.loginStatus, accountUserId, agentProviderStatusService]);
   const handleProviderReadinessGateAction = useCallback(
     (
       actionProvider: AgentGUIProvider,
@@ -472,12 +509,16 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         void agentProviderStatusService?.refresh([actionProvider]);
         return;
       }
+      if (actionProvider === "tutti-agent" && action === "login") {
+        void accountService.startLogin();
+        return;
+      }
       void agentProviderStatusService?.runAction(actionProvider, action, {
         workbenchHost: context.host,
         workspaceId
       });
     },
-    [agentProviderStatusService, context.host, workspaceId]
+    [accountService, agentProviderStatusService, context.host, workspaceId]
   );
   const providerReadinessGates = useMemo(
     () =>
@@ -530,8 +571,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   const hasExplicitConversationRailCollapsedState =
     hasDesktopAgentGUIConversationRailCollapsedState(rawWorkbenchStateSource);
   const preferredConversationRailCollapsed =
+    isDesktopAgentProvider(nodeProvider) &&
     desktopPreferencesState.agentGuiConversationRailCollapsedByProvider[
-      provider
+      nodeProvider
     ] === true;
   // Single source of truth: derive the node state directly from the workbench
   // external store (plus a pure provider-default overlay). There is no local
@@ -615,7 +657,11 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       nodeStateRef.current = next;
       const previousRailCollapsed = current.conversationRailCollapsed === true;
       const nextRailCollapsed = next.conversationRailCollapsed === true;
-      if (!previewMode && previousRailCollapsed !== nextRailCollapsed) {
+      if (
+        !previewMode &&
+        previousRailCollapsed !== nextRailCollapsed &&
+        isDesktopAgentProvider(next.provider)
+      ) {
         void desktopPreferencesService
           .rememberAgentGuiConversationRailCollapsed(
             next.provider,
@@ -1117,6 +1163,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         nodeId={context.node.id}
         providerTargets={providerTargetsLoading ? [] : providerTargets}
         providerTargetsLoading={providerTargetsLoading}
+        providerRailMode={providerRailMode}
+        renderProviderRailEmpty={renderProviderRailEmpty}
         comingSoonProviders={comingSoonAgentProviders}
         providerReadinessGates={providerReadinessGates}
         defaultProviderTargetId={defaultProviderTargetId}

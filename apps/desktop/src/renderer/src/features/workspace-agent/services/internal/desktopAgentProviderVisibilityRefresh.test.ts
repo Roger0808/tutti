@@ -59,7 +59,7 @@ test("bindDesktopManagedAgentProviderVisibilityRefresh refreshes managed provide
       "claude-code",
       "codex",
       "cursor",
-      "nexight",
+      "tutti-agent",
       "gemini",
       "hermes",
       "openclaw"
