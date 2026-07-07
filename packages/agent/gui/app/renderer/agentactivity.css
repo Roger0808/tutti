@@ -4313,10 +4313,17 @@ aside.workspace-agents-status-panel
 }
 
 .workbench-window:has([data-agent-gui-workbench-header="true"])
-  .agent-gui-node__rail-toolbar,
-.workbench-window:has([data-agent-gui-workbench-header="true"])
   .agent-gui-node__provider-rail-panel {
   padding-top: var(--agent-gui-workbench-header-height);
+}
+
+/* The provider rail nests the workbench-header offset on the panel and the 2px
+   breathing room on the inner rail, so the "All" tile sits at header + 2px. The
+   toolbar has no such wrapper, so fold the same 2px into its offset to keep the
+   search field top aligned with the provider tiles. */
+.workbench-window:has([data-agent-gui-workbench-header="true"])
+  .agent-gui-node__rail-toolbar {
+  padding-top: calc(var(--agent-gui-workbench-header-height) + 2px);
 }
 
 .workbench-window:has([data-agent-gui-workbench-header="true"])
@@ -4876,7 +4883,7 @@ aside.workspace-agents-status-panel
   align-items: center;
   gap: 10px;
   min-width: 0;
-  padding: 0 16px 16px;
+  padding: 2px 16px 16px;
 }
 
 .agent-gui-node__project-rail-header {
@@ -8424,7 +8431,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   flex: 1 1 auto;
   flex-direction: column;
   align-items: center;
-  padding: 0 0 12px;
+  padding: 2px 0 12px;
   overflow-x: hidden;
   overflow-y: auto;
   mask-image: linear-gradient(
@@ -8765,6 +8772,13 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   width: min(820px, 100%);
   gap: var(--agent-gui-empty-hero-gap);
   justify-items: center;
+}
+
+.agent-gui-node__empty-hero-icon-slot {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
 }
 
 .agent-gui-node__empty-hero-icon-effect {
