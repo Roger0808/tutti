@@ -143,6 +143,7 @@ export interface TuttidClient {
   getAccountLoginStatus(attemptID: string): Promise<AccountLoginStatusResponse>;
   getAccountUserInfo(): Promise<AccountUserInfo | null>;
   getAccountProductSummary(): Promise<AccountProductSummaryResponse>;
+  dismissAccountRegistrationCreditsReward(rewardID: string): Promise<void>;
   logoutAccount(): Promise<void>;
   listCliCapabilities(
     workspaceID?: string,

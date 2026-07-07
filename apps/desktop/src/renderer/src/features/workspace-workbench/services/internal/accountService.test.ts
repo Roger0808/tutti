@@ -53,6 +53,7 @@ test("AccountService opens login URL and refreshes user after completion", async
           }
         };
       },
+      async dismissAccountRegistrationCreditsReward() {},
       async logoutAccount() {}
     }
   });
@@ -94,6 +95,7 @@ test("AccountService reopens the active login URL without starting another attem
       async getAccountProductSummary() {
         throw new Error("unexpected product summary refresh");
       },
+      async dismissAccountRegistrationCreditsReward() {},
       async logoutAccount() {}
     }
   });
@@ -149,6 +151,7 @@ test("AccountService refreshes product summary with single-flight and preserves 
         }
         throw new Error("summary unavailable");
       },
+      async dismissAccountRegistrationCreditsReward() {},
       async logoutAccount() {}
     }
   });
@@ -164,6 +167,63 @@ test("AccountService refreshes product summary with single-flight and preserves 
   assert.equal(calls, 2);
   assert.equal(service.store.productSummary?.credits?.available_credits, 100);
   assert.equal(service.store.productSummaryError, "summary unavailable");
+});
+
+test("AccountService dismisses the current registration credits reward", async () => {
+  const dismissed: string[] = [];
+  const service = new AccountService({
+    hostFilesApi: {
+      async openExternal() {}
+    },
+    tuttidClient: {
+      async startAccountLogin() {
+        throw new Error("unexpected login");
+      },
+      async getAccountLoginStatus() {
+        throw new Error("unexpected status");
+      },
+      async getAccountUserInfo() {
+        return null;
+      },
+      async getAccountProductSummary() {
+        return {
+          user: null,
+          membership: null,
+          credits: {
+            available_credits: 500
+          },
+          registration_credits_reward: {
+            id: "registrationCreditsToastShown:user-1:grant-1",
+            grant_no: "grant-1",
+            credits: 500,
+            created_at: "2026-07-07T00:00:00Z"
+          },
+          links: {
+            plan_url: "https://tutti.sh/profile/plan",
+            usage_url: "https://tutti.sh/profile/usage",
+            settings_url: "https://tutti.sh/profile/settings"
+          }
+        };
+      },
+      async dismissAccountRegistrationCreditsReward(rewardID) {
+        dismissed.push(rewardID);
+      },
+      async logoutAccount() {}
+    }
+  });
+
+  await service.refreshProductSummary({ force: true });
+  assert.equal(
+    service.store.productSummary?.registration_credits_reward?.id,
+    "registrationCreditsToastShown:user-1:grant-1"
+  );
+
+  await service.dismissRegistrationCreditsReward(
+    "registrationCreditsToastShown:user-1:grant-1"
+  );
+
+  assert.deepEqual(dismissed, ["registrationCreditsToastShown:user-1:grant-1"]);
+  assert.equal(service.store.productSummary?.registration_credits_reward, null);
 });
 
 test("AccountService logout clears product summary", async () => {
@@ -195,6 +255,7 @@ test("AccountService logout clears product summary", async () => {
           }
         };
       },
+      async dismissAccountRegistrationCreditsReward() {},
       async logoutAccount() {}
     }
   });
@@ -243,6 +304,7 @@ test("AccountService ignores product summary responses after logout", async () =
           }
         };
       },
+      async dismissAccountRegistrationCreditsReward() {},
       async logoutAccount() {}
     }
   });

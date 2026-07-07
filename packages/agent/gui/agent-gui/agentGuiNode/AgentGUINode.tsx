@@ -1106,6 +1106,14 @@ export const AgentGUINode = memo(function AgentGUINode({
       accountMenuDataUnavailable: t(
         "agentHost.agentGui.accountMenuDataUnavailable"
       ),
+      accountRewardToastTitle: t("agentHost.agentGui.accountRewardToastTitle"),
+      accountRewardToastCreditsUnit: t(
+        "agentHost.agentGui.accountRewardToastCreditsUnit"
+      ),
+      accountRewardToastDescription: t(
+        "agentHost.agentGui.accountRewardToastDescription"
+      ),
+      accountRewardToastClose: t("agentHost.agentGui.accountRewardToastClose"),
       agentConfig: t("agentHost.agentGui.agentConfig"),
       agentEnvSetup: t("agentHost.agentGui.agentEnvSetup"),
       noConversations: t("agentHost.agentGui.noConversations"),

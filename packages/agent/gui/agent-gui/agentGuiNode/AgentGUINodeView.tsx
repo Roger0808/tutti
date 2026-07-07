@@ -20,11 +20,13 @@ import {
   Coins,
   Crown,
   ExternalLink,
+  Gift,
   Info,
   LogIn,
   LogOut,
   Settings,
-  Wrench
+  Wrench,
+  X
 } from "lucide-react";
 import {
   Popover,
@@ -381,6 +383,10 @@ export interface AgentGUIViewLabels {
   accountMenuLoading: string;
   accountMenuUnavailable: string;
   accountMenuDataUnavailable: string;
+  accountRewardToastTitle: string;
+  accountRewardToastCreditsUnit: string;
+  accountRewardToastDescription: string;
+  accountRewardToastClose: string;
   agentConfig: string;
   agentEnvSetup: string;
   noConversations: string;
@@ -4857,6 +4863,82 @@ interface AgentGUIAccountRailMenuProps {
   previewMode: boolean;
 }
 
+interface AgentGUIAccountRewardToastProps {
+  toast: NonNullable<AgentGUIAccountMenuState["registrationCreditsToast"]>;
+  labels: Pick<
+    AgentGUIViewLabels,
+    | "accountRewardToastTitle"
+    | "accountRewardToastCreditsUnit"
+    | "accountRewardToastDescription"
+    | "accountRewardToastClose"
+  >;
+}
+
+const accountRewardToastAutoDismissMs = 120_000;
+
+const AgentGUIAccountRewardToast = memo(function AgentGUIAccountRewardToast({
+  toast,
+  labels
+}: AgentGUIAccountRewardToastProps): React.JSX.Element | null {
+  "use memo";
+  useEffect(() => {
+    if (!toast.visible) {
+      return;
+    }
+    const timeout = window.setTimeout(
+      toast.onDismiss,
+      toast.autoDismissMs ?? accountRewardToastAutoDismissMs
+    );
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [toast.autoDismissMs, toast.onDismiss, toast.visible]);
+
+  if (!toast.visible) {
+    return null;
+  }
+
+  return (
+    <div
+      className="nodrag relative mx-3 mb-1 w-[calc(100%-24px)] max-w-[calc(100%-24px)] overflow-hidden rounded-[14px] border border-cyan-100/55 bg-[linear-gradient(135deg,rgba(227,255,244,0.94),rgba(167,237,222,0.78)_44%,rgba(151,190,224,0.72))] p-2.5 pr-9 text-white shadow-[0_14px_28px_rgba(0,0,0,0.20),0_0_0_1px_rgba(255,255,255,0.22)_inset] [-webkit-app-region:no-drag]"
+      data-testid="agent-gui-account-reward-toast"
+      role="status"
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(255,255,255,0.52),transparent_24%),radial-gradient(circle_at_86%_12%,rgba(255,255,255,0.32),transparent_22%)]" />
+      <div className="pointer-events-none absolute -bottom-9 left-[-8%] h-20 w-[116%] rounded-[50%] border-t border-white/28 bg-white/10" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/90 to-transparent" />
+      <div className="relative flex min-w-0 items-center gap-2.5">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] bg-[rgba(250,255,236,0.78)] text-emerald-400 shadow-[0_9px_18px_rgba(20,184,166,0.18),0_0_0_1px_rgba(255,255,255,0.5)_inset]">
+          <Gift aria-hidden="true" size={23} strokeWidth={2} />
+        </span>
+        <span
+          aria-hidden="true"
+          className="absolute left-[40px] top-0 h-2 w-2 rounded-full bg-white/85 shadow-[0_0_10px_rgba(255,255,255,0.7)]"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[12px] font-semibold leading-4 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.22)]">
+            {labels.accountRewardToastTitle}
+          </span>
+          <span className="block truncate text-[20px] font-semibold leading-6 text-white drop-shadow-[0_2px_5px_rgba(0,0,0,0.22)]">
+            +{toast.creditsLabel} {labels.accountRewardToastCreditsUnit}
+          </span>
+          <span className="block truncate text-[11px] font-medium leading-4 text-white/88 drop-shadow-[0_1px_3px_rgba(0,0,0,0.18)]">
+            {labels.accountRewardToastDescription}
+          </span>
+        </span>
+      </div>
+      <button
+        type="button"
+        aria-label={labels.accountRewardToastClose}
+        className="nodrag absolute right-2.5 top-2.5 grid h-6 w-6 place-items-center rounded-[7px] text-white/85 hover:bg-white/18 hover:text-white [-webkit-app-region:no-drag]"
+        onClick={toast.onDismiss}
+      >
+        <X aria-hidden="true" size={16} strokeWidth={2} />
+      </button>
+    </div>
+  );
+});
+
 const AgentGUIAccountRailMenu = memo(function AgentGUIAccountRailMenu({
   accountMenuState,
   labels,
@@ -4881,47 +4963,23 @@ const AgentGUIAccountRailMenu = memo(function AgentGUIAccountRailMenu({
     [accountMenuState]
   );
   return (
-    <Popover onOpenChange={accountMenuState.onOpenChange}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={userLabel}
-          className="nodrag mx-2 mt-2 flex min-h-12 w-[calc(100%-16px)] min-w-0 items-center gap-2 rounded-[8px] px-2 text-left text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] disabled:opacity-50 [-webkit-app-region:no-drag]"
-          data-account-menu-trigger="true"
-          disabled={previewMode}
-        >
-          <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-[var(--background-fronted)] text-[13px] font-semibold">
-            {accountMenuState.user?.avatar ? (
-              <img
-                alt=""
-                className="h-full w-full object-cover"
-                src={accountMenuState.user.avatar}
-              />
-            ) : (
-              <span aria-hidden="true">{initials}</span>
-            )}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-semibold leading-4">
-              {userLabel}
-            </span>
-            <AccountMembershipBadge
-              className="mt-0.5"
-              label={membershipLabel}
-            />
-          </span>
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="right"
-        align="end"
-        sideOffset={8}
-        className="w-[232px] max-w-[calc(100vw-32px)] p-1 text-xs"
-        data-testid="agent-gui-account-menu"
-      >
-        <div className="flex min-w-0 flex-col">
-          <div className="flex min-w-0 items-center gap-2 px-2 py-2">
-            <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-[8px] bg-[var(--background-fronted)] text-[13px] font-semibold text-[var(--text-primary)]">
+    <div className="flex min-w-0 flex-col">
+      {accountMenuState.registrationCreditsToast ? (
+        <AgentGUIAccountRewardToast
+          labels={labels}
+          toast={accountMenuState.registrationCreditsToast}
+        />
+      ) : null}
+      <Popover onOpenChange={accountMenuState.onOpenChange}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label={userLabel}
+            className="nodrag mx-2 mt-2 flex min-h-12 w-[calc(100%-16px)] min-w-0 items-center gap-2 rounded-[8px] px-2 text-left text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] disabled:opacity-50 [-webkit-app-region:no-drag]"
+            data-account-menu-trigger="true"
+            disabled={previewMode}
+          >
+            <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-[var(--background-fronted)] text-[13px] font-semibold">
               {accountMenuState.user?.avatar ? (
                 <img
                   alt=""
@@ -4929,108 +4987,149 @@ const AgentGUIAccountRailMenu = memo(function AgentGUIAccountRailMenu({
                   src={accountMenuState.user.avatar}
                 />
               ) : (
-                initials
+                <span aria-hidden="true">{initials}</span>
               )}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-semibold text-[var(--text-primary)]">
+              <span className="block truncate text-[13px] font-semibold leading-4">
                 {userLabel}
               </span>
               <AccountMembershipBadge
-                className="mt-1"
+                className="mt-0.5"
                 label={membershipLabel}
               />
             </span>
-          </div>
-          <span aria-hidden="true" className="mx-2 h-px bg-[var(--border-1)]" />
-          {accountMenuState.user ? (
-            <>
-              <button
-                type="button"
-                className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
-                onClick={() => openExternal(accountMenuState.links.planUrl)}
-              >
-                <Crown aria-hidden="true" size={15} strokeWidth={1.8} />
-                <span className="min-w-0 flex-1 truncate text-left">
-                  {labels.accountMenuMember}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="right"
+          align="end"
+          sideOffset={8}
+          className="w-[232px] max-w-[calc(100vw-32px)] p-1 text-xs"
+          data-testid="agent-gui-account-menu"
+        >
+          <div className="flex min-w-0 flex-col">
+            <div className="flex min-w-0 items-center gap-2 px-2 py-2">
+              <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-[8px] bg-[var(--background-fronted)] text-[13px] font-semibold text-[var(--text-primary)]">
+                {accountMenuState.user?.avatar ? (
+                  <img
+                    alt=""
+                    className="h-full w-full object-cover"
+                    src={accountMenuState.user.avatar}
+                  />
+                ) : (
+                  initials
+                )}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-semibold text-[var(--text-primary)]">
+                  {userLabel}
                 </span>
-                <span className="shrink-0 rounded-[6px] bg-[color-mix(in_srgb,var(--tutti-purple)_24%,transparent)] px-2 py-0.5 text-[12px] font-semibold text-[var(--tutti-purple)]">
-                  {labels.accountMenuUpgrade}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
-                onClick={() => openExternal(accountMenuState.links.usageUrl)}
-              >
-                <Coins aria-hidden="true" size={15} strokeWidth={1.8} />
-                <span className="min-w-0 flex-1 truncate text-left">
-                  {labels.accountMenuCreditsBalance}
-                </span>
-                <span className="truncate text-[var(--text-secondary)]">
-                  {creditsLabel}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
-                onClick={() => openExternal(accountMenuState.links.settingsUrl)}
-              >
-                <Settings aria-hidden="true" size={15} strokeWidth={1.8} />
-                <span className="min-w-0 flex-1 truncate text-left">
-                  {labels.accountMenuAccountCenter}
-                </span>
-                <ExternalLink aria-hidden="true" size={14} strokeWidth={1.8} />
-              </button>
-              {accountMenuState.onSettings ? (
+                <AccountMembershipBadge
+                  className="mt-1"
+                  label={membershipLabel}
+                />
+              </span>
+            </div>
+            <span
+              aria-hidden="true"
+              className="mx-2 h-px bg-[var(--border-1)]"
+            />
+            {accountMenuState.user ? (
+              <>
                 <button
                   type="button"
                   className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
-                  onClick={accountMenuState.onSettings}
+                  onClick={() => openExternal(accountMenuState.links.planUrl)}
+                >
+                  <Crown aria-hidden="true" size={15} strokeWidth={1.8} />
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {labels.accountMenuMember}
+                  </span>
+                  <span className="shrink-0 rounded-[6px] bg-[color-mix(in_srgb,var(--tutti-purple)_24%,transparent)] px-2 py-0.5 text-[12px] font-semibold text-[var(--tutti-purple)]">
+                    {labels.accountMenuUpgrade}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
+                  onClick={() => openExternal(accountMenuState.links.usageUrl)}
+                >
+                  <Coins aria-hidden="true" size={15} strokeWidth={1.8} />
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {labels.accountMenuCreditsBalance}
+                  </span>
+                  <span className="truncate text-[var(--text-secondary)]">
+                    {creditsLabel}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
+                  onClick={() =>
+                    openExternal(accountMenuState.links.settingsUrl)
+                  }
                 >
                   <Settings aria-hidden="true" size={15} strokeWidth={1.8} />
                   <span className="min-w-0 flex-1 truncate text-left">
-                    {labels.accountMenuSettings}
+                    {labels.accountMenuAccountCenter}
                   </span>
-                </button>
-              ) : null}
-              {accountMenuState.onLogout ? (
-                <>
-                  <span
+                  <ExternalLink
                     aria-hidden="true"
-                    className="mx-2 my-1 h-px bg-[var(--border-1)]"
+                    size={14}
+                    strokeWidth={1.8}
                   />
+                </button>
+                {accountMenuState.onSettings ? (
                   <button
                     type="button"
                     className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
-                    onClick={accountMenuState.onLogout}
+                    onClick={accountMenuState.onSettings}
                   >
-                    <LogOut aria-hidden="true" size={15} strokeWidth={1.8} />
-                    <span className="truncate">
-                      {labels.accountMenuSignOut}
+                    <Settings aria-hidden="true" size={15} strokeWidth={1.8} />
+                    <span className="min-w-0 flex-1 truncate text-left">
+                      {labels.accountMenuSettings}
                     </span>
                   </button>
-                </>
-              ) : null}
-            </>
-          ) : (
-            <button
-              type="button"
-              className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
-              onClick={accountMenuState.onLogin}
-            >
-              <LogIn aria-hidden="true" size={15} strokeWidth={1.8} />
-              <span className="truncate">{labels.accountMenuSignIn}</span>
-            </button>
-          )}
-          {errorLabel ? (
-            <span className="px-2 py-1 text-[11px] leading-4 text-[var(--text-danger)]">
-              {errorLabel}
-            </span>
-          ) : null}
-        </div>
-      </PopoverContent>
-    </Popover>
+                ) : null}
+                {accountMenuState.onLogout ? (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className="mx-2 my-1 h-px bg-[var(--border-1)]"
+                    />
+                    <button
+                      type="button"
+                      className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
+                      onClick={accountMenuState.onLogout}
+                    >
+                      <LogOut aria-hidden="true" size={15} strokeWidth={1.8} />
+                      <span className="truncate">
+                        {labels.accountMenuSignOut}
+                      </span>
+                    </button>
+                  </>
+                ) : null}
+              </>
+            ) : (
+              <button
+                type="button"
+                className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
+                onClick={accountMenuState.onLogin}
+              >
+                <LogIn aria-hidden="true" size={15} strokeWidth={1.8} />
+                <span className="truncate">{labels.accountMenuSignIn}</span>
+              </button>
+            )}
+            {errorLabel ? (
+              <span className="px-2 py-1 text-[11px] leading-4 text-[var(--text-danger)]">
+                {errorLabel}
+              </span>
+            ) : null}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 });
 

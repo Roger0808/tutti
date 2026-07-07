@@ -134,14 +134,11 @@ func TestGetProductSummaryFetchesCommerceWithSessionCookie(t *testing.T) {
 		case "/v1/user-info":
 			commerceUserInfoCookie = r.Header.Get("Cookie")
 			_, _ = w.Write([]byte(`{
-				"membership": {
-					"tier_key": "basic",
-					"billing_period": "month",
-					"status": "active",
-					"access_status": "active",
-					"current_period_end": "2026-08-01T00:00:00Z",
-					"cancel_at_period_end": false
-				},
+				"is_vip": true,
+				"vip_level": "basic",
+				"vip_billing_period": "month",
+				"vip_renew_at": "2026-08-01T00:00:00Z",
+				"vip_cancel_at_period_end": false,
 				"available_credits": 1200
 			}`))
 		case "/v1/credits/overview":
@@ -176,7 +173,7 @@ func TestGetProductSummaryFetchesCommerceWithSessionCookie(t *testing.T) {
 	if summary.User == nil || summary.User.UserID != "user-1" || summary.User.Name != "Jane" {
 		t.Fatalf("summary user = %#v", summary.User)
 	}
-	if summary.Membership == nil || summary.Membership.TierKey != "basic" || summary.Membership.DisplayName != "Lite" {
+	if summary.Membership == nil || summary.Membership.TierKey != "basic" || summary.Membership.DisplayName != "Basic" {
 		t.Fatalf("summary membership = %#v", summary.Membership)
 	}
 	if summary.Credits == nil || summary.Credits.AvailableCredits == nil || *summary.Credits.AvailableCredits != 2450 {
@@ -192,6 +189,207 @@ func TestGetProductSummaryFetchesCommerceWithSessionCookie(t *testing.T) {
 	}
 	if summary.PartialError != nil {
 		t.Fatalf("partial error = %#v, want nil", summary.PartialError)
+	}
+}
+
+func TestMembershipSummaryMapsVIPUserInfoContract(t *testing.T) {
+	falseValue := false
+	trueValue := true
+	tests := []struct {
+		name string
+		data map[string]any
+		want *MembershipSummary
+	}{
+		{
+			name: "free ignores stale legacy membership",
+			data: map[string]any{
+				"is_vip":    false,
+				"vip_level": "free",
+				"membership": map[string]any{
+					"tier_key": "pro",
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "active paid uses renewal time",
+			data: map[string]any{
+				"is_vip":                   true,
+				"vip_level":                "basic",
+				"vip_billing_period":       "month",
+				"vip_renew_at":             "2026-08-01T00:00:00Z",
+				"vip_cancel_at_period_end": false,
+			},
+			want: &MembershipSummary{
+				TierKey:           "basic",
+				DisplayName:       "Basic",
+				BillingPeriod:     "month",
+				Status:            "active",
+				AccessStatus:      "active",
+				CurrentPeriodEnd:  "2026-08-01T00:00:00Z",
+				CancelAtPeriodEnd: &falseValue,
+			},
+		},
+		{
+			name: "cancel at period end uses valid until time",
+			data: map[string]any{
+				"is_vip":                   true,
+				"vip_level":                "pro",
+				"vip_billing_period":       "year",
+				"vip_valid_until":          "2026-09-01T00:00:00Z",
+				"vip_cancel_at_period_end": true,
+			},
+			want: &MembershipSummary{
+				TierKey:           "pro",
+				DisplayName:       "Pro",
+				BillingPeriod:     "year",
+				Status:            "active",
+				AccessStatus:      "active",
+				CurrentPeriodEnd:  "2026-09-01T00:00:00Z",
+				CancelAtPeriodEnd: &trueValue,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := membershipSummary(test.data)
+			assertMembershipSummary(t, got, test.want)
+		})
+	}
+}
+
+func TestGetProductSummaryClaimsRegistrationCreditsOnceAndDismissesReward(t *testing.T) {
+	var loginClaimCount atomic.Int32
+	var loginClaimCookie string
+	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/user/v1/user_info":
+			_, _ = w.Write([]byte(`{"code":0,"data":{"userId":"user-1","name":"Jane"}}`))
+		case "/v1/user-info":
+			_, _ = w.Write([]byte(`{"is_vip":true,"vip_level":"basic","available_credits":500}`))
+		case "/v1/credits/overview":
+			_, _ = w.Write([]byte(`{"available_credits":500}`))
+		case "/v1/credits/login-claim":
+			if r.Method != http.MethodPost {
+				t.Fatalf("login-claim method = %s, want POST", r.Method)
+			}
+			loginClaimCount.Add(1)
+			loginClaimCookie = r.Header.Get("Cookie")
+			_, _ = w.Write([]byte(`{
+				"claimed": true,
+				"grant_no": "fallback-grant",
+				"first_login_claimed": true,
+				"first_login_grant_no": "first-grant-1",
+				"first_login_grant_credits": "500",
+				"daily_claimed": true,
+				"daily_grant_credits": "200"
+			}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer account.Close()
+
+	authPath := filepath.Join(t.TempDir(), "auth.json")
+	writeAccountAuthSession(t, authPath)
+	service := NewService(authPath)
+	service.AccountBaseURL = account.URL
+	service.CommerceBaseURL = account.URL
+
+	summary, err := service.GetProductSummary(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loginClaimCookie != "session_id=session-1" {
+		t.Fatalf("login-claim cookie = %q, want session cookie", loginClaimCookie)
+	}
+	if loginClaimCount.Load() != 1 {
+		t.Fatalf("login-claim count = %d, want 1", loginClaimCount.Load())
+	}
+	reward := summary.RegistrationCreditsReward
+	if reward == nil || reward.UserID != "user-1" || reward.GrantNo != "first-grant-1" || reward.Credits != 500 {
+		t.Fatalf("registration credits reward = %#v", reward)
+	}
+
+	summary, err = service.GetProductSummary(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.RegistrationCreditsReward == nil || summary.RegistrationCreditsReward.ID != reward.ID {
+		t.Fatalf("pending reward = %#v, want same reward", summary.RegistrationCreditsReward)
+	}
+	if loginClaimCount.Load() != 1 {
+		t.Fatalf("login-claim count after pending summary = %d, want 1", loginClaimCount.Load())
+	}
+
+	if err := service.DismissRegistrationCreditsReward(context.Background(), reward.ID); err != nil {
+		t.Fatal(err)
+	}
+	summary, err = service.GetProductSummary(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.RegistrationCreditsReward != nil {
+		t.Fatalf("registration credits reward after dismiss = %#v, want nil", summary.RegistrationCreditsReward)
+	}
+	if loginClaimCount.Load() != 1 {
+		t.Fatalf("login-claim count after dismiss = %d, want 1", loginClaimCount.Load())
+	}
+}
+
+func TestGetProductSummaryIgnoresDailyClaimWithoutFirstLoginReward(t *testing.T) {
+	var loginClaimCount atomic.Int32
+	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/user/v1/user_info":
+			_, _ = w.Write([]byte(`{"code":0,"data":{"userId":"user-1","name":"Jane"}}`))
+		case "/v1/user-info":
+			_, _ = w.Write([]byte(`{"is_vip":true,"vip_level":"basic","available_credits":700}`))
+		case "/v1/credits/overview":
+			_, _ = w.Write([]byte(`{"available_credits":700}`))
+		case "/v1/credits/login-claim":
+			loginClaimCount.Add(1)
+			_, _ = w.Write([]byte(`{
+				"first_login_claimed": false,
+				"first_login_grant_credits": 0,
+				"daily_claimed": true,
+				"daily_grant_no": "daily-grant-1",
+				"daily_grant_credits": 200
+			}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer account.Close()
+
+	authPath := filepath.Join(t.TempDir(), "auth.json")
+	writeAccountAuthSession(t, authPath)
+	service := NewService(authPath)
+	service.AccountBaseURL = account.URL
+	service.CommerceBaseURL = account.URL
+
+	summary, err := service.GetProductSummary(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.RegistrationCreditsReward != nil {
+		t.Fatalf("registration credits reward = %#v, want nil", summary.RegistrationCreditsReward)
+	}
+	if loginClaimCount.Load() != 1 {
+		t.Fatalf("login-claim count = %d, want 1", loginClaimCount.Load())
+	}
+	summary, err = service.GetProductSummary(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.RegistrationCreditsReward != nil {
+		t.Fatalf("second registration credits reward = %#v, want nil", summary.RegistrationCreditsReward)
+	}
+	if loginClaimCount.Load() != 1 {
+		t.Fatalf("login-claim count after second summary = %d, want 1", loginClaimCount.Load())
 	}
 }
 
@@ -255,8 +453,45 @@ func TestLogoutTriggersCallbackAfterAuthCleared(t *testing.T) {
 	}
 }
 
+func writeAccountAuthSession(t *testing.T, authPath string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(authPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(authPath, []byte(`{"session_id":"session-1","cookie":"session_id=session-1","user_id":"user-1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 type testLoginState struct {
 	LocalServerOrigin string `json:"localServerOrigin"`
+}
+
+func assertMembershipSummary(t *testing.T, got *MembershipSummary, want *MembershipSummary) {
+	t.Helper()
+	if want == nil {
+		if got != nil {
+			t.Fatalf("membership summary = %#v, want nil", got)
+		}
+		return
+	}
+	if got == nil {
+		t.Fatalf("membership summary = nil, want %#v", want)
+	}
+	if got.TierKey != want.TierKey ||
+		got.DisplayName != want.DisplayName ||
+		got.BillingPeriod != want.BillingPeriod ||
+		got.Status != want.Status ||
+		got.AccessStatus != want.AccessStatus ||
+		got.CurrentPeriodEnd != want.CurrentPeriodEnd {
+		t.Fatalf("membership summary = %#v, want %#v", got, want)
+	}
+	if (got.CancelAtPeriodEnd == nil) != (want.CancelAtPeriodEnd == nil) {
+		t.Fatalf("cancel_at_period_end = %#v, want %#v", got.CancelAtPeriodEnd, want.CancelAtPeriodEnd)
+	}
+	if got.CancelAtPeriodEnd != nil && *got.CancelAtPeriodEnd != *want.CancelAtPeriodEnd {
+		t.Fatalf("cancel_at_period_end = %v, want %v", *got.CancelAtPeriodEnd, *want.CancelAtPeriodEnd)
+	}
 }
 
 func loginStateParam(t *testing.T, loginURL string) string {

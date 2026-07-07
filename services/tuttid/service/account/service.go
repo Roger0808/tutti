@@ -16,13 +16,14 @@ import (
 var ErrAttemptNotFound = errors.New("account login attempt not found")
 
 type Service struct {
-	AuthJSONPath    string
-	AccountBaseURL  string
-	AppCallbackURL  string
-	AuthLoginURL    string
-	CommerceBaseURL string
-	WebBaseURL      string
-	HTTPClient      *http.Client
+	AuthJSONPath                       string
+	AccountBaseURL                     string
+	AppCallbackURL                     string
+	AuthLoginURL                       string
+	CommerceBaseURL                    string
+	WebBaseURL                         string
+	RegistrationCreditsRewardStatePath string
+	HTTPClient                         *http.Client
 	// OnLoginCompleted runs after the desktop account login bridge has completed
 	// and the account auth.json is available. It must be best-effort: login status
 	// polling should not block on downstream provider credential bootstrap.
@@ -35,6 +36,7 @@ type Service struct {
 	mu       sync.Mutex
 	client   *authbridge.Client
 	attempts map[string]*authbridge.LoginAttempt
+	rewardMu sync.Mutex
 }
 
 type LoginStart struct {

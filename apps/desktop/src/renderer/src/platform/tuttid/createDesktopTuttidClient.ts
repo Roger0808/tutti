@@ -53,6 +53,11 @@ export function createDesktopTuttidClient(
     async getAccountProductSummary() {
       return (await resolveClient()).getAccountProductSummary();
     },
+    async dismissAccountRegistrationCreditsReward(rewardID) {
+      return (await resolveClient()).dismissAccountRegistrationCreditsReward(
+        rewardID
+      );
+    },
     async logoutAccount() {
       return (await resolveClient()).logoutAccount();
     },

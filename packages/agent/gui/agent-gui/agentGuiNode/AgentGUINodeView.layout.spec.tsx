@@ -360,6 +360,53 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(onSettings).toHaveBeenCalledTimes(1);
   });
 
+  it("renders a dismissible registration credits toast above the account row", () => {
+    const onDismiss = vi.fn();
+    renderAgentGUINodeView({
+      accountMenuState: {
+        user: {
+          userId: "user-1",
+          name: "Jane",
+          email: "jane@example.com",
+          avatar: null
+        },
+        membershipLabel: "Free",
+        creditsLabel: "500",
+        loading: false,
+        error: null,
+        registrationCreditsToast: {
+          id: "registrationCreditsToastShown:user-1:grant-1",
+          creditsLabel: "500",
+          visible: true,
+          autoDismissMs: 120_000,
+          onDismiss
+        },
+        links: {
+          planUrl: "https://tutti.sh/profile/plan",
+          usageUrl: "https://tutti.sh/profile/usage",
+          settingsUrl: "https://tutti.sh/profile/settings"
+        },
+        onOpenChange: vi.fn(),
+        onLogin: vi.fn(),
+        onLogout: vi.fn(),
+        onOpenExternal: vi.fn()
+      }
+    });
+
+    const toast = screen.getByTestId("agent-gui-account-reward-toast");
+    expect(toast).toHaveTextContent("New user credits");
+    expect(toast).toHaveTextContent("+500 credits");
+    expect(toast).toHaveTextContent("Added to account balance");
+    expect(screen.queryByText("Account center")).toBeNull();
+
+    fireEvent.click(
+      within(toast).getByRole("button", {
+        name: "Close credits reward notification"
+      })
+    );
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
   it("hides the account rail menu when no signed-in user is available", () => {
     const { container } = renderAgentGUINodeView({
       accountMenuState: {
@@ -4505,6 +4552,10 @@ function createLabels(): AgentGUIViewLabels {
     accountMenuLoading: "Loading",
     accountMenuUnavailable: "--",
     accountMenuDataUnavailable: "Some account data is unavailable",
+    accountRewardToastTitle: "New user credits",
+    accountRewardToastCreditsUnit: "credits",
+    accountRewardToastDescription: "Added to account balance",
+    accountRewardToastClose: "Close credits reward notification",
     agentConfig: "agentConfig",
     agentEnvSetup: "agentEnvSetup",
     noConversations: "noConversations",

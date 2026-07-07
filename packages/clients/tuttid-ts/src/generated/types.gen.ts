@@ -61,12 +61,24 @@ export type AccountProductSummaryPartialError = {
   message?: string | null;
 };
 
+export type AccountRegistrationCreditsReward = {
+  id: string;
+  grant_no: string;
+  credits: number;
+  created_at: string;
+};
+
 export type AccountProductSummaryResponse = {
   user: AccountUserInfo | null;
   membership: AccountMembershipSummary | null;
   credits: AccountCreditsSummary | null;
   partial_error?: AccountProductSummaryPartialError | null;
+  registration_credits_reward?: AccountRegistrationCreditsReward | null;
   links: AccountProductSummaryLinks;
+};
+
+export type DismissAccountRegistrationCreditsRewardRequest = {
+  reward_id: string;
 };
 
 export type AccountLoginStartResponse = {
@@ -2451,6 +2463,45 @@ export type GetAccountProductSummaryResponses = {
 
 export type GetAccountProductSummaryResponse =
   GetAccountProductSummaryResponses[keyof GetAccountProductSummaryResponses];
+
+export type DismissAccountRegistrationCreditsRewardData = {
+  body: DismissAccountRegistrationCreditsRewardRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/account/registration_credits_reward/dismiss";
+};
+
+export type DismissAccountRegistrationCreditsRewardErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DismissAccountRegistrationCreditsRewardError =
+  DismissAccountRegistrationCreditsRewardErrors[keyof DismissAccountRegistrationCreditsRewardErrors];
+
+export type DismissAccountRegistrationCreditsRewardResponses = {
+  /**
+   * Registration credits reward marked as shown
+   */
+  204: void;
+};
+
+export type DismissAccountRegistrationCreditsRewardResponse =
+  DismissAccountRegistrationCreditsRewardResponses[keyof DismissAccountRegistrationCreditsRewardResponses];
 
 export type LogoutAccountData = {
   body?: never;

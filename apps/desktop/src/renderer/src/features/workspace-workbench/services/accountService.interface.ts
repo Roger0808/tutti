@@ -21,6 +21,7 @@ export interface IAccountService {
   readonly store: AccountStoreState;
   refreshUserInfo(): Promise<void>;
   refreshProductSummary(options?: { force?: boolean }): Promise<void>;
+  dismissRegistrationCreditsReward(rewardID: string): Promise<void>;
   startLogin(): Promise<void>;
   logout(): Promise<void>;
 }

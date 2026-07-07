@@ -1834,11 +1834,20 @@ type AccountProductSummaryPartialErrorScope string
 
 // AccountProductSummaryResponse defines model for AccountProductSummaryResponse.
 type AccountProductSummaryResponse struct {
-	Credits      *AccountCreditsSummary             `json:"credits"`
-	Links        AccountProductSummaryLinks         `json:"links"`
-	Membership   *AccountMembershipSummary          `json:"membership"`
-	PartialError *AccountProductSummaryPartialError `json:"partial_error,omitempty"`
-	User         *AccountUserInfo                   `json:"user"`
+	Credits                   *AccountCreditsSummary             `json:"credits"`
+	Links                     AccountProductSummaryLinks         `json:"links"`
+	Membership                *AccountMembershipSummary          `json:"membership"`
+	PartialError              *AccountProductSummaryPartialError `json:"partial_error,omitempty"`
+	RegistrationCreditsReward *AccountRegistrationCreditsReward  `json:"registration_credits_reward,omitempty"`
+	User                      *AccountUserInfo                   `json:"user"`
+}
+
+// AccountRegistrationCreditsReward defines model for AccountRegistrationCreditsReward.
+type AccountRegistrationCreditsReward struct {
+	CreatedAt string `json:"created_at"`
+	Credits   int64  `json:"credits"`
+	GrantNo   string `json:"grant_no"`
+	Id        string `json:"id"`
 }
 
 // AccountUserInfo defines model for AccountUserInfo.
@@ -2739,6 +2748,11 @@ type DesktopWorkbenchWindowSnapping struct {
 
 // DesktopWorkbenchWindowSnappingShortcutPreset defines model for DesktopWorkbenchWindowSnappingShortcutPreset.
 type DesktopWorkbenchWindowSnappingShortcutPreset string
+
+// DismissAccountRegistrationCreditsRewardRequest defines model for DismissAccountRegistrationCreditsRewardRequest.
+type DismissAccountRegistrationCreditsRewardRequest struct {
+	RewardId string `json:"reward_id"`
+}
 
 // ExportWorkspaceAppRequest defines model for ExportWorkspaceAppRequest.
 type ExportWorkspaceAppRequest struct {
@@ -4311,6 +4325,9 @@ type ListWorkspaceIssueTasksParams struct {
 type AttachWorkspaceTerminalParams struct {
 	AfterSeq *TerminalAfterSeq `form:"afterSeq,omitempty" json:"afterSeq,omitempty"`
 }
+
+// DismissAccountRegistrationCreditsRewardJSONRequestBody defines body for DismissAccountRegistrationCreditsReward for application/json ContentType.
+type DismissAccountRegistrationCreditsRewardJSONRequestBody = DismissAccountRegistrationCreditsRewardRequest
 
 // GetAgentProviderComposerOptionsJSONRequestBody defines body for GetAgentProviderComposerOptions for application/json ContentType.
 type GetAgentProviderComposerOptionsJSONRequestBody = GetAgentProviderComposerOptionsRequest

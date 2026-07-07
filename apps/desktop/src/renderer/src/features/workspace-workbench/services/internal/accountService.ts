@@ -19,6 +19,7 @@ export interface AccountServiceDependencies {
     | "getAccountLoginStatus"
     | "getAccountProductSummary"
     | "getAccountUserInfo"
+    | "dismissAccountRegistrationCreditsReward"
     | "logoutAccount"
     | "startAccountLogin"
   >;
@@ -93,6 +94,23 @@ export class AccountService implements IAccountService {
       if (this.productSummaryGeneration === generation) {
         this.store.productSummaryLoading = false;
       }
+    }
+  }
+
+  async dismissRegistrationCreditsReward(rewardID: string): Promise<void> {
+    const summary = this.store.productSummary;
+    if (summary?.registration_credits_reward?.id === rewardID) {
+      this.store.productSummary = {
+        ...summary,
+        registration_credits_reward: null
+      };
+    }
+    try {
+      await this.dependencies.tuttidClient.dismissAccountRegistrationCreditsReward(
+        rewardID
+      );
+    } catch (error) {
+      this.store.productSummaryError = readAccountError(error);
     }
   }
 

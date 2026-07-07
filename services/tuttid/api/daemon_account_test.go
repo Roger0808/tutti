@@ -49,7 +49,7 @@ func TestAccountProductSummaryMapsServiceSummary(t *testing.T) {
 				User: &authbridge.UserInfo{UserID: "user-1", Name: "Jane", Email: "jane@example.com"},
 				Membership: &accountservice.MembershipSummary{
 					TierKey:           "basic",
-					DisplayName:       "Lite",
+					DisplayName:       "Basic",
 					BillingPeriod:     "month",
 					Status:            "active",
 					AccessStatus:      "active",
@@ -61,6 +61,13 @@ func TestAccountProductSummaryMapsServiceSummary(t *testing.T) {
 					ExpiringCreditsWithin24h: &expiringCredits,
 					NextExpireAt:             "2026-07-07T00:00:00Z",
 					RefreshedAt:              "2026-07-06T00:00:00Z",
+				},
+				RegistrationCreditsReward: &accountservice.RegistrationCreditsReward{
+					ID:        "registrationCreditsToastShown:user-1:grant-1",
+					UserID:    "user-1",
+					GrantNo:   "grant-1",
+					Credits:   500,
+					CreatedAt: time.UnixMilli(123),
 				},
 				Links: accountservice.ProductSummaryLinks{
 					PlanURL:     "https://tutti.sh/profile/plan",
@@ -78,11 +85,14 @@ func TestAccountProductSummaryMapsServiceSummary(t *testing.T) {
 	if !ok {
 		t.Fatalf("response = %T, want 200", response)
 	}
-	if got.User == nil || got.User.UserId != "user-1" || got.Membership == nil || got.Membership.DisplayName != "Lite" {
+	if got.User == nil || got.User.UserId != "user-1" || got.Membership == nil || got.Membership.DisplayName != "Basic" {
 		t.Fatalf("response = %#v", got)
 	}
 	if got.Credits == nil || got.Credits.AvailableCredits == nil || *got.Credits.AvailableCredits != 2450 {
 		t.Fatalf("credits = %#v", got.Credits)
+	}
+	if got.RegistrationCreditsReward == nil || got.RegistrationCreditsReward.Id != "registrationCreditsToastShown:user-1:grant-1" || got.RegistrationCreditsReward.Credits != 500 {
+		t.Fatalf("registration credits reward = %#v", got.RegistrationCreditsReward)
 	}
 	if got.Links.PlanUrl != "https://tutti.sh/profile/plan" || got.Links.UsageUrl != "https://tutti.sh/profile/usage" {
 		t.Fatalf("links = %#v", got.Links)
@@ -128,13 +138,44 @@ func TestAccountProductSummaryRouteIsRegistered(t *testing.T) {
 	}
 }
 
+func TestDismissAccountRegistrationCreditsRewardMapsRequest(t *testing.T) {
+	var dismissedRewardID string
+	api := DaemonAPI{
+		AccountService: accountServiceStub{
+			dismissedRewardID: &dismissedRewardID,
+		},
+	}
+	response, err := api.DismissAccountRegistrationCreditsReward(context.Background(), tuttigenerated.DismissAccountRegistrationCreditsRewardRequestObject{
+		Body: &tuttigenerated.DismissAccountRegistrationCreditsRewardJSONRequestBody{
+			RewardId: "registrationCreditsToastShown:user-1:grant-1",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := response.(tuttigenerated.DismissAccountRegistrationCreditsReward204Response); !ok {
+		t.Fatalf("response = %T, want 204", response)
+	}
+	if dismissedRewardID != "registrationCreditsToastShown:user-1:grant-1" {
+		t.Fatalf("dismissed reward id = %q", dismissedRewardID)
+	}
+}
+
 type accountServiceStub struct {
-	status  authbridge.LoginStatus
-	summary accountservice.ProductSummary
+	status            authbridge.LoginStatus
+	summary           accountservice.ProductSummary
+	dismissedRewardID *string
 }
 
 func (s accountServiceStub) GetProductSummary(context.Context) (accountservice.ProductSummary, error) {
 	return s.summary, nil
+}
+
+func (s accountServiceStub) DismissRegistrationCreditsReward(_ context.Context, rewardID string) error {
+	if s.dismissedRewardID != nil {
+		*s.dismissedRewardID = rewardID
+	}
+	return nil
 }
 
 func (accountServiceStub) GetUserInfo(context.Context) (*authbridge.UserInfo, error) {

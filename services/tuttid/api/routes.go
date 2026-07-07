@@ -84,6 +84,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.GetAccountProductSummary(w, r)
 	})
 
+	mux.HandleFunc("/v1/account/registration_credits_reward/dismiss", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.DismissAccountRegistrationCreditsReward(w, r)
+	})
+
 	mux.HandleFunc("/v1/account/logout", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)

@@ -145,6 +145,11 @@ function resolveComputerUseAuthorizationState(
 const DESKTOP_AGENT_GUI_AGENT_SETTINGS = {
   avoidGroupingEdits: false
 } satisfies NonNullable<AgentGUIProps["agentSettings"]>;
+const debugRegistrationCreditsToastStorageKey =
+  "tutti.agentGui.debugRegistrationCreditsToast";
+const debugRegistrationCreditsToastID =
+  "debug:registrationCreditsToastShown:local";
+const registrationCreditsToastAutoDismissMs = 120_000;
 const DESKTOP_AGENT_GUI_NOOP = (): void => {};
 function handleDesktopAgentGUIShowMessage(
   message: string,
@@ -156,6 +161,26 @@ function handleDesktopAgentGUIShowMessage(
   }
   Toast.tips(message);
 }
+
+function readDebugRegistrationCreditsToastEnabled(): boolean {
+  try {
+    return (
+      window.localStorage.getItem(debugRegistrationCreditsToastStorageKey) ===
+      "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function clearDebugRegistrationCreditsToast(): void {
+  try {
+    window.localStorage.removeItem(debugRegistrationCreditsToastStorageKey);
+  } catch {
+    // Ignore storage access failures; this is a local debug-only switch.
+  }
+}
+
 const AGENT_PROBE_REFRESH_DEBOUNCE_MS = 300;
 const DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS =
   [] satisfies NonNullable<AgentGUIProps["contextMentionProviders"]>;
@@ -277,6 +302,10 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
   const previousAccountLoginStatusRef = useRef<string | null>(null);
   const previousAccountUserIdRef = useRef<string | null>(null);
+  const [
+    debugRegistrationCreditsToastEnabled,
+    setDebugRegistrationCreditsToastEnabled
+  ] = useState(readDebugRegistrationCreditsToastEnabled);
   const [computerUseStatus, setComputerUseStatus] =
     useState<DesktopComputerUseStatus | null>(null);
   const appCenterState = useSnapshot(appCenterService.store);
@@ -491,6 +520,24 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       typeof availableCredits === "number" && Number.isFinite(availableCredits)
         ? new Intl.NumberFormat(locale).format(availableCredits)
         : null;
+    const debugRegistrationCreditsReward =
+      user && debugRegistrationCreditsToastEnabled
+        ? {
+            id: debugRegistrationCreditsToastID,
+            grant_no: "debug-registration-credits-toast",
+            credits: 500,
+            created_at: new Date().toISOString()
+          }
+        : null;
+    const registrationCreditsReward =
+      summary?.registration_credits_reward ?? debugRegistrationCreditsReward;
+    const registrationCreditsLabel =
+      typeof registrationCreditsReward?.credits === "number" &&
+      Number.isFinite(registrationCreditsReward.credits)
+        ? new Intl.NumberFormat(locale).format(
+            registrationCreditsReward.credits
+          )
+        : null;
     const links = summary?.links ?? {
       plan_url: "https://tutti.sh/profile/plan",
       usage_url: "https://tutti.sh/profile/usage",
@@ -510,6 +557,28 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       loading: accountState.productSummaryLoading,
       error: user ? null : accountState.productSummaryError,
       partialError: summary?.partial_error != null,
+      registrationCreditsToast:
+        registrationCreditsReward && registrationCreditsLabel
+          ? {
+              id: registrationCreditsReward.id,
+              creditsLabel: registrationCreditsLabel,
+              visible: true,
+              autoDismissMs: registrationCreditsToastAutoDismissMs,
+              onDismiss() {
+                if (
+                  registrationCreditsReward.id ===
+                  debugRegistrationCreditsToastID
+                ) {
+                  clearDebugRegistrationCreditsToast();
+                  setDebugRegistrationCreditsToastEnabled(false);
+                  return;
+                }
+                void accountService.dismissRegistrationCreditsReward(
+                  registrationCreditsReward.id
+                );
+              }
+            }
+          : null,
       links: {
         planUrl: links.plan_url,
         usageUrl: links.usage_url,
@@ -545,6 +614,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     accountState.productSummaryError,
     accountState.productSummaryLoading,
     accountState.user,
+    debugRegistrationCreditsToastEnabled,
     locale,
     workbenchHostService,
     workspaceId,

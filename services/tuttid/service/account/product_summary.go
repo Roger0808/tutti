@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -24,11 +25,12 @@ const (
 )
 
 type ProductSummary struct {
-	User         *authbridge.UserInfo
-	Membership   *MembershipSummary
-	Credits      *CreditsSummary
-	PartialError *ProductSummaryPartialError
-	Links        ProductSummaryLinks
+	User                      *authbridge.UserInfo
+	Membership                *MembershipSummary
+	Credits                   *CreditsSummary
+	RegistrationCreditsReward *RegistrationCreditsReward
+	PartialError              *ProductSummaryPartialError
+	Links                     ProductSummaryLinks
 }
 
 type MembershipSummary struct {
@@ -62,30 +64,58 @@ type ProductSummaryLinks struct {
 
 func (s *Service) productSummary(ctx context.Context) (ProductSummary, error) {
 	links := s.productSummaryLinks()
+	slog.Info("account product summary requested", "event", "account.product_summary.requested")
 	client, err := s.authClient()
 	if err != nil {
+		slog.Warn("account product summary auth client unavailable",
+			"event", "account.product_summary.auth_client_failed",
+			"error", err,
+		)
 		return ProductSummary{Links: links}, err
 	}
 	session, err := client.ReadSession()
 	if err != nil || session == nil {
+		slog.Info("account product summary skipped without session",
+			"event", "account.product_summary.no_session",
+			"has_session", session != nil,
+			"error", err,
+		)
 		return ProductSummary{Links: links}, err
 	}
 	user, err := client.GetUserInfo(ctx)
 	if err != nil {
+		slog.Warn("account product summary user info unavailable",
+			"event", "account.product_summary.user_info_failed",
+			"error", err,
+		)
 		return ProductSummary{Links: links}, err
 	}
 	if user == nil {
+		slog.Info("account product summary skipped without user",
+			"event", "account.product_summary.no_user",
+		)
 		return ProductSummary{Links: links}, nil
 	}
 
+	registrationCreditsReward := s.registrationCreditsReward(ctx, session, user)
 	remote := s.fetchRemoteProductSummary(ctx, sessionCookie(session))
 	summary := ProductSummary{
-		User:         user,
-		Membership:   membershipSummary(remote.UserInfo),
-		Credits:      creditsSummary(remote.CreditsOverview, remote.UserInfo),
-		PartialError: remote.PartialError,
-		Links:        links,
+		User:                      user,
+		Membership:                membershipSummary(remote.UserInfo),
+		Credits:                   creditsSummary(remote.CreditsOverview, remote.UserInfo),
+		RegistrationCreditsReward: registrationCreditsReward,
+		PartialError:              remote.PartialError,
+		Links:                     links,
 	}
+	slog.Info("account product summary completed",
+		"event", "account.product_summary.completed",
+		"user_hash", accountLogHash(user.UserID),
+		"has_membership", summary.Membership != nil,
+		"has_credits", summary.Credits != nil,
+		"has_registration_credits_reward", summary.RegistrationCreditsReward != nil,
+		"partial_error_scope", productSummaryPartialErrorScope(summary.PartialError),
+		"partial_error_code", productSummaryPartialErrorCode(summary.PartialError),
+	)
 	return summary, nil
 }
 
@@ -104,6 +134,13 @@ func (s *Service) fetchRemoteProductSummary(ctx context.Context, cookie string) 
 
 	var creditsOverview map[string]any
 	creditsErr := s.fetchSessionJSON(ctx, s.commerceBaseURL(), "/v1/credits/overview", cookie, &creditsOverview)
+	slog.Info("account product summary remote fetch completed",
+		"event", "account.product_summary.remote_fetch_completed",
+		"membership_error_code", productSummaryErrorCodeOrEmpty(membershipErr),
+		"credits_error_code", productSummaryErrorCodeOrEmpty(creditsErr),
+		"has_membership_payload", userInfo != nil,
+		"has_credits_payload", creditsOverview != nil,
+	)
 
 	return remoteSummaryResult{
 		UserInfo:        userInfo,
@@ -166,12 +203,52 @@ func productSummaryErrorMessage(err error) string {
 	return err.Error()
 }
 
+func productSummaryErrorCodeOrEmpty(err error) string {
+	if err == nil {
+		return ""
+	}
+	return productSummaryErrorCode(err)
+}
+
+func productSummaryPartialErrorScope(err *ProductSummaryPartialError) string {
+	if err == nil {
+		return ""
+	}
+	return err.Scope
+}
+
+func productSummaryPartialErrorCode(err *ProductSummaryPartialError) string {
+	if err == nil {
+		return ""
+	}
+	return err.Code
+}
+
 func (s *Service) fetchSessionJSON(ctx context.Context, baseURL string, path string, cookie string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, buildRemoteURL(baseURL, path), nil)
+	return s.sessionJSON(ctx, http.MethodGet, baseURL, path, cookie, nil, out)
+}
+
+func (s *Service) postSessionJSON(ctx context.Context, baseURL string, path string, cookie string, body io.Reader, out any) error {
+	return s.sessionJSON(ctx, http.MethodPost, baseURL, path, cookie, body, out)
+}
+
+func (s *Service) sessionJSON(
+	ctx context.Context,
+	method string,
+	baseURL string,
+	path string,
+	cookie string,
+	body io.Reader,
+	out any,
+) error {
+	req, err := http.NewRequestWithContext(ctx, method, buildRemoteURL(baseURL, path), body)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if cookie != "" {
 		req.Header.Set("Cookie", cookie)
 	}
@@ -181,17 +258,17 @@ func (s *Service) fetchSessionJSON(ctx context.Context, baseURL string, path str
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, productSummaryBodyLimit))
+	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, productSummaryBodyLimit))
 	if err != nil {
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return productSummaryHTTPError{status: resp.StatusCode}
 	}
-	if len(body) == 0 || out == nil {
+	if len(rawBody) == 0 || out == nil {
 		return nil
 	}
-	return json.Unmarshal(body, out)
+	return json.Unmarshal(rawBody, out)
 }
 
 func (s *Service) productSummaryLinks() ProductSummaryLinks {
@@ -241,6 +318,9 @@ func sessionCookie(session *authbridge.Session) string {
 }
 
 func membershipSummary(data map[string]any) *MembershipSummary {
+	if summary, ok := currentVIPMembershipSummary(data); ok {
+		return summary
+	}
 	membership, ok := objectField(data, "membership")
 	if !ok {
 		return nil
@@ -258,6 +338,30 @@ func membershipSummary(data map[string]any) *MembershipSummary {
 		CurrentPeriodEnd:  stringField(membership, "current_period_end", "currentPeriodEnd", "expired_at", "expiredAt"),
 		CancelAtPeriodEnd: boolFieldPointer(membership, "cancel_at_period_end", "cancelAtPeriodEnd"),
 	}
+}
+
+func currentVIPMembershipSummary(data map[string]any) (*MembershipSummary, bool) {
+	vipLevel := strings.ToLower(stringField(data, "vip_level", "vipLevel"))
+	isVIP := boolFieldPointer(data, "is_vip", "isVip")
+	if isVIP == nil && vipLevel == "" {
+		return nil, false
+	}
+	if isVIP == nil || !*isVIP || vipLevel == "" || vipLevel == "free" {
+		return nil, true
+	}
+	periodEnd := stringField(data, "vip_renew_at", "vipRenewAt")
+	if periodEnd == "" {
+		periodEnd = stringField(data, "vip_valid_until", "vipValidUntil")
+	}
+	return &MembershipSummary{
+		TierKey:           vipLevel,
+		DisplayName:       displayPlanName(vipLevel),
+		BillingPeriod:     stringField(data, "vip_billing_period", "vipBillingPeriod"),
+		Status:            "active",
+		AccessStatus:      "active",
+		CurrentPeriodEnd:  periodEnd,
+		CancelAtPeriodEnd: boolFieldPointer(data, "vip_cancel_at_period_end", "vipCancelAtPeriodEnd"),
+	}, true
 }
 
 func creditsSummary(overview map[string]any, fallback map[string]any) *CreditsSummary {
@@ -284,7 +388,7 @@ func displayPlanName(tierKey string) string {
 	case "free":
 		return "Free"
 	case "basic":
-		return "Lite"
+		return "Basic"
 	case "pro":
 		return "Pro"
 	case "ultra":

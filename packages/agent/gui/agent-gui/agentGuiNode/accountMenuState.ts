@@ -10,6 +10,13 @@ export interface AgentGUIAccountMenuState {
   loading: boolean;
   error: string | null;
   partialError?: boolean;
+  registrationCreditsToast?: {
+    id: string;
+    creditsLabel: string;
+    visible: boolean;
+    autoDismissMs?: number;
+    onDismiss(): void;
+  } | null;
   links: {
     planUrl: string;
     usageUrl: string;

@@ -152,6 +152,30 @@ paths:
           $ref: "#/components/responses/MethodNotAllowedError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/account/registration_credits_reward/dismiss:
+    post:
+      operationId: dismissAccountRegistrationCreditsReward
+      tags:
+        - account
+      summary: Mark the current registration credits reward toast as shown
+      description: Marks a desktop-safe registration credits reward event as shown after the renderer has displayed or dismissed the toast. tuttid keeps session credentials local and never returns them to the renderer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DismissAccountRegistrationCreditsRewardRequest"
+      responses:
+        "204":
+          description: Registration credits reward marked as shown
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/account/logout:
     post:
       operationId: logoutAccount
@@ -3743,6 +3767,28 @@ components:
         message:
           type: string
           nullable: true
+    AccountRegistrationCreditsReward:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - grant_no
+        - credits
+        - created_at
+      properties:
+        id:
+          type: string
+          minLength: 1
+        grant_no:
+          type: string
+          minLength: 1
+        credits:
+          type: integer
+          format: int64
+          minimum: 1
+        created_at:
+          type: string
+          minLength: 1
     AccountProductSummaryResponse:
       type: object
       additionalProperties: false
@@ -3768,8 +3814,21 @@ components:
           allOf:
             - $ref: "#/components/schemas/AccountProductSummaryPartialError"
           nullable: true
+        registration_credits_reward:
+          allOf:
+            - $ref: "#/components/schemas/AccountRegistrationCreditsReward"
+          nullable: true
         links:
           $ref: "#/components/schemas/AccountProductSummaryLinks"
+    DismissAccountRegistrationCreditsRewardRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - reward_id
+      properties:
+        reward_id:
+          type: string
+          minLength: 1
     AccountLoginStartResponse:
       type: object
       additionalProperties: false

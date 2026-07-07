@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"time"
 
 	authbridge "github.com/tutti-os/tutti/packages/auth/bridge-go"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
@@ -11,6 +12,7 @@ import (
 )
 
 type AccountService interface {
+	DismissRegistrationCreditsReward(context.Context, string) error
 	GetProductSummary(context.Context) (accountservice.ProductSummary, error)
 	GetUserInfo(context.Context) (*authbridge.UserInfo, error)
 	LoginStatus(string) (authbridge.LoginStatus, error)
@@ -95,16 +97,43 @@ func (api DaemonAPI) GetAccountProductSummary(ctx context.Context, _ tuttigenera
 		}, nil
 	}
 	return tuttigenerated.GetAccountProductSummary200JSONResponse{
-		User:         generatedAccountUser(summary.User),
-		Membership:   generatedAccountMembership(summary.Membership),
-		Credits:      generatedAccountCredits(summary.Credits),
-		PartialError: generatedAccountProductPartialError(summary.PartialError),
+		User:                      generatedAccountUser(summary.User),
+		Membership:                generatedAccountMembership(summary.Membership),
+		Credits:                   generatedAccountCredits(summary.Credits),
+		RegistrationCreditsReward: generatedAccountRegistrationCreditsReward(summary.RegistrationCreditsReward),
+		PartialError:              generatedAccountProductPartialError(summary.PartialError),
 		Links: tuttigenerated.AccountProductSummaryLinks{
 			PlanUrl:     summary.Links.PlanURL,
 			UsageUrl:    summary.Links.UsageURL,
 			SettingsUrl: summary.Links.SettingsURL,
 		},
 	}, nil
+}
+
+func (api DaemonAPI) DismissAccountRegistrationCreditsReward(ctx context.Context, request tuttigenerated.DismissAccountRegistrationCreditsRewardRequestObject) (tuttigenerated.DismissAccountRegistrationCreditsRewardResponseObject, error) {
+	if api.AccountService == nil {
+		return tuttigenerated.DismissAccountRegistrationCreditsReward503JSONResponse{ServiceUnavailableErrorJSONResponse: accountServiceUnavailableError()}, nil
+	}
+	if request.Body == nil {
+		return tuttigenerated.DismissAccountRegistrationCreditsReward400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body"))),
+		}, nil
+	}
+	if err := api.AccountService.DismissRegistrationCreditsReward(ctx, request.Body.RewardId); err != nil {
+		if errors.Is(err, accountservice.ErrRegistrationCreditsRewardIDRequired) {
+			return tuttigenerated.DismissAccountRegistrationCreditsReward400JSONResponse{
+				InvalidRequestErrorJSONResponse: invalidRequestError(
+					apierrors.InvalidRequest("account_registration_credits_reward_id_required", apierrors.WithParams(map[string]any{"field": "reward_id"})),
+				),
+			}, nil
+		}
+		return tuttigenerated.DismissAccountRegistrationCreditsReward503JSONResponse{
+			ServiceUnavailableErrorJSONResponse: serviceUnavailableError(
+				apierrors.ServiceUnavailable("account_registration_credits_reward_dismiss_failed", apierrors.WithCause(err)),
+			),
+		}, nil
+	}
+	return tuttigenerated.DismissAccountRegistrationCreditsReward204Response{}, nil
 }
 
 func (api DaemonAPI) LogoutAccount(ctx context.Context, _ tuttigenerated.LogoutAccountRequestObject) (tuttigenerated.LogoutAccountResponseObject, error) {
@@ -163,6 +192,22 @@ func generatedAccountCredits(credits *accountservice.CreditsSummary) *tuttigener
 		ExpiringCreditsWithin24h: credits.ExpiringCreditsWithin24h,
 		NextExpireAt:             stringPointer(credits.NextExpireAt),
 		RefreshedAt:              stringPointer(credits.RefreshedAt),
+	}
+}
+
+func generatedAccountRegistrationCreditsReward(reward *accountservice.RegistrationCreditsReward) *tuttigenerated.AccountRegistrationCreditsReward {
+	if reward == nil || reward.ID == "" || reward.GrantNo == "" || reward.Credits <= 0 {
+		return nil
+	}
+	createdAt := reward.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	return &tuttigenerated.AccountRegistrationCreditsReward{
+		Id:        reward.ID,
+		GrantNo:   reward.GrantNo,
+		Credits:   reward.Credits,
+		CreatedAt: createdAt.UTC().Format(time.RFC3339Nano),
 	}
 }
 

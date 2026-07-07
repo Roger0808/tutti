@@ -112,6 +112,9 @@ import type {
   DeleteWorkspaceIssueTopicErrors,
   DeleteWorkspaceIssueTopicResponses,
   DeleteWorkspaceResponses,
+  DismissAccountRegistrationCreditsRewardData,
+  DismissAccountRegistrationCreditsRewardErrors,
+  DismissAccountRegistrationCreditsRewardResponses,
   ExportWorkspaceAppData,
   ExportWorkspaceAppErrors,
   ExportWorkspaceAppResponses,
@@ -531,6 +534,30 @@ export const getAccountProductSummary = <ThrowOnError extends boolean = false>(
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/account/product_summary",
     ...options
+  });
+
+/**
+ * Mark the current registration credits reward toast as shown
+ *
+ * Marks a desktop-safe registration credits reward event as shown after the renderer has displayed or dismissed the toast. tuttid keeps session credentials local and never returns them to the renderer.
+ */
+export const dismissAccountRegistrationCreditsReward = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<DismissAccountRegistrationCreditsRewardData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    DismissAccountRegistrationCreditsRewardResponses,
+    DismissAccountRegistrationCreditsRewardErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/account/registration_credits_reward/dismiss",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**
