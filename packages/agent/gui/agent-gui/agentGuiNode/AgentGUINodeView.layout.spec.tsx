@@ -4396,13 +4396,16 @@ describe("AgentGUINodeView provider readiness gate", () => {
       })
     });
 
+    // The pending label is shown on the action button only, not duplicated
+    // as a separate standalone status line.
     expect(
-      screen.getByTestId("agent-gui-provider-readiness-gate-pending")
-    ).toHaveTextContent("providerGatePendingInstall");
+      screen.queryByTestId("agent-gui-provider-readiness-gate-pending")
+    ).toBeNull();
 
     const action = screen.getByTestId(
       "agent-gui-provider-readiness-gate-action"
     );
+    expect(action).toHaveTextContent("providerGatePendingInstall");
     expect(action).toBeDisabled();
     fireEvent.click(action);
     expect(onAction).not.toHaveBeenCalled();

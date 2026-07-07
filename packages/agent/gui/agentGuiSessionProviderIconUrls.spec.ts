@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   cursorColorfulUrl,
   cursorFlatFilledIconUrl,
+  opencodeFlatFilledIconUrl,
   resolveAgentGuiSessionProviderFlatIconUrl,
   resolveAgentGuiSessionProviderIconUrl,
   tuttiFlatFilledIconUrl
@@ -9,7 +10,8 @@ import {
 import {
   claudeRoundedUrl,
   codexRoundedUrl,
-  manageAgentTuttiUrl
+  manageAgentTuttiUrl,
+  opencodeRoundedUrl
 } from "./managedAgentIconAssets.ts";
 
 describe("resolveAgentGuiSessionProviderIconUrl", () => {
@@ -44,6 +46,12 @@ describe("resolveAgentGuiSessionProviderIconUrl", () => {
     );
   });
 
+  it("returns the colorful opencode icon for opencode sessions", () => {
+    expect(resolveAgentGuiSessionProviderIconUrl("opencode")).toBe(
+      opencodeRoundedUrl
+    );
+  });
+
   it("returns null for providers without a session icon override", () => {
     expect(resolveAgentGuiSessionProviderIconUrl("hermes")).toBeNull();
   });
@@ -65,6 +73,12 @@ describe("resolveAgentGuiSessionProviderFlatIconUrl", () => {
     );
     expect(resolveAgentGuiSessionProviderFlatIconUrl("tutti-agent")).toBe(
       tuttiFlatFilledIconUrl
+    );
+  });
+
+  it("returns the flat filled opencode icon for masked surfaces", () => {
+    expect(resolveAgentGuiSessionProviderFlatIconUrl("opencode")).toBe(
+      opencodeFlatFilledIconUrl
     );
   });
 

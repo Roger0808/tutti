@@ -3490,21 +3490,23 @@ const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
   return (
     <div className={styles.emptyHero}>
       <div className={styles.emptyHeroBody}>
-        {heroIconPresentations.length > 1 ? (
-          <AgentGUIAllProviderGridIcon
-            key={heroIconAnimationKey}
-            activeProvider={provider}
-            className={styles.emptyHeroLaunchpadIcon}
-            icons={heroIconPresentations}
-          />
-        ) : (
-          <AgentGUIProviderIconVisual
-            key={heroIconAnimationKey}
-            ariaHidden
-            imageClassName={styles.emptyHeroIconEffect}
-            icon={heroIconPresentations[0]!}
-          />
-        )}
+        <div className={styles.emptyHeroIconSlot}>
+          {heroIconPresentations.length > 1 ? (
+            <AgentGUIAllProviderGridIcon
+              key={heroIconAnimationKey}
+              activeProvider={provider}
+              className={styles.emptyHeroLaunchpadIcon}
+              icons={heroIconPresentations}
+            />
+          ) : (
+            <AgentGUIProviderIconVisual
+              key={heroIconAnimationKey}
+              ariaHidden
+              imageClassName={styles.emptyHeroIconEffect}
+              icon={heroIconPresentations[0]!}
+            />
+          )}
+        </div>
         <h2 className={styles.emptyHeroTitle}>
           <EmptyHeroTitle
             label={emptyLabel}
@@ -3615,7 +3617,7 @@ const AgentGUIProviderReadinessGatePane = memo(
           <p className={styles.emptyProviderGateDescription}>
             {content.description}
           </p>
-          {pendingLabel ? (
+          {pendingLabel && !action ? (
             <div
               className={styles.emptyProviderGateStatus}
               data-testid="agent-gui-provider-readiness-gate-pending"
