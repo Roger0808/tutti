@@ -25,9 +25,8 @@ func NewOpenCodeAdapterWithHostMetadata(transport ProcessTransport, host HostMet
 			permissionModeID: func(string) string {
 				return ""
 			},
-			initializeParams:              func() map[string]any { return defaultACPInitializeParams(host) },
-			env:                           func(session Session) []string { return opencodeACPEnv(session, host) },
-			requiresNewSessionForSettings: opencodeRequiresNewSessionForSettings,
+			initializeParams: func() map[string]any { return defaultACPInitializeParams(host) },
+			env:              func(session Session) []string { return opencodeACPEnv(session, host) },
 		},
 		transport: transport,
 		host:      host,
@@ -55,8 +54,4 @@ func opencodeConfigContent(session Session) string {
 		return ""
 	}
 	return string(data)
-}
-
-func opencodeRequiresNewSessionForSettings(_ Session, patch SessionSettingsPatch) bool {
-	return patch.Model != nil
 }

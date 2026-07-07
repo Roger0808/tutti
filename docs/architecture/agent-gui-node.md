@@ -1544,6 +1544,14 @@ provider capability/options
 Avoid fixing a menu label or disabled state without checking whether the same
 setting is also used by prompt creation, session continuation, and runtime
 tracking.
+Active-session settings are first-class session state, not composer defaults.
+The controller should submit the runtime settings patch and let the provider
+adapter decide whether the change can be applied live or requires a new
+session. Provider capability differences belong in the daemon runtime adapter:
+for example, OpenCode model and reasoning-effort changes are live ACP
+`session/set_config_option` updates, while spawn-time-only provider settings may
+return the `agent.settings_require_new_session` reason. The UI should surface
+that reason as guidance, not as an unhandled runtime error.
 
 ### Mention Or File Reference
 

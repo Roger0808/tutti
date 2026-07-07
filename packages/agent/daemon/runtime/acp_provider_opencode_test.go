@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -41,14 +42,55 @@ func TestOpenCodeACPEnvInjectsModelConfigContent(t *testing.T) {
 	}
 }
 
-func TestOpenCodeRequiresNewSessionForModelSettings(t *testing.T) {
+func TestOpenCodeDoesNotRequireNewSessionForModelSettings(t *testing.T) {
 	t.Parallel()
 
+	adapter := NewOpenCodeAdapter(nil)
 	model := "openai/gpt-5"
-	if !opencodeRequiresNewSessionForSettings(Session{}, SessionSettingsPatch{Model: &model}) {
-		t.Fatal("model patch did not require a new session")
+	if adapter.RequiresNewSessionForSettings(Session{}, SessionSettingsPatch{Model: &model}) {
+		t.Fatal("model patch required a new session")
 	}
-	if opencodeRequiresNewSessionForSettings(Session{}, SessionSettingsPatch{}) {
+	if adapter.RequiresNewSessionForSettings(Session{}, SessionSettingsPatch{}) {
 		t.Fatal("empty patch required a new session")
+	}
+}
+
+func TestOpenCodeApplySessionSettingsSendsLiveModelAndEffortConfigOptions(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-1")
+	adapter := NewOpenCodeAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	session.Settings = &SessionSettings{
+		Model:           "openai/gpt-5.3-codex-spark",
+		ReasoningEffort: "high",
+	}
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		Model:           stringPtr("openai/gpt-5.3-codex-spark"),
+		ReasoningEffort: stringPtr("high"),
+	}); err != nil {
+		t.Fatalf("ApplySessionSettings: %v", err)
+	}
+
+	calls := transport.conn.setConfigOptionCalls()
+	if len(calls) != 2 {
+		t.Fatalf("config option calls = %#v, want model + effort", calls)
+	}
+	if got, _ := calls[0]["configId"].(string); got != "model" {
+		t.Fatalf("first config id = %q, want model", got)
+	}
+	if got, _ := calls[0]["value"].(string); got != "openai/gpt-5.3-codex-spark" {
+		t.Fatalf("first config value = %q, want openai/gpt-5.3-codex-spark", got)
+	}
+	if got, _ := calls[1]["configId"].(string); got != "effort" {
+		t.Fatalf("second config id = %q, want effort", got)
+	}
+	if got, _ := calls[1]["value"].(string); got != "high" {
+		t.Fatalf("second config value = %q, want high", got)
 	}
 }

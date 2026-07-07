@@ -157,9 +157,11 @@ var composerProfiles = map[string]composerProfile{
 		Capabilities: []string{"interrupt"},
 	},
 	agentprovider.OpenCode: {
-		ModelSelection:   true,
-		UsesModelCatalog: true,
-		Capabilities:     []string{"interrupt"},
+		ModelSelection:         true,
+		UsesModelCatalog:       true,
+		ReasoningEffort:        true,
+		DefaultReasoningEffort: "high",
+		Capabilities:           []string{"interrupt"},
 	},
 }
 
