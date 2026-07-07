@@ -91,9 +91,6 @@ func parseOpenCodeModelsOutput(output []byte) []AgentModelOption {
 	sort.SliceStable(models, func(leftIndex, rightIndex int) bool {
 		return strings.Compare(models[leftIndex].ID, models[rightIndex].ID) < 0
 	})
-	if len(models) > 0 {
-		models[0].IsDefault = true
-	}
 	return models
 }
 

@@ -592,7 +592,11 @@ func parseOpenCodeAuthStatusOutput(output []byte) (AuthInfo, bool) {
 		strings.Contains(normalized, "unauthenticated") {
 		return AuthInfo{Status: AuthRequired}, true
 	}
-	return AuthInfo{Status: AuthAuthenticated}, true
+	if strings.Contains(normalized, "logged in") ||
+		strings.Contains(normalized, "authenticated") {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+	return AuthInfo{}, false
 }
 
 func parseClaudeAuthStatusOutput(output []byte) (AuthInfo, bool) {
