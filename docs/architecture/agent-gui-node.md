@@ -774,7 +774,10 @@ Conversation previews for these path-backed images must use
 `AgentActivityRuntime.readPromptAsset` to read the managed local asset; do not
 keep base64 data in submitted prompt content just to render optimistic messages.
 The daemon copies that source into the session prompt attachment store and
-persists the normalized `attachmentId`.
+persists the normalized `attachmentId`. The managed source path must live under
+the daemon state root's `agent-prompt-assets` directory, and the daemon must
+re-check the resolved source path, symlink target, file type, and size before
+copying it into the session attachment store.
 Claude Code runtime options follow the same parity rule. The legacy ACP adapter
 and the Claude SDK adapter must derive system prompt append text, Tutti detail
 mode instructions, plan-mode instructions, plugin directory, custom model args,

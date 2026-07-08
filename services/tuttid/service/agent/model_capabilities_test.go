@@ -185,6 +185,36 @@ func TestModelCapabilitiesErrorStillAllowsCursorRule(t *testing.T) {
 	}
 }
 
+func TestModelCapabilitiesSharedFetchIgnoresCallerCancellation(t *testing.T) {
+	t.Parallel()
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if err := r.Context().Err(); err != nil {
+			t.Errorf("models.dev request context error = %v, want nil", err)
+		}
+		_, _ = w.Write([]byte(`{"openai":{"models":{"gpt-5.2-pro":{"modalities":{"input":["text","image"]}}}}}`))
+	}))
+	defer server.Close()
+	service := &ModelCapabilitiesService{
+		APIURL:       server.URL,
+		FetchTimeout: time.Second,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result := service.ResolveModelCapabilities(ctx, ModelCapabilityLookupInput{
+		Provider: "opencode",
+		ModelID:  "openai/gpt-5.2-pro",
+	})
+	if result.SupportsImageInput == nil || !*result.SupportsImageInput {
+		t.Fatalf("supportsImageInput = %#v, want true despite caller cancellation", result.SupportsImageInput)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("models.dev calls = %d, want 1", calls.Load())
+	}
+}
+
 func TestServiceEnrichesComposerModelOptions(t *testing.T) {
 	t.Parallel()
 	service := &Service{ModelCapabilities: fakeModelCapabilitiesResolver{

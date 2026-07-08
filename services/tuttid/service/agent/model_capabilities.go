@@ -20,6 +20,7 @@ const (
 	defaultModelsDevAPIURL               = "https://models.dev/api.json"
 	defaultModelCapabilitiesSuccessTTL   = 6 * time.Hour
 	defaultModelCapabilitiesErrorTTL     = 5 * time.Minute
+	defaultModelCapabilitiesFetchTimeout = 10 * time.Second
 	modelCapabilitiesLogPrefix           = "agent.model_capabilities"
 	modelCapabilitiesSourceModelsDev     = "models.dev"
 	modelCapabilitiesSourceProviderRules = "provider-rules"
@@ -49,11 +50,12 @@ type ModelCapabilitiesResolver interface {
 }
 
 type ModelCapabilitiesService struct {
-	APIURL     string
-	HTTPClient *http.Client
-	Now        func() time.Time
-	SuccessTTL time.Duration
-	ErrorTTL   time.Duration
+	APIURL       string
+	HTTPClient   *http.Client
+	Now          func() time.Time
+	SuccessTTL   time.Duration
+	ErrorTTL     time.Duration
+	FetchTimeout time.Duration
 
 	mu          sync.Mutex
 	cached      *modelsDevCatalog
@@ -163,7 +165,9 @@ func (s *ModelCapabilitiesService) modelsDevCatalog(ctx context.Context) (*model
 		if cached, ok, err := s.readModelsDevCache(now); ok {
 			return cached, err
 		}
-		catalog, fetchErr := s.fetchModelsDevCatalog(ctx)
+		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.fetchTimeout())
+		defer cancel()
+		catalog, fetchErr := s.fetchModelsDevCatalog(fetchCtx)
 		s.writeModelsDevCache(now, catalog, fetchErr)
 		return catalog, fetchErr
 	})
@@ -455,6 +459,13 @@ func (s *ModelCapabilitiesService) errorTTL() time.Duration {
 		return s.ErrorTTL
 	}
 	return defaultModelCapabilitiesErrorTTL
+}
+
+func (s *ModelCapabilitiesService) fetchTimeout() time.Duration {
+	if s != nil && s.FetchTimeout > 0 {
+		return s.FetchTimeout
+	}
+	return defaultModelCapabilitiesFetchTimeout
 }
 
 func logModelCapabilities(stage string, payload map[string]any) {

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,10 +12,15 @@ import (
 	"github.com/google/uuid"
 )
 
-const maxPromptImageBlocks = 8
+const (
+	maxPromptImageBlocks                 = 8
+	maxPromptAttachmentSourceBytes int64 = 20 << 20
+	promptAttachmentSourceDirName        = "agent-prompt-assets"
+)
 
 type PromptAttachmentStore struct {
-	RootDir string
+	RootDir       string
+	SourceRootDir string
 }
 
 func TextPromptContent(text string) []PromptContentBlock {
@@ -129,7 +135,7 @@ func (s PromptAttachmentStore) PersistRequestContent(workspaceID, agentSessionID
 			if err := os.WriteFile(path, data, 0o600); err != nil {
 				return nil, fmt.Errorf("write agent prompt attachment: %w", err)
 			}
-		} else if err := copyPromptAttachmentSource(sourcePath, path); err != nil {
+		} else if err := s.copyPromptAttachmentSource(sourcePath, path); err != nil {
 			return nil, err
 		}
 		out = append(out, PromptContentBlock{
@@ -142,25 +148,92 @@ func (s PromptAttachmentStore) PersistRequestContent(workspaceID, agentSessionID
 	return out, nil
 }
 
-func copyPromptAttachmentSource(sourcePath, destinationPath string) error {
-	info, err := os.Stat(sourcePath)
+func (s PromptAttachmentStore) copyPromptAttachmentSource(sourcePath, destinationPath string) error {
+	resolvedSourcePath, err := s.validatePromptAttachmentSourcePath(sourcePath)
+	if err != nil {
+		return err
+	}
+	source, err := os.Open(resolvedSourcePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return ErrInvalidArgument
 		}
-		return fmt.Errorf("stat agent prompt attachment source: %w", err)
+		return fmt.Errorf("open agent prompt attachment source: %w", err)
 	}
-	if !info.Mode().IsRegular() {
-		return ErrInvalidArgument
-	}
-	data, err := os.ReadFile(sourcePath)
+	defer source.Close()
+	destination, err := os.OpenFile(destinationPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
-		return fmt.Errorf("read agent prompt attachment source: %w", err)
-	}
-	if err := os.WriteFile(destinationPath, data, 0o600); err != nil {
 		return fmt.Errorf("write agent prompt attachment: %w", err)
 	}
+	defer destination.Close()
+	copied, err := io.Copy(destination, io.LimitReader(source, maxPromptAttachmentSourceBytes+1))
+	if err != nil {
+		return fmt.Errorf("copy agent prompt attachment source: %w", err)
+	}
+	if copied > maxPromptAttachmentSourceBytes {
+		_ = destination.Close()
+		_ = os.Remove(destinationPath)
+		return ErrInvalidArgument
+	}
 	return nil
+}
+
+func (s PromptAttachmentStore) validatePromptAttachmentSourcePath(sourcePath string) (string, error) {
+	sourcePath = strings.TrimSpace(sourcePath)
+	if sourcePath == "" {
+		return "", ErrInvalidArgument
+	}
+	sourceRoot, err := s.promptAttachmentSourceRoot()
+	if err != nil {
+		return "", err
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(sourceRoot)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", ErrInvalidArgument
+		}
+		return "", fmt.Errorf("resolve agent prompt attachment source root: %w", err)
+	}
+	resolvedSource, err := filepath.EvalSymlinks(sourcePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", ErrInvalidArgument
+		}
+		return "", fmt.Errorf("resolve agent prompt attachment source: %w", err)
+	}
+	rel, err := filepath.Rel(resolvedRoot, resolvedSource)
+	if err != nil {
+		return "", fmt.Errorf("rel agent prompt attachment source: %w", err)
+	}
+	if rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." || filepath.IsAbs(rel) {
+		return "", ErrInvalidArgument
+	}
+	info, err := os.Stat(resolvedSource)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", ErrInvalidArgument
+		}
+		return "", fmt.Errorf("stat agent prompt attachment source: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxPromptAttachmentSourceBytes {
+		return "", ErrInvalidArgument
+	}
+	return resolvedSource, nil
+}
+
+func (s PromptAttachmentStore) promptAttachmentSourceRoot() (string, error) {
+	root := filepath.Clean(strings.TrimSpace(s.SourceRootDir))
+	if root == "" || root == "." {
+		root = filepath.Join(filepath.Clean(strings.TrimSpace(s.RootDir)), promptAttachmentSourceDirName)
+	}
+	if root == "" || root == "." || root == string(filepath.Separator) {
+		return "", errors.New("agent prompt attachment source root is not configured")
+	}
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve agent prompt attachment source root: %w", err)
+	}
+	return absolute, nil
 }
 
 func (s PromptAttachmentStore) HydrateRuntimeContent(workspaceID, agentSessionID string, content []PromptContentBlock) ([]PromptContentBlock, error) {

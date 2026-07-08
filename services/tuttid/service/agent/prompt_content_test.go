@@ -97,11 +97,16 @@ func TestPromptAttachmentStoreLocalPathRequiresExistingAttachment(t *testing.T) 
 
 func TestPromptAttachmentStorePersistsPathBackedImage(t *testing.T) {
 	root := t.TempDir()
-	source := filepath.Join(root, "source.png")
+	stateRoot := filepath.Join(root, "state")
+	sourceRoot := filepath.Join(stateRoot, "agent-prompt-assets")
+	if err := os.MkdirAll(sourceRoot, 0o700); err != nil {
+		t.Fatalf("mkdir source root: %v", err)
+	}
+	source := filepath.Join(sourceRoot, "source.png")
 	if err := os.WriteFile(source, []byte("image-bytes"), 0o600); err != nil {
 		t.Fatalf("write source: %v", err)
 	}
-	store := PromptAttachmentStore{RootDir: filepath.Join(root, "state")}
+	store := PromptAttachmentStore{RootDir: stateRoot}
 
 	persisted, err := store.PersistRequestContent("workspace-1", "session-1", []PromptContentBlock{{
 		Type:     "image",
@@ -128,5 +133,84 @@ func TestPromptAttachmentStorePersistsPathBackedImage(t *testing.T) {
 	}
 	if got := hydrated[0].Data; got != base64.StdEncoding.EncodeToString([]byte("image-bytes")) {
 		t.Fatalf("hydrated data = %q, want source bytes encoded", got)
+	}
+}
+
+func TestPromptAttachmentStoreRejectsPathBackedImageOutsideSourceRoot(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "outside.png")
+	if err := os.WriteFile(source, []byte("image-bytes"), 0o600); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	store := PromptAttachmentStore{RootDir: filepath.Join(root, "state")}
+
+	_, err := store.PersistRequestContent("workspace-1", "session-1", []PromptContentBlock{{
+		Type:     "image",
+		MimeType: "image/png",
+		Path:     source,
+		Name:     "screen.png",
+	}})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("PersistRequestContent() error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestPromptAttachmentStoreRejectsSymlinkEscapingSourceRoot(t *testing.T) {
+	root := t.TempDir()
+	stateRoot := filepath.Join(root, "state")
+	sourceRoot := filepath.Join(stateRoot, "agent-prompt-assets")
+	if err := os.MkdirAll(sourceRoot, 0o700); err != nil {
+		t.Fatalf("mkdir source root: %v", err)
+	}
+	outside := filepath.Join(root, "outside.png")
+	if err := os.WriteFile(outside, []byte("image-bytes"), 0o600); err != nil {
+		t.Fatalf("write outside: %v", err)
+	}
+	link := filepath.Join(sourceRoot, "link.png")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	store := PromptAttachmentStore{RootDir: stateRoot}
+
+	_, err := store.PersistRequestContent("workspace-1", "session-1", []PromptContentBlock{{
+		Type:     "image",
+		MimeType: "image/png",
+		Path:     link,
+		Name:     "screen.png",
+	}})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("PersistRequestContent() error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestPromptAttachmentStoreRejectsOversizedPathBackedImage(t *testing.T) {
+	root := t.TempDir()
+	stateRoot := filepath.Join(root, "state")
+	sourceRoot := filepath.Join(stateRoot, "agent-prompt-assets")
+	if err := os.MkdirAll(sourceRoot, 0o700); err != nil {
+		t.Fatalf("mkdir source root: %v", err)
+	}
+	source := filepath.Join(sourceRoot, "large.png")
+	file, err := os.Create(source)
+	if err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+	if err := file.Truncate(maxPromptAttachmentSourceBytes + 1); err != nil {
+		_ = file.Close()
+		t.Fatalf("truncate source: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close source: %v", err)
+	}
+	store := PromptAttachmentStore{RootDir: stateRoot}
+
+	_, err = store.PersistRequestContent("workspace-1", "session-1", []PromptContentBlock{{
+		Type:     "image",
+		MimeType: "image/png",
+		Path:     source,
+		Name:     "screen.png",
+	}})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("PersistRequestContent() error = %v, want ErrInvalidArgument", err)
 	}
 }

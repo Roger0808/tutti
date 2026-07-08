@@ -2292,8 +2292,15 @@ export function AgentComposer({
             const uploadedImage = result.content.find(
               (block) => block.type === "image"
             );
-            if (!uploadedImage) {
-              throw new Error("Prompt image upload completed without image.");
+            if (
+              !uploadedImage ||
+              (!uploadedImage.attachmentId &&
+                !uploadedImage.path &&
+                !uploadedImage.data)
+            ) {
+              throw new Error(
+                "Prompt image upload completed without usable image reference."
+              );
             }
             const uploadedDraftImages = draftImagesRef.current.map((image) =>
               image.id === draftImage.id
