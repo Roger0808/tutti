@@ -288,7 +288,7 @@ func TestDefaultTuttiAgentModelListerBootstrapsExpiredTuttiAgentAuth(t *testing.
 		}
 		issueRequests <- struct{}{}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":0,"data":{"accessToken":"lat_new","accessTokenExpiresAt":"` + accessExpiresAt + `","refreshToken":"lrt_new","refreshTokenExpiresAt":"` + refreshExpiresAt + `","tokenType":"Bearer","appId":"nextop","scopes":["llm:models","llm:chat"]}}`))
+		_, _ = w.Write([]byte(`{"code":0,"data":{"accessToken":"lat_new","accessTokenExpiresAt":"` + accessExpiresAt + `","refreshToken":"lrt_new","refreshTokenExpiresAt":"` + refreshExpiresAt + `","tokenType":"Bearer","appId":"tutti","scopes":["llm:models","llm:chat"]}}`))
 	}))
 	defer account.Close()
 	t.Setenv("TUTTI_ACCOUNT_BASE_URL", account.URL)
