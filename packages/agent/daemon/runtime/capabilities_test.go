@@ -49,6 +49,14 @@ func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 		}
 	}
 
+	cursor := standardACPCapabilities(ProviderCursor, true, acpLiveStateSnapshot{})
+	if !containsString(cursor, CapabilityImageInput) || !containsString(cursor, CapabilityInterrupt) {
+		t.Fatalf("cursor capabilities = %v, want imageInput+interrupt", cursor)
+	}
+	if containsString(cursor, CapabilityPlanMode) || containsString(cursor, CapabilitySkills) {
+		t.Fatalf("cursor capabilities too permissive: %v", cursor)
+	}
+
 	// 其他 ACP provider：保守派生——interrupt 恆有；imageInput 跟隨 promptImage；
 	// compact 僅在 availableCommands 出現 compact 時亮起；無 skills/planMode。
 	gemini := standardACPCapabilities(ProviderGemini, false, acpLiveStateSnapshot{})

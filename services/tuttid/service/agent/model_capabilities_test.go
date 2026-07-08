@@ -93,21 +93,44 @@ func TestModelCapabilitiesModelsDevSupportsImage(t *testing.T) {
 func TestModelCapabilitiesInfersModelsDevProviderForBarePublicModel(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"openai":{"models":{"gpt-5.2":{"modalities":{"input":["text","image"]}}}}}`))
+		_, _ = w.Write([]byte(`{
+			"openai":{"models":{"gpt-5.2":{"modalities":{"input":["text","image"]}}}},
+			"google":{"models":{"gemini-3.5-flash":{"modalities":{"input":["text","image"]}}}},
+			"xai":{"models":{"grok-4.3":{"modalities":{"input":["text","image"]}}}},
+			"moonshotai":{"models":{"kimi-k2.7-code":{"modalities":{"input":["text","image"]}}}},
+			"zai":{"models":{"glm-5.2":{"modalities":{"input":["text"]}}}},
+			"deepseek":{"models":{"deepseek-v4":{"modalities":{"input":["text"]}}}}
+		}`))
 	}))
 	defer server.Close()
 	service := &ModelCapabilitiesService{APIURL: server.URL}
 
-	result := service.ResolveModelCapabilities(context.Background(), ModelCapabilityLookupInput{
-		Provider: "cursor",
-		ModelID:  "gpt-5.2[reasoning=medium,fast=false]",
-		Label:    "gpt-5.2",
-	})
-	if result.SupportsImageInput == nil || !*result.SupportsImageInput {
-		t.Fatalf("supportsImageInput = %#v, want inferred openai model support", result.SupportsImageInput)
-	}
-	if result.Source != modelCapabilitiesSourceModelsDev {
-		t.Fatalf("source = %q, want models.dev", result.Source)
+	for _, test := range []struct {
+		name  string
+		id    string
+		label string
+		want  bool
+	}{
+		{name: "openai", id: "gpt-5.2[reasoning=medium,fast=false]", label: "gpt-5.2", want: true},
+		{name: "google", id: "gemini-3.5-flash[]", label: "gemini-3.5-flash", want: true},
+		{name: "xai", id: "grok-4.3[context=200k]", label: "grok-4.3", want: true},
+		{name: "moonshot", id: "kimi-k2.7-code[]", label: "kimi-k2.7-code", want: true},
+		{name: "zai", id: "glm-5.2[reasoning=high]", label: "glm-5.2", want: false},
+		{name: "deepseek", id: "deepseek-v4[]", label: "deepseek-v4", want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result := service.ResolveModelCapabilities(context.Background(), ModelCapabilityLookupInput{
+				Provider: "cursor",
+				ModelID:  test.id,
+				Label:    test.label,
+			})
+			if result.SupportsImageInput == nil || *result.SupportsImageInput != test.want {
+				t.Fatalf("supportsImageInput = %#v, want %v", result.SupportsImageInput, test.want)
+			}
+			if result.Source != modelCapabilitiesSourceModelsDev {
+				t.Fatalf("source = %q, want models.dev", result.Source)
+			}
+		})
 	}
 }
 

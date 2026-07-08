@@ -194,7 +194,7 @@ func standardACPPromptImageSupported(raw json.RawMessage) bool {
 
 func standardACPProviderPromptImageSupported(provider string, raw json.RawMessage) bool {
 	switch strings.TrimSpace(provider) {
-	case ProviderClaudeCode, ProviderOpenCode:
+	case ProviderClaudeCode, ProviderOpenCode, ProviderCursor:
 		// Some ACP providers support image prompt content, but current
 		// initialize responses can omit or misreport promptCapabilities.image.
 		return true

@@ -430,6 +430,16 @@ func inferModelsDevProviderCandidates(modelID string) []string {
 		return []string{"openai/" + modelID}
 	case strings.HasPrefix(lower, "claude-"):
 		return []string{"anthropic/" + modelID}
+	case strings.HasPrefix(lower, "gemini-"):
+		return []string{"google/" + modelID}
+	case strings.HasPrefix(lower, "grok-"):
+		return []string{"xai/" + modelID}
+	case strings.HasPrefix(lower, "kimi-"):
+		return []string{"moonshotai/" + modelID}
+	case strings.HasPrefix(lower, "glm-"):
+		return []string{"zai/" + modelID}
+	case strings.HasPrefix(lower, "deepseek-"):
+		return []string{"deepseek/" + modelID}
 	default:
 		return nil
 	}
