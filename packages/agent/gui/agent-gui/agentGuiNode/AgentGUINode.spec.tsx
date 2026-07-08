@@ -660,6 +660,7 @@ vi.mock("../../i18n/index", () => ({
         "agentHost.agentGui.slashCommandReviewLabel": "review",
         "agentHost.agentGui.slashCommandStatusLabel": "status",
         "agentHost.agentGui.slashCommandUsageLabel": "usage",
+        "agentHost.agentGui.markSessionUnread": "Mark as unread",
         "agentHost.agentGui.collaboratorSessionReadOnlyPlaceholder":
           "非当前用户会话，不可直接对话",
         "agentHost.agentGui.promptTipsPrefix": "Tips：",
@@ -712,6 +713,7 @@ vi.mock("./controller/useAgentGUINodeController", () => ({
       editQueuedPrompt: mockEditQueuedPrompt,
       removeProject: mockRemoveProject,
       confirmDeleteProjectConversations: mockConfirmDeleteProjectConversations,
+      markConversationUnread: vi.fn(),
       requestDeleteConversation: mockRequestDeleteConversation,
       retryActivation: mockRetryActivation,
       continueInNewConversation: mockContinueInNewConversation,
