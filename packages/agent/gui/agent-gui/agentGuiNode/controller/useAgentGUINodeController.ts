@@ -258,6 +258,7 @@ type AgentGUIRuntimeErrorPhase =
   | "send_prompt"
   | "submit_interactive"
   | "toggle_conversation_pinned"
+  | "rename_conversation"
   | "delete_conversation"
   | "update_session_settings"
   | "warmup_openclaw_gateway";
@@ -443,6 +444,11 @@ function composerOptionsForTarget(input: {
   return (
     input.snapshot.composerOptionsByProvider?.[input.target.provider] ?? null
   );
+}
+
+function providerUsesModelImageInputSupport(provider: string | null): boolean {
+  const normalized = provider?.trim().toLowerCase();
+  return normalized === "opencode" || normalized === "cursor";
 }
 
 function composerOptionValues(
@@ -3318,6 +3324,63 @@ function readNodeDefaultDraftSettings(input: {
   );
 }
 
+function resolvePromptImageSelectedModel(input: {
+  activeConversationId: string | null;
+  activeSessionPermissionModeId?: string | null;
+  activeSessionRuntimeContext?: Record<string, unknown> | null;
+  activeSessionSettings: AgentSessionComposerSettings | null;
+  data: AgentGUINodeData;
+  defaultReasoningEffort: AgentSessionReasoningEffort | null;
+  draftSettingsBySessionId: Record<string, AgentSessionComposerSettings>;
+  providerComposerOptions: AgentActivityComposerOptions | null;
+  selectedComposerTargetData: AgentGUIComposerTargetData;
+}): string | null {
+  const storedNodeDefaultSettings = readNodeDefaultDraftSettings({
+    data:
+      input.activeConversationId === null
+        ? input.selectedComposerTargetData.data
+        : input.data,
+    defaultReasoningEffort: input.defaultReasoningEffort,
+    drafts: input.draftSettingsBySessionId
+  });
+  const targetSafeNodeDefaultSettings =
+    input.activeConversationId === null
+      ? sanitizeComposerSettingsForTarget({
+          settings: storedNodeDefaultSettings,
+          target: input.selectedComposerTargetData,
+          options: input.providerComposerOptions
+        })
+      : storedNodeDefaultSettings;
+  const homeComposerSettings = resolveEffectiveComposerSettings({
+    settings: targetSafeNodeDefaultSettings
+  });
+  const activeConversationDraftSettings = input.activeConversationId
+    ? (input.draftSettingsBySessionId[input.activeConversationId] ?? null)
+    : null;
+  const defaultConversationDraftSettings = {
+    ...(activeConversationDraftSettings ?? homeComposerSettings),
+    permissionModeId:
+      normalizePermissionModeId(input.activeSessionPermissionModeId) ??
+      normalizePermissionModeId(
+        (activeConversationDraftSettings ?? homeComposerSettings)
+          .permissionModeId
+      )
+  };
+  const draftSettings = input.activeConversationId
+    ? (input.activeSessionSettings ?? defaultConversationDraftSettings)
+    : homeComposerSettings;
+  const persistedDraftModel = normalizeOptionalText(draftSettings.model);
+  const usesPlaceholderDraftModel =
+    persistedDraftModel === null || persistedDraftModel === "default";
+  const liveConfigModel =
+    input.activeConversationId !== null && usesPlaceholderDraftModel
+      ? configOptionCurrentValue(input.activeSessionRuntimeContext, ["model"])
+      : null;
+  return usesPlaceholderDraftModel
+    ? (liveConfigModel ?? persistedDraftModel)
+    : persistedDraftModel;
+}
+
 function conversationStatusFromStatePatch(
   patch: WorkspaceAgentActivityStatePatch
 ): AgentGUIConversationSummary["status"] | null {
@@ -3830,6 +3893,15 @@ export function useAgentGUINodeController({
     !providerTargetsLoading &&
     (providerTargets === undefined ||
       normalizedExplicitProviderTargets.length === 0);
+  const handoffProviderTargets = useMemo(
+    () =>
+      providerTargetsLoading
+        ? []
+        : normalizedExplicitProviderTargets.filter(
+            (target) => target.disabled !== true
+          ),
+    [normalizedExplicitProviderTargets, providerTargetsLoading]
+  );
   const selectedProviderTarget = useMemo(() => {
     const resolved = resolveAgentGUIProviderTarget({
       agentTargetId: data.agentTargetId,
@@ -4167,24 +4239,58 @@ export function useAgentGUINodeController({
     snapshot: agentActivitySnapshot,
     target: composerTargetData
   });
+  const activeSessionRuntimeContext = activeSessionState?.runtimeContext;
+  // Daemon clamps reasoning for providers without settings support, so the
+  // draft default no longer needs a provider gate here.
+  const defaultReasoningEffort: AgentSessionReasoningEffort | null = "high";
   const resolvedPromptImagesSupported = resolveAgentActivityCapability(
     "imageInput",
     {
       composerOptions: providerComposerOptions,
-      sessionRuntimeContext: activeSessionState?.runtimeContext
+      sessionRuntimeContext: activeSessionRuntimeContext
     }
   );
-  const promptImagesSupported = resolvedPromptImagesSupported ?? true;
+  const selectedModelForPromptImages =
+    resolvePromptImageSelectedModel({
+      activeConversationId,
+      activeSessionRuntimeContext,
+      activeSessionSettings: activeSessionState?.settings ?? null,
+      activeSessionPermissionModeId: activeSessionState?.permissionModeId,
+      data,
+      defaultReasoningEffort,
+      draftSettingsBySessionId,
+      providerComposerOptions,
+      selectedComposerTargetData
+    }) ??
+    configOptionCurrentValue(providerComposerOptions?.runtimeContext, [
+      "model"
+    ]) ??
+    normalizeOptionalText(
+      providerComposerOptions?.runtimeContext?.model as
+        | string
+        | null
+        | undefined
+    );
+  const selectedModelImageInputSupported = !providerUsesModelImageInputSupport(
+    composerTargetData.provider
+  )
+    ? true
+    : selectedModelForPromptImages === null
+      ? false
+      : (providerComposerOptions?.models.find(
+          (option) => option.value === selectedModelForPromptImages
+        )?.supportsImageInput ?? false);
+  const promptImagesSupported =
+    (resolvedPromptImagesSupported ?? true) && selectedModelImageInputSupported;
   const compactSupported = resolveAgentActivityCapability("compact", {
     composerOptions: providerComposerOptions,
-    sessionRuntimeContext: activeSessionState?.runtimeContext
+    sessionRuntimeContext: activeSessionRuntimeContext
   });
   const goalPauseSupported =
     resolveAgentActivityCapability("goalPause", {
       composerOptions: providerComposerOptions,
       sessionRuntimeContext: activeSessionState?.runtimeContext
     }) ?? false;
-  const activeSessionRuntimeContext = activeSessionState?.runtimeContext;
   const backgroundAgentCount = useMemo(
     () => activeBackgroundAgentCount(activeSessionRuntimeContext),
     [activeSessionRuntimeContext]
@@ -4557,9 +4663,6 @@ export function useAgentGUINodeController({
   });
   const activeConversationLiveState = activation.stateFor(activeConversationId);
   const unactivateRef = useRef(activation.unactivate);
-  // Daemon clamps reasoning for providers without settings support, so the
-  // draft default no longer needs a provider gate here.
-  const defaultReasoningEffort: AgentSessionReasoningEffort | null = "high";
   const markFailedLiveState = activation.markFailed;
   const clearFailedLiveState = activation.clearFailure;
 
@@ -8829,7 +8932,7 @@ export function useAgentGUINodeController({
       const displayPromptText =
         displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
       if (
-        resolvedPromptImagesSupported === false &&
+        !promptImagesSupported &&
         agentPromptContentHasImage(normalizedContent)
       ) {
         setDetailError(translate("agentHost.agentGui.promptImagesUnsupported"));
@@ -8889,7 +8992,7 @@ export function useAgentGUINodeController({
       agentActivityRuntime,
       conversationListQuery,
       previewMode,
-      resolvedPromptImagesSupported,
+      promptImagesSupported,
       persistActiveConversation,
       startConversation,
       submitExistingPrompt,
@@ -8905,7 +9008,7 @@ export function useAgentGUINodeController({
         return;
       }
       if (
-        resolvedPromptImagesSupported === false &&
+        !promptImagesSupported &&
         agentPromptContentHasImage(normalizedContent)
       ) {
         setDetailError(translate("agentHost.agentGui.promptImagesUnsupported"));
@@ -8925,12 +9028,7 @@ export function useAgentGUINodeController({
         { bypassLocalQueue: true, guidance: true }
       );
     },
-    [
-      activeSessionState,
-      resolvedPromptImagesSupported,
-      submitExistingPrompt,
-      translate
-    ]
+    [activeSessionState, promptImagesSupported, submitExistingPrompt, translate]
   );
 
   useEffect(() => {
@@ -10341,6 +10439,77 @@ export function useAgentGUINodeController({
               : current
           );
         });
+    },
+    [agentActivityRuntime, agentHostApi.toast, patchConversation, workspaceId]
+  );
+
+  const renameConversation = useCallback(
+    async (agentSessionId: string, title: string) => {
+      const normalizedAgentSessionId = agentSessionId.trim();
+      const normalizedTitle = title.trim();
+      if (!normalizedAgentSessionId) {
+        return;
+      }
+      setDetailError(null);
+      const previous =
+        conversationsRef.current.find(
+          (conversation) => conversation.id === normalizedAgentSessionId
+        ) ?? null;
+      const previousTransient =
+        transientConversationRef.current?.id === normalizedAgentSessionId
+          ? transientConversationRef.current
+          : null;
+      const rollbackConversation = previous ?? previousTransient;
+      patchConversation(normalizedAgentSessionId, { title: normalizedTitle });
+      setTransientConversation((current) =>
+        current?.id === normalizedAgentSessionId
+          ? { ...current, title: normalizedTitle }
+          : current
+      );
+      try {
+        const session = await agentActivityRuntime.renameSession({
+          workspaceId,
+          agentSessionId: normalizedAgentSessionId,
+          title: normalizedTitle
+        });
+        patchConversation(normalizedAgentSessionId, {
+          title: session.title ?? normalizedTitle,
+          updatedAtUnixMs: session.updatedAtUnixMs ?? previous?.updatedAtUnixMs
+        });
+        setTransientConversation((current) =>
+          current?.id === normalizedAgentSessionId
+            ? {
+                ...current,
+                title: session.title ?? normalizedTitle,
+                updatedAtUnixMs:
+                  session.updatedAtUnixMs ?? current.updatedAtUnixMs
+              }
+            : current
+        );
+      } catch (error) {
+        const message = getAgentGUIErrorMessage(error);
+        reportAgentGUIRuntimeError({
+          agentSessionId: normalizedAgentSessionId,
+          context: { titleLength: normalizedTitle.length },
+          error,
+          phase: "rename_conversation",
+          provider: dataRef.current.provider,
+          runtime: agentActivityRuntime,
+          workspaceId
+        });
+        showAgentGUIControllerErrorToast(agentHostApi.toast, message);
+        if (rollbackConversation) {
+          patchConversation(normalizedAgentSessionId, {
+            title: rollbackConversation.title
+          });
+        }
+        setTransientConversation((current) =>
+          current?.id === normalizedAgentSessionId && rollbackConversation
+            ? (previousTransient ?? rollbackConversation)
+            : current
+        );
+        throw error;
+      }
     },
     [agentActivityRuntime, agentHostApi.toast, patchConversation, workspaceId]
   );
@@ -11808,6 +11977,8 @@ export function useAgentGUINodeController({
   const stableToggleConversationPinned = useStableControllerEventCallback(
     toggleConversationPinned
   );
+  const stableRenameConversation =
+    useStableControllerEventCallback(renameConversation);
   const stableRequestDeleteConversation = useStableControllerEventCallback(
     requestDeleteConversation
   );
@@ -11867,6 +12038,7 @@ export function useAgentGUINodeController({
         stableConfirmDeleteProjectConversations,
       confirmDeleteConversations: stableConfirmDeleteConversations,
       toggleConversationPinned: stableToggleConversationPinned,
+      renameConversation: stableRenameConversation,
       requestDeleteConversation: stableRequestDeleteConversation,
       retryActivation: stableRetryActivation,
       continueInNewConversation: stableContinueInNewConversation,
@@ -11887,6 +12059,7 @@ export function useAgentGUINodeController({
       stableLoadOlderConversationMessages,
       stableRemoveProject,
       stableRemoveQueuedPrompt,
+      stableRenameConversation,
       stableRequestDeleteConversation,
       stableRequestDeleteProjectConversations,
       stableRetryActivation,
@@ -11918,6 +12091,7 @@ export function useAgentGUINodeController({
         data: viewData,
         selectedProviderTarget: effectiveSelectedProviderTarget,
         providerTargets: normalizedProviderTargets,
+        handoffProviderTargets,
         providerTargetsLoading,
         providerRailMode,
         comingSoonProviders: normalizedComingSoonProviders,
@@ -11994,6 +12168,7 @@ export function useAgentGUINodeController({
       controllerActions,
       data,
       effectiveSelectedProviderTarget,
+      handoffProviderTargets,
       normalizedComingSoonProviders,
       normalizedProviderTargets,
       providerRailMode,

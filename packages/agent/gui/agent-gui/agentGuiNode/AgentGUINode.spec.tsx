@@ -59,6 +59,7 @@ const mockContinueInNewConversation = vi.fn();
 const mockRetryOpenclawGateway = vi.fn();
 const mockCancelDeleteConversation = vi.fn();
 const mockConfirmDeleteConversation = vi.fn();
+const mockRenameConversation = vi.fn<() => Promise<void>>();
 const mockSearchWorkspaceFileManagerEntries = vi.fn();
 const mockListWorkspaceIssues = vi.fn();
 const mockListWorkspaceApps = vi.fn();
@@ -716,7 +717,8 @@ vi.mock("./controller/useAgentGUINodeController", () => ({
       continueInNewConversation: mockContinueInNewConversation,
       retryOpenclawGateway: mockRetryOpenclawGateway,
       cancelDeleteConversation: mockCancelDeleteConversation,
-      confirmDeleteConversation: mockConfirmDeleteConversation
+      confirmDeleteConversation: mockConfirmDeleteConversation,
+      renameConversation: mockRenameConversation
     }
   })
 }));
@@ -755,6 +757,7 @@ describe("AgentGUINode", () => {
     mockRetryOpenclawGateway.mockClear();
     mockCancelDeleteConversation.mockClear();
     mockConfirmDeleteConversation.mockClear();
+    mockRenameConversation.mockClear();
     mockSearchWorkspaceFileManagerEntries.mockReset();
     mockListWorkspaceIssues.mockReset();
     mockListWorkspaceApps.mockReset();
@@ -2429,6 +2432,189 @@ describe("AgentGUINode", () => {
 
     expect(onOpenConversationWindow).toHaveBeenCalledWith("session-1");
     expect(mockSelectConversation).not.toHaveBeenCalled();
+  });
+
+  it("opens a conversation in a new window from the rail context menu without selecting", async () => {
+    const onOpenConversationWindow =
+      vi.fn<
+        NonNullable<
+          React.ComponentProps<typeof AgentGUINode>["onOpenConversationWindow"]
+        >
+      >();
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode({ onOpenConversationWindow });
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    const openWindowMenuItem = await screen.findByRole("menuitem", {
+      name: "agentHost.agentGui.openConversationWindow"
+    });
+    fireEvent.pointerUp(openWindowMenuItem, { button: 0 });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("menuitem", {
+          name: "agentHost.agentGui.openConversationWindow"
+        })
+      ).not.toBeInTheDocument()
+    );
+
+    await waitFor(() =>
+      expect(onOpenConversationWindow).toHaveBeenCalledWith("session-1")
+    );
+    expect(mockSelectConversation).not.toHaveBeenCalled();
+  });
+
+  it("opens rename dialog from rail double-click and saves through controller action", async () => {
+    mockRenameConversation.mockResolvedValue(undefined);
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode();
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
+    const input = screen.getByRole("textbox", {
+      name: "agentHost.agentGui.renameSessionTitle"
+    });
+    fireEvent.change(input, { target: { value: "Renamed session" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(mockRenameConversation).toHaveBeenCalledWith(
+        "session-1",
+        "Renamed session"
+      );
+    });
+  });
+
+  it("does not submit a blank rename title", async () => {
+    mockRenameConversation.mockResolvedValue(undefined);
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode();
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
+    const input = screen.getByRole("textbox", {
+      name: "agentHost.agentGui.renameSessionTitle"
+    });
+    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.renameSessionSave"
+      })
+    ).toBeDisabled();
+    expect(mockRenameConversation).not.toHaveBeenCalled();
+  });
+
+  it("closes the rename dialog from cancel", async () => {
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode();
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
+    expect(
+      await screen.findByRole("textbox", {
+        name: "agentHost.agentGui.renameSessionTitle"
+      })
+    ).toBeInTheDocument();
+
+    fireEvent.pointerUp(screen.getByRole("button", { name: "common.cancel" }), {
+      button: 0
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("textbox", {
+          name: "agentHost.agentGui.renameSessionTitle"
+        })
+      ).toBeNull();
+    });
+  });
+
+  it("opens rename dialog from the rail context menu", async () => {
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode();
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    const renameMenuItem = await screen.findByRole("menuitem", {
+      name: "agentHost.agentGui.renameSession"
+    });
+    fireEvent.pointerUp(renameMenuItem, { button: 0 });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("menuitem", {
+          name: "agentHost.agentGui.renameSession"
+        })
+      ).not.toBeInTheDocument()
+    );
+
+    expect(
+      await screen.findByRole("textbox", {
+        name: "agentHost.agentGui.renameSessionTitle"
+      })
+    ).toHaveValue("Session 1");
   });
 
   it("renders inline delete confirmation and dispatches confirm without a dialog", () => {
@@ -7163,6 +7349,13 @@ function createNoopAgentActivityRuntime(): AgentActivityRuntime {
     async setSessionPinned(input) {
       return createSession(input.workspaceId, input.agentSessionId);
     },
+    async renameSession(input) {
+      return {
+        ...createSession(input.workspaceId, input.agentSessionId),
+        title: input.title,
+        updatedAtUnixMs: 2
+      };
+    },
     async trackSettingsProjectChange() {},
     async trackDraftComposerSettingsChange() {},
     reportDiagnostic() {},
@@ -7272,6 +7465,7 @@ function createViewModel(
     },
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
+    handoffProviderTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
     providerRailMode: "catalog",
     comingSoonProviders: [],

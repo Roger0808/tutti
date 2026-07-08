@@ -87,6 +87,12 @@ export interface AgentActivitySessionList {
   presences?: AgentActivityPresence[];
 }
 
+export interface AgentActivityRenameSessionInput {
+  workspaceId: string;
+  agentSessionId: string;
+  title: string;
+}
+
 export interface AgentActivityPresence {
   id: string | number;
   workspaceId: string;
@@ -107,6 +113,7 @@ export interface AgentActivityComposerSettingOption {
   value: string;
   label: string;
   description?: string;
+  supportsImageInput?: boolean;
 }
 
 export interface AgentActivityComposerSkillOption {

@@ -7084,6 +7084,7 @@ describe("useAgentGUINodeController", () => {
       list: vi.fn(async () => snapshotWithSession("session-1")),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => imageCapableComposerOptions()),
       exec
     });
 
@@ -8918,6 +8919,95 @@ describe("useAgentGUINodeController", () => {
     expect(
       result.current.viewModel.activeConversation?.pinnedAtUnixMs
     ).toBeNull();
+  });
+
+  it("rolls back a failed rename for an active transient conversation", async () => {
+    const hostToastError = vi.fn();
+    let resolveActivation:
+      | ((value: AgentHostActivateAgentSessionResult) => void)
+      | undefined;
+    const activate = vi.fn(
+      (_input: AgentHostActivateAgentSessionInput) =>
+        new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
+          resolveActivation = resolve;
+        })
+    );
+    const renameSession = vi.fn(async () => {
+      throw new Error("rename failed");
+    });
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      renameSession,
+      toastApi: {
+        error: hostToastError
+      }
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("draft title"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversation?.title).toBe(
+        "draft title"
+      );
+    });
+    const createdId = result.current.viewModel.activeConversationId!;
+
+    let caughtError: unknown = null;
+    await act(async () => {
+      try {
+        await result.current.actions.renameConversation(
+          createdId,
+          "Renamed transient title"
+        );
+      } catch (error) {
+        caughtError = error;
+      }
+    });
+
+    expect(caughtError).toBeInstanceOf(Error);
+    expect(renameSession).toHaveBeenCalledWith({
+      workspaceId: "room-1",
+      agentSessionId: createdId,
+      title: "Renamed transient title"
+    });
+    expect(hostToastError).toHaveBeenCalledWith("rename failed");
+    expect(result.current.viewModel.activeConversation?.title).toBe(
+      "draft title"
+    );
+    expect(
+      result.current.viewModel.conversations.find(
+        (conversation) => conversation.id === createdId
+      )?.title
+    ).toBe("draft title");
+
+    act(() => {
+      resolveActivation?.({
+        session: agentSession(createdId, {
+          title: "draft title",
+          status: "working"
+        }),
+        activation: { mode: "new", status: "attached" }
+      });
+    });
   });
 
   it("keeps a prompt title when session state reports the provider default runtime title", async () => {
@@ -14246,10 +14336,17 @@ describe("useAgentGUINodeController", () => {
         subscribeEvents: vi.fn(() => vi.fn()),
         getComposerOptions: vi.fn(async () => ({
           provider,
+          models: [
+            {
+              value: "gpt-5",
+              label: "GPT-5"
+            }
+          ],
           runtimeContext:
             backendPromptImagesSupported === null
-              ? {}
+              ? { model: "gpt-5" }
               : {
+                  model: "gpt-5",
                   capabilities: backendPromptImagesSupported
                     ? ["imageInput"]
                     : []
@@ -14276,6 +14373,134 @@ describe("useAgentGUINodeController", () => {
       unmount();
     }
   );
+
+  it("disables prompt images when the selected model does not support image input", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => ({
+        provider: "opencode",
+        models: [
+          {
+            value: "text-only",
+            label: "Text Only",
+            supportsImageInput: false
+          }
+        ],
+        runtimeContext: {
+          capabilities: ["imageInput"],
+          model: "text-only"
+        }
+      }))
+    });
+
+    const { result, unmount } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "opencode"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.promptImagesSupported).toBe(false);
+    });
+    unmount();
+  });
+
+  it("disables prompt images for model-gated providers when model support is unknown", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => ({
+        provider: "cursor",
+        models: [
+          {
+            value: "unknown-model",
+            label: "Unknown model"
+          }
+        ],
+        runtimeContext: {
+          capabilities: ["imageInput"],
+          model: "unknown-model"
+        }
+      }))
+    });
+
+    const { result, unmount } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "cursor"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.promptImagesSupported).toBe(false);
+    });
+    unmount();
+  });
+
+  it("uses the draft-selected model for prompt image support before runtime context catches up", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => ({
+        provider: "opencode",
+        models: [
+          {
+            value: "openai/gpt-5.5",
+            label: "OpenAI/GPT-5.5",
+            supportsImageInput: true
+          },
+          {
+            value: "opencode/deepseek-v4-flash-free",
+            label: "DeepSeek V4 Flash Free",
+            supportsImageInput: false
+          }
+        ],
+        runtimeContext: {
+          capabilities: ["imageInput"],
+          model: "openai/gpt-5.5"
+        }
+      }))
+    });
+
+    const { result, unmount } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "opencode"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.promptImagesSupported).toBe(true);
+    });
+
+    act(() => {
+      result.current.actions.updateComposerSettings({
+        model: "opencode/deepseek-v4-flash-free"
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.promptImagesSupported).toBe(false);
+    });
+    unmount();
+  });
 
   it("localizes known composer-options permission labels before contract fallback", async () => {
     setAgentGuiI18nTestLocale("zh-CN");
@@ -16252,6 +16477,7 @@ describe("useAgentGUINodeController", () => {
       list: vi.fn(async () => snapshotWithSession("session-1")),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => imageCapableComposerOptions()),
       exec
     });
 
@@ -16984,6 +17210,7 @@ describe("useAgentGUINodeController", () => {
       ),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => imageCapableComposerOptions()),
       exec
     });
 
@@ -17307,6 +17534,7 @@ describe("useAgentGUINodeController", () => {
       list: vi.fn(async () => snapshotWithSession("session-1")),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => imageCapableComposerOptions()),
       exec
     });
 
@@ -17389,6 +17617,7 @@ describe("useAgentGUINodeController", () => {
       list: vi.fn(async () => snapshotWithSession("session-1")),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => imageCapableComposerOptions()),
       exec
     });
 
@@ -17538,7 +17767,8 @@ describe("useAgentGUINodeController", () => {
     installAgentHostApi({
       list: vi.fn(async () => snapshotWithWaitingSession("session-1")),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
-      subscribeEvents: vi.fn(() => vi.fn())
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => imageCapableComposerOptions())
     });
 
     const { result } = renderHook(() =>
@@ -18210,6 +18440,7 @@ function installAgentHostApi({
   cancel = vi.fn(),
   updateSettings = vi.fn(),
   deleteSession = vi.fn(),
+  renameSession = vi.fn(),
   setSessionPinned = vi.fn(),
   warmupOpenclawGateway = vi.fn(async () => ({ accepted: true, ready: true })),
   onEvent = vi.fn(() => vi.fn()),
@@ -18236,6 +18467,7 @@ function installAgentHostApi({
   cancel?: ReturnType<typeof vi.fn>;
   updateSettings?: ReturnType<typeof vi.fn>;
   deleteSession?: ReturnType<typeof vi.fn>;
+  renameSession?: ReturnType<typeof vi.fn>;
   setSessionPinned?: ReturnType<typeof vi.fn>;
   warmupOpenclawGateway?: ReturnType<typeof vi.fn>;
   onEvent?: ReturnType<typeof vi.fn>;
@@ -18344,6 +18576,7 @@ function installAgentHostApi({
     getState: getState as CallableMock,
     list: list as CallableMock,
     listSessionTimeline: listSessionTimeline as CallableMock,
+    renameSession: renameSession as CallableMock,
     releaseEventStream: releaseEventStream as CallableMock | undefined,
     retainEventStream: retainEventStream as CallableMock | undefined,
     subscribeEvents: subscribeEvents as CallableMock,
@@ -18369,6 +18602,7 @@ function installAgentActivityRuntimeForHostMocks({
   getState,
   list,
   listSessionTimeline,
+  renameSession,
   releaseEventStream,
   retainEventStream,
   subscribeEvents,
@@ -18390,6 +18624,7 @@ function installAgentActivityRuntimeForHostMocks({
   getState: CallableMock;
   list: CallableMock;
   listSessionTimeline: CallableMock;
+  renameSession: CallableMock;
   releaseEventStream?: CallableMock | undefined;
   retainEventStream?: CallableMock | undefined;
   subscribeEvents: CallableMock;
@@ -18630,6 +18865,18 @@ function installAgentActivityRuntimeForHostMocks({
         };
       });
       return { removed: true };
+    },
+    async renameSession(input) {
+      const renamed = await renameSession(input);
+      if (renamed) {
+        return renamed as AgentActivitySession;
+      }
+      return upsertRuntimeSession(setSnapshot, input.workspaceId, {
+        agentSessionId: input.agentSessionId,
+        title: input.title,
+        status: "ready",
+        updatedAtUnixMs: Date.now()
+      });
     },
     async getSession(workspaceId, agentSessionId) {
       const session = getSnapshot(workspaceId).sessions.find(
@@ -18915,6 +19162,18 @@ function installNoopAgentActivityRuntimeForTests(): void {
           }
         ),
       deleteSession: async () => ({ removed: true }),
+      renameSession: async (input) =>
+        upsertRuntimeSession(
+          (targetWorkspaceId, updater) =>
+            updater(getSnapshot(targetWorkspaceId)),
+          input.workspaceId,
+          {
+            agentSessionId: input.agentSessionId,
+            title: input.title,
+            status: "ready",
+            updatedAtUnixMs: Date.now()
+          }
+        ),
       getSession: async (workspaceId, agentSessionId) =>
         upsertRuntimeSession(
           (targetWorkspaceId, updater) =>
@@ -19088,11 +19347,16 @@ function settingOptionsFromRuntimeOptions(
         option?.label ?? option?.name ?? option?.displayName
       ) ?? optionValue;
     const description = normalizeConfigOptionValue(option?.description);
+    const supportsImageInput =
+      typeof option?.supportsImageInput === "boolean"
+        ? option.supportsImageInput
+        : undefined;
     return [
       {
         value: optionValue,
         label,
-        ...(description ? { description } : {})
+        ...(description ? { description } : {}),
+        ...(supportsImageInput !== undefined ? { supportsImageInput } : {})
       }
     ];
   });
@@ -19579,6 +19843,30 @@ function agentGuiData(
     provider,
     lastActiveAgentSessionId,
     ...overrides
+  };
+}
+
+function imageCapableComposerOptions(
+  provider = "codex"
+): Record<string, unknown> {
+  return {
+    provider,
+    modelConfig: {
+      configurable: true,
+      currentValue: "gpt-5",
+      options: [
+        {
+          id: "gpt-5",
+          label: "GPT-5",
+          value: "gpt-5",
+          supportsImageInput: true
+        }
+      ]
+    },
+    runtimeContext: {
+      capabilities: ["imageInput"],
+      model: "gpt-5"
+    }
   };
 }
 

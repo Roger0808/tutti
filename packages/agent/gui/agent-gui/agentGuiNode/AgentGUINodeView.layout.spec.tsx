@@ -998,6 +998,21 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toBe(MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor);
   });
 
+  it("uses the configured All provider rail icon when provided", () => {
+    renderAgentGUINodeView({
+      providerRailAllPresentation: {
+        iconUrl: "app://workspace-agent/all.png"
+      }
+    });
+
+    expect(
+      screen
+        .getByRole("tab", { name: "All" })
+        .querySelector("img")
+        ?.getAttribute("src")
+    ).toBe("app://workspace-agent/all.png");
+  });
+
   it("shows provider names in tooltips for unlabeled provider rail icons", async () => {
     renderAgentGUINodeView({
       viewModel: {
@@ -2439,6 +2454,44 @@ describe("AgentGUINodeView layout persistence", () => {
     fireEvent.click(openWindowButton);
 
     expect(onOpenConversationWindow).toHaveBeenCalledTimes(1);
+    expect(onOpenConversationWindow).toHaveBeenCalledWith("session-2");
+    expect(actions.selectConversation).not.toHaveBeenCalled();
+  });
+
+  it("opens a conversation from the rail context menu without selecting", async () => {
+    const actions = createActions();
+    const onOpenConversationWindow = vi.fn();
+
+    renderAgentGUINodeView({
+      actions,
+      onOpenConversationWindow,
+      viewModel: {
+        ...createViewModel(),
+        activeConversationId: "session-1",
+        conversations: [
+          createConversationSummary("session-1"),
+          createConversationSummary("session-2")
+        ]
+      }
+    });
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-2")
+    );
+    const openWindowMenuItem = await screen.findByRole("menuitem", {
+      name: "openConversationWindow"
+    });
+    fireEvent.pointerUp(openWindowMenuItem, { button: 0 });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("menuitem", { name: "openConversationWindow" })
+      ).not.toBeInTheDocument()
+    );
+
+    await waitFor(() =>
+      expect(onOpenConversationWindow).toHaveBeenCalledTimes(1)
+    );
     expect(onOpenConversationWindow).toHaveBeenCalledWith("session-2");
     expect(actions.selectConversation).not.toHaveBeenCalled();
   });
@@ -4530,6 +4583,7 @@ interface RenderAgentGUINodeViewOptions {
   onOpenConversationWindow?: AgentGUINodeViewProps["onOpenConversationWindow"];
   renderSidebarFooter?: AgentGUINodeViewProps["renderSidebarFooter"];
   renderProviderRailEmpty?: AgentGUINodeViewProps["renderProviderRailEmpty"];
+  providerRailAllPresentation?: AgentGUINodeViewProps["providerRailAllPresentation"];
   slashStatusLimits?: AgentGUINodeViewProps["slashStatusLimits"];
 }
 
@@ -4548,6 +4602,7 @@ function buildAgentGUINodeViewElement({
   onOpenConversationWindow,
   renderSidebarFooter,
   renderProviderRailEmpty,
+  providerRailAllPresentation,
   slashStatusLimits = []
 }: RenderAgentGUINodeViewOptions = {}) {
   return (
@@ -4556,6 +4611,7 @@ function buildAgentGUINodeViewElement({
         viewModel={viewModel}
         renderSidebarFooter={renderSidebarFooter}
         renderProviderRailEmpty={renderProviderRailEmpty}
+        providerRailAllPresentation={providerRailAllPresentation}
         onLinkAction={onLinkAction}
         isActive={isActive}
         isAgentProviderReady={isAgentProviderReady}
@@ -4609,6 +4665,9 @@ function createNoopAgentActivityRuntime(): AgentActivityRuntime {
     },
     async deleteSession() {
       return { removed: true };
+    },
+    async renameSession(input) {
+      return createRuntimeSession(input.workspaceId, input.agentSessionId);
     },
     async activateSession(input) {
       return {
@@ -4817,7 +4876,8 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     confirmDeleteConversations: vi.fn(),
     requestDeleteConversation: vi.fn(),
     cancelDeleteConversation: vi.fn(),
-    confirmDeleteConversation: vi.fn()
+    confirmDeleteConversation: vi.fn(),
+    renameConversation: vi.fn()
   };
 }
 
@@ -4833,6 +4893,7 @@ function createViewModel(
     },
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
+    handoffProviderTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
     providerRailMode: "catalog",
     comingSoonProviders: [],
@@ -5200,6 +5261,11 @@ function createLabels(): AgentGUIViewLabels {
     showMoreConversations: "showMoreConversations",
     showLessConversations: "showLessConversations",
     deleteSession: "deleteSession",
+    renameSession: "renameSession",
+    renameSessionTitle: "renameSessionTitle",
+    renameSessionDescription: "renameSessionDescription",
+    renameSessionPlaceholder: "renameSessionPlaceholder",
+    renameSessionSave: "renameSessionSave",
     pinSession: "pinSession",
     unpinSession: "unpinSession",
     deleteSessionTitle: "deleteSessionTitle",

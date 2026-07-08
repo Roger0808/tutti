@@ -180,6 +180,10 @@ a Codex panel before the draft prefill effect runs. The prefilled handoff panel
 must also scope the conversation rail to the selected target instead of opening
 on `All`; the target-specific rail selection is part of the handoff activation
 state, not a later user filter choice.
+The handoff menu is a launch surface, so its options must come from the
+host-provided, enabled provider targets. It must not use the provider rail's
+static catalog fallback or coming-soon placeholders, which are display chrome
+rather than proof that the user has configured a runnable agent.
 When provider selection happens from the empty-home composer or title control
 while the rail is already scoped to a provider target in multi-provider scope,
 it must update the rail conversation filter to the matching agent target so the
@@ -757,7 +761,26 @@ Prompt image input is also part of the normalized runtime contract. Daemon
 adapters that advertise `imageInput` must forward the structured prompt content
 blocks to their runtime boundary; SDK sidecars may keep a text `prompt` fallback
 for short-term IPC compatibility, but image execution must use the structured
-`content` blocks instead of reconstructing input from display text.
+`content` blocks instead of reconstructing input from display text. AgentGUI
+enables prompt image drafts only when the provider/session capability advertises
+`imageInput`. Providers that opt in to model-level image gating, currently
+OpenCode and Cursor, must also have the selected model option carry
+`supportsImageInput: true`; unknown model image capability is treated as
+unsupported until the daemon resolves it from Models.dev or provider-specific
+rules. Providers that have not opted in, such as Claude Code, must not be
+blocked by a missing model-level field. Desktop prompt images must remain
+structured image blocks and are not file mentions. Pasted images may start as
+base64 UI draft data, but the
+desktop runtime archives them through the host file capability before daemon
+submission, then sends the managed desktop-local `path` as the image source.
+Conversation previews for these path-backed images must use
+`AgentActivityRuntime.readPromptAsset` to read the managed local asset; do not
+keep base64 data in submitted prompt content just to render optimistic messages.
+The daemon copies that source into the session prompt attachment store and
+persists the normalized `attachmentId`. The managed source path must live under
+the daemon state root's `agent-prompt-assets` directory, and the daemon must
+re-check the resolved source path, symlink target, file type, and size before
+copying it into the session attachment store.
 Claude Code runtime options follow the same parity rule. The legacy ACP adapter
 and the Claude SDK adapter must derive system prompt append text, Tutti detail
 mode instructions, plan-mode instructions, plugin directory, custom model args,
@@ -953,6 +976,11 @@ User-visible rules:
 - Live runtime snapshot data is the source for workbench and dock titles. Do
   not persist or restore `lastActiveConversationTitle` from workbench node
   state.
+- User rename flows must mutate the persisted runtime session title through
+  `AgentActivityRuntime.renameSession` and then upsert the returned
+  authoritative session into the runtime snapshot. Do not update only the rail
+  list, otherwise the rail row, active detail header, workbench title, and dock
+  surfaces can diverge.
 - Title projection must normalize rich mention markdown, strip provider-only and
   untitled placeholders from workbench chrome, and use cached first-user-message
   content only when the session title is not displayable.
@@ -1012,6 +1040,10 @@ User-visible rules:
 - Model, permission, plan mode, reasoning, speed, project, branch, prompt image,
   file mention, and skill/capability controls must read from composer settings
   and provider options. They should not be reconstructed from transcript rows.
+- Shift+Tab plan mode is a provider capability, not a frontend allowlist. The
+  daemon's pre-session composer options and the live runtime
+  `runtimeContext.capabilities` must both advertise `planMode` before AgentGUI
+  enables the toggle for a provider.
 - Browser/computer capability controls come from daemon composer options and
   live runtime capabilities. `computerUse` must not be advertised or injected
   unless the daemon can reach the local `cua-driver` and its read-only
@@ -1527,9 +1559,11 @@ and only inserts the returned agent-readable path as a normal markdown file
 mention. The original host path is an upload source, not prompt content.
 The desktop runtime implements this upload by asking the host file capability
 to archive the selected file under a Tutti-managed agent prompt assets
-directory, then returns that managed absolute path to AgentGUI. This capability
-is file-only in desktop today; image drafts keep the existing image input path
-unless a runtime explicitly advertises image prompt upload support.
+directory, then returns that managed absolute path to AgentGUI. Prompt images
+use the separate daemon prompt attachment path: AgentGUI keeps pasted image
+base64 data only as pre-upload draft state, desktop runtime archives the image
+to a managed desktop-local path before submission, and the daemon copies that
+path-backed source into the session attachment store before runtime execution.
 
 Agent launch mentions use the external rich-text `agent-target` provider. The
 `workspace-app` provider is reserved for real workspace apps and must not return

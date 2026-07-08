@@ -2069,10 +2069,11 @@ type AgentProviderComposerConfig struct {
 
 // AgentProviderComposerConfigOptionValue defines model for AgentProviderComposerConfigOptionValue.
 type AgentProviderComposerConfigOptionValue struct {
-	Description *string `json:"description,omitempty"`
-	Id          string  `json:"id"`
-	Label       string  `json:"label"`
-	Value       string  `json:"value"`
+	Description        *string `json:"description,omitempty"`
+	Id                 string  `json:"id"`
+	Label              string  `json:"label"`
+	SupportsImageInput *bool   `json:"supportsImageInput,omitempty"`
+	Value              string  `json:"value"`
 }
 
 // AgentProviderComposerOptionsResponse defines model for AgentProviderComposerOptionsResponse.
@@ -3364,6 +3365,11 @@ type UpdateWorkspaceAgentSessionPinRequest struct {
 	Pinned bool `json:"pinned"`
 }
 
+// UpdateWorkspaceAgentSessionTitleRequest defines model for UpdateWorkspaceAgentSessionTitleRequest.
+type UpdateWorkspaceAgentSessionTitleRequest struct {
+	Title string `json:"title"`
+}
+
 // UpdateWorkspaceAgentSessionVisibilityRequest defines model for UpdateWorkspaceAgentSessionVisibilityRequest.
 type UpdateWorkspaceAgentSessionVisibilityRequest struct {
 	Visible bool `json:"visible"`
@@ -4408,6 +4414,9 @@ type UpdateWorkspaceAgentSessionPinJSONRequestBody = UpdateWorkspaceAgentSession
 
 // UpdateWorkspaceAgentSessionSettingsJSONRequestBody defines body for UpdateWorkspaceAgentSessionSettings for application/json ContentType.
 type UpdateWorkspaceAgentSessionSettingsJSONRequestBody = AgentSessionComposerSettings
+
+// UpdateWorkspaceAgentSessionTitleJSONRequestBody defines body for UpdateWorkspaceAgentSessionTitle for application/json ContentType.
+type UpdateWorkspaceAgentSessionTitleJSONRequestBody = UpdateWorkspaceAgentSessionTitleRequest
 
 // UpdateWorkspaceAgentSessionVisibilityJSONRequestBody defines body for UpdateWorkspaceAgentSessionVisibility for application/json ContentType.
 type UpdateWorkspaceAgentSessionVisibilityJSONRequestBody = UpdateWorkspaceAgentSessionVisibilityRequest
