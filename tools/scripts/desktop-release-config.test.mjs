@@ -357,7 +357,11 @@ test("desktop release workflow refreshes the stable alias without taking Latest"
   );
   assert.match(stableAliasStep, /gh release delete stable --yes --cleanup-tag/);
   assert.match(stableAliasStep, /git push origin :refs\/tags\/stable/);
+  assert.match(stableAliasStep, /git tag -a -f stable "\$\{stable_sha\}"/);
+  assert.match(stableAliasStep, /git push origin refs\/tags\/stable --force/);
   assert.match(stableAliasStep, /gh release create stable/);
+  assert.match(stableAliasStep, /--verify-tag/);
+  assert.doesNotMatch(stableAliasStep, /--target "\$\{stable_sha\}"/);
   assert.match(stableAliasStep, /--latest=false/);
   assert.match(stableAliasStep, /gh release edit "\$\{stable_tag\}" --latest/);
 });

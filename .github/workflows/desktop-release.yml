@@ -651,8 +651,11 @@ jobs:
             git push origin :refs/tags/stable
           fi
 
+          git tag -a -f stable "${stable_sha}" -m "Stable desktop release alias for ${stable_tag}"
+          git push origin refs/tags/stable --force
+
           gh release create stable \
-            --target "${stable_sha}" \
+            --verify-tag \
             --title stable \
             --notes-file stable-release-body.md \
             --latest=false
