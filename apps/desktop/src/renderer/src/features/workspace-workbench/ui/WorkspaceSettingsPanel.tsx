@@ -160,13 +160,17 @@ const cuaDriverToggleDemoUrl = new URL(
 ).href;
 const workspaceSettingsDefaultAgentProviders = [
   "codex",
-  "claude-code"
+  "claude-code",
+  "cursor",
+  "opencode"
 ] as const satisfies readonly DesktopDefaultAgentProvider[];
 
 function isWorkspaceSettingsDefaultAgentProvider(
   provider: DesktopAgentProvider
 ): provider is DesktopDefaultAgentProvider {
-  return provider === "codex" || provider === "claude-code";
+  return workspaceSettingsDefaultAgentProviders.includes(
+    provider as DesktopDefaultAgentProvider
+  );
 }
 
 export function WorkspaceSettingsPanel({

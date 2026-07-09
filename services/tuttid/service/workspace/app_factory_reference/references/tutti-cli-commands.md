@@ -15,11 +15,9 @@ import {
 const localAgentRuntime = createLocalAgentRuntime({
   providers: createDefaultLocalAgentProviderPlugins()
 });
-
-const detectedProviders = await localAgentRuntime.detect();
 ```
 
-Return the full detected catalog to the app UI. Do not filter it down to Codex/Claude in application code.
+Inside Tutti, return the full catalog from the workspace-app scoped daemon APIs to the app UI and use the runtime only to execute the selected provider. Outside Tutti, `localAgentRuntime.detect()` may provide the standalone catalog. Do not filter either catalog down to Codex/Claude in application code.
 
 For non-agent app-to-app capability calls, always use the command path from `TUTTI_CLI`. `TUTTI_CLI` is the stable app-runtime contract across development and packaged production.
 

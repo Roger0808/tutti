@@ -75,7 +75,7 @@ func writeAppFactoryMentionContext(workspace workspacebiz.Summary, physicalRoot 
 			"Validate against the App Factory skill before finishing.",
 			"Default new apps to a Node server; use Python only for existing Python projects or explicit Python requests.",
 			"If the app needs local agent or local LLM execution, Tutti agent providers, or app-owned MCP/tooling, follow the tutti-agent-workspace-app skill and use @tutti-os/agent-acp-kit instead of TUTTI_CLI agent/codex/session polling.",
-			"Agent-enabled app main flows must discover providers dynamically through @tutti-os/agent-acp-kit and references/dynamic-agent-providers.md; expose every detected provider, disable unavailable ones, and choose one available provider by default. Do not hard-code Codex/Claude-only provider catalogs.",
+			"Agent-enabled app main flows must derive provider options from Tutti workspace-app scoped agent APIs and references/dynamic-agent-providers.md; expose every returned provider, disable unavailable ones, and choose one available provider by default. Do not hard-code Codex/Claude-only provider catalogs.",
 		},
 		Metadata: appFactoryMentionMetadata{
 			AppID:       strings.TrimSpace(job.AppID),
