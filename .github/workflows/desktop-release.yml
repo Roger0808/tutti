@@ -644,15 +644,12 @@ jobs:
             stable-release.json \
             stable-release-body.md
 
-          if gh release view stable >/dev/null 2>&1; then
-            gh release delete stable --yes --cleanup-tag
-          fi
-          if git ls-remote --exit-code --tags origin refs/tags/stable >/dev/null 2>&1; then
-            git push origin :refs/tags/stable
-          fi
-
-          git tag -a -f stable "${stable_sha}" -m "Stable desktop release alias for ${stable_tag}"
+          git tag -f stable "${stable_sha}"
           git push origin refs/tags/stable --force
+
+          if gh release view stable >/dev/null 2>&1; then
+            gh release delete stable --yes
+          fi
 
           gh release create stable \
             --verify-tag \
