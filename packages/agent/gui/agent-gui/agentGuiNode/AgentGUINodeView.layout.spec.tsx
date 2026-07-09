@@ -1615,8 +1615,8 @@ describe("AgentGUINodeView layout persistence", () => {
       "Codex",
       "Claude Code",
       "Cursor",
-      "Open Code",
       "Tutti Agent",
+      "Open Code",
       "Hermes",
       "OpenClaw"
     ]);
@@ -5501,6 +5501,10 @@ function createViewModel(
     isInterrupting: false,
     isCancelPending: false,
     isRespondingApproval: false,
+    canCancel: true,
+    canSubmitInteractive: true,
+    canGoalControl: true,
+    canUploadAttachment: true,
     promptImagesSupported: true,
     compactSupported: null,
     goalPauseSupported: true,
