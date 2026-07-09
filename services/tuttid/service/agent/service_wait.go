@@ -9,6 +9,7 @@ import (
 )
 
 const defaultWaitMessageLimit = 20
+const explicitCompletedWaitGrace = 750 * time.Millisecond
 
 func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error) {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
@@ -73,6 +74,7 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 		agentSessionID,
 		currentSession,
 		effectiveAfter,
+		input.AfterVersion != nil,
 		initialStop,
 		initialStopped,
 		progressedPastStaleStop,
@@ -81,6 +83,17 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 		return WaitResult{}, err
 	}
 	progressedPastStaleStop = nextProgressed
+	if done {
+		reason, _ := waitReasonForSession(currentSession)
+		confirmedSession, confirmed, err := s.confirmCompletedWaitResult(waitCtx, workspaceID, agentSessionID, currentSession, reason, effectiveAfter, input.AfterVersion != nil)
+		if err != nil {
+			return WaitResult{}, err
+		}
+		if !confirmed {
+			currentSession = confirmedSession
+			done = false
+		}
+	}
 	if done {
 		reason, _ := waitReasonForSession(currentSession)
 		return s.waitResult(waitCtx, workspaceID, agentSessionID, currentSession, reason, false, effectiveAfter, messageLimit)
@@ -106,6 +119,7 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 					agentSessionID,
 					session,
 					effectiveAfter,
+					input.AfterVersion != nil,
 					initialStop,
 					initialStopped,
 					progressedPastStaleStop,
@@ -115,6 +129,14 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 				}
 				if done {
 					reason, _ := waitReasonForSession(currentSession)
+					confirmedSession, confirmed, err := s.confirmCompletedWaitResult(waitCtx, workspaceID, agentSessionID, currentSession, reason, effectiveAfter, input.AfterVersion != nil)
+					if err != nil {
+						return WaitResult{}, err
+					}
+					if !confirmed {
+						return s.waitResult(ctx, workspaceID, agentSessionID, confirmedSession, WaitReasonTimeout, true, effectiveAfter, messageLimit)
+					}
+					currentSession = confirmedSession
 					return s.waitResult(waitCtx, workspaceID, agentSessionID, currentSession, reason, false, effectiveAfter, messageLimit)
 				}
 				return s.waitResult(ctx, workspaceID, agentSessionID, session, WaitReasonTimeout, true, effectiveAfter, messageLimit)
@@ -129,6 +151,7 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 				agentSessionID,
 				session,
 				effectiveAfter,
+				input.AfterVersion != nil,
 				initialStop,
 				initialStopped,
 				progressedPastStaleStop,
@@ -139,6 +162,14 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 			progressedPastStaleStop = nextProgressed
 			if done {
 				reason, _ := waitReasonForSession(currentSession)
+				confirmedSession, confirmed, err := s.confirmCompletedWaitResult(waitCtx, workspaceID, agentSessionID, currentSession, reason, effectiveAfter, input.AfterVersion != nil)
+				if err != nil {
+					return WaitResult{}, err
+				}
+				if !confirmed {
+					continue
+				}
+				currentSession = confirmedSession
 				return s.waitResult(waitCtx, workspaceID, agentSessionID, currentSession, reason, false, effectiveAfter, messageLimit)
 			}
 		}
@@ -151,6 +182,7 @@ func (s *Service) evaluateWaitSession(
 	agentSessionID string,
 	session Session,
 	effectiveAfter uint64,
+	explicitAfter bool,
 	initialStop waitStopState,
 	initialStopped bool,
 	progressedPastStaleStop bool,
@@ -158,6 +190,13 @@ func (s *Service) evaluateWaitSession(
 	currentStop, stopped := waitStopStateForSession(session)
 	if !initialStopped {
 		if stopped {
+			messageState, err := s.agentExecutionMessageStateAfter(ctx, workspaceID, agentSessionID, effectiveAfter)
+			if err != nil {
+				return Session{}, false, progressedPastStaleStop, err
+			}
+			if waitStopBlockedByExecutionMessages(currentStop, explicitAfter, messageState) {
+				return session, false, true, nil
+			}
 			return session, true, true, nil
 		}
 		return session, false, true, nil
@@ -166,16 +205,65 @@ func (s *Service) evaluateWaitSession(
 		return session, false, true, nil
 	}
 	if progressedPastStaleStop || currentStop != initialStop || effectiveAfter == 0 {
+		messageState, err := s.agentExecutionMessageStateAfter(ctx, workspaceID, agentSessionID, effectiveAfter)
+		if err != nil {
+			return Session{}, false, progressedPastStaleStop, err
+		}
+		if waitStopBlockedByExecutionMessages(currentStop, explicitAfter, messageState) {
+			return session, false, progressedPastStaleStop, nil
+		}
 		return session, true, true, nil
 	}
-	hasExecutionMessage, err := s.hasAgentExecutionMessageAfter(ctx, workspaceID, agentSessionID, effectiveAfter)
-	if err != nil {
-		return Session{}, false, progressedPastStaleStop, err
-	}
-	if hasExecutionMessage {
-		return session, true, true, nil
+	if explicitAfter && currentStop.Reason == string(WaitReasonCompleted) {
+		messageState, err := s.agentExecutionMessageStateAfter(ctx, workspaceID, agentSessionID, effectiveAfter)
+		if err != nil {
+			return Session{}, false, progressedPastStaleStop, err
+		}
+		if waitStopBlockedByExecutionMessages(currentStop, explicitAfter, messageState) {
+			return session, false, progressedPastStaleStop, nil
+		}
+		if messageState.HasExecution {
+			return session, true, true, nil
+		}
 	}
 	return session, false, false, nil
+}
+
+func (s *Service) confirmCompletedWaitResult(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	session Session,
+	reason WaitReason,
+	effectiveAfter uint64,
+	explicitAfter bool,
+) (Session, bool, error) {
+	if !explicitAfter || reason != WaitReasonCompleted {
+		return session, true, nil
+	}
+	timer := time.NewTimer(explicitCompletedWaitGrace)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return session, false, nil
+	case <-timer.C:
+	}
+	latestSession, err := s.Get(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return Session{}, false, err
+	}
+	currentStop, stopped := waitStopStateForSession(latestSession)
+	if !stopped || currentStop.Reason != string(WaitReasonCompleted) {
+		return latestSession, false, nil
+	}
+	messageState, err := s.agentExecutionMessageStateAfter(ctx, workspaceID, agentSessionID, effectiveAfter)
+	if err != nil {
+		return Session{}, false, err
+	}
+	if waitStopBlockedByExecutionMessages(currentStop, explicitAfter, messageState) {
+		return latestSession, false, nil
+	}
+	return latestSession, true, nil
 }
 
 func (s *Service) waitResult(
@@ -227,34 +315,71 @@ func (s *Service) latestSessionVersion(ctx context.Context, workspaceID string, 
 	return page.LatestVersion, nil
 }
 
-func (s *Service) hasAgentExecutionMessageAfter(
+type waitExecutionMessageState struct {
+	HasExecution bool
+	HasLive      bool
+}
+
+func (s *Service) agentExecutionMessageStateAfter(
 	ctx context.Context,
 	workspaceID string,
 	agentSessionID string,
 	afterVersion uint64,
-) (bool, error) {
+) (waitExecutionMessageState, error) {
+	var state waitExecutionMessageState
 	for {
 		page, err := s.ListMessages(ctx, workspaceID, agentSessionID, ListMessagesInput{
 			AfterVersion: afterVersion,
-			Limit:        defaultWaitMessageLimit,
+			Limit:        100,
 			Order:        agentactivitybiz.MessageOrderAsc,
 		})
 		if err != nil {
-			return false, err
+			return waitExecutionMessageState{}, err
 		}
 		for _, message := range page.Messages {
-			if strings.TrimSpace(message.Role) != "user" {
-				return true, nil
+			if message.Version <= afterVersion {
+				continue
+			}
+			if !isAgentExecutionRole(message.Role) {
+				continue
+			}
+			state.HasExecution = true
+			if sessionMessageStatusIsLive(message.Status) {
+				state.HasLive = true
+				return state, nil
 			}
 		}
 		if !page.HasMore || len(page.Messages) == 0 {
-			return false, nil
+			return state, nil
 		}
 		nextAfterVersion := page.Messages[len(page.Messages)-1].Version
 		if nextAfterVersion <= afterVersion {
-			return false, nil
+			return state, nil
 		}
 		afterVersion = nextAfterVersion
+	}
+}
+
+func waitStopBlockedByExecutionMessages(stop waitStopState, explicitAfter bool, messageState waitExecutionMessageState) bool {
+	if messageState.HasLive {
+		return true
+	}
+	if explicitAfter && stop.Reason == string(WaitReasonCompleted) && !messageState.HasExecution {
+		return true
+	}
+	return false
+}
+
+func isAgentExecutionRole(role string) bool {
+	return strings.TrimSpace(role) != "" && strings.TrimSpace(role) != "user"
+}
+
+func sessionMessageStatusIsLive(status string) bool {
+	switch strings.TrimSpace(status) {
+	case "running", "streaming", "in_progress", "pending", "submitted", "working":
+		return true
+	default:
+		return false
 	}
 }
 
