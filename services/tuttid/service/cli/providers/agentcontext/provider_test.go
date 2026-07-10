@@ -35,6 +35,22 @@ type fakeDesktopPreferencesReader struct {
 	preferences preferencesbiz.DesktopPreferences
 }
 
+type fakeAgentTargetLister struct {
+	targets []agenttargetbiz.Target
+	err     error
+}
+
+func (f fakeAgentTargetLister) List(context.Context) ([]agenttargetbiz.Target, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return append([]agenttargetbiz.Target(nil), f.targets...), nil
+}
+
+func enabledTestAgentTargets() fakeAgentTargetLister {
+	return fakeAgentTargetLister{targets: agenttargetbiz.DefaultSystemTargets(1)}
+}
+
 func (f fakeDesktopPreferencesReader) Get(context.Context) (preferencesbiz.DesktopPreferences, error) {
 	return f.preferences, nil
 }
@@ -67,7 +83,7 @@ type fakeAgentSessions struct {
 }
 
 func newTestProvider(workspaces cliservice.WorkspaceCatalog, sessions AgentSessions) Provider {
-	return NewProviderWithLaunchPublisher(workspaces, sessions, nil)
+	return NewProviderWithAgentTargets(workspaces, sessions, nil, enabledTestAgentTargets())
 }
 
 func newTestCodexStartCommand(provider Provider) cliservice.Command {
@@ -94,6 +110,16 @@ func newTestClaudeStartCommand(provider Provider) cliservice.Command {
 		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
 		Summary:       "Start a Claude Code agent session",
 	})
+}
+
+func TestProviderWithoutAgentTargetsDoesNotAdvertiseCatalogCommands(t *testing.T) {
+	provider := NewProviderWithLaunchPublisher(nil, nil, nil)
+	for _, command := range provider.Commands() {
+		path := strings.Join(command.Capability.Path, " ")
+		if path == "agent providers" || path == "agent composer-options" || path == "agent start" {
+			t.Fatalf("command %q requires AgentTargetLister", path)
+		}
+	}
 }
 
 func (f *fakeAgentSessions) Cancel(_ context.Context, workspaceID string, sessionID string) (agentservice.CancelSessionResult, error) {
@@ -795,16 +821,50 @@ func TestStartCommandRequiresProviderAndPrompt(t *testing.T) {
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"provider": "codex", "prompt": "do work"},
 	})
-	if !errors.Is(err, cliservice.ErrInvalidInput) {
-		t.Fatalf("err = %v, want ErrInvalidInput", err)
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
 	}
-	if !strings.Contains(err.Error(), "tutti codex start") ||
-		!strings.Contains(err.Error(), "tutti claude start") ||
-		!strings.Contains(err.Error(), "tutti tutti-agent start") {
-		t.Fatalf("err = %v, want provider command guidance", err)
+	if sessions.createCallCount != 1 {
+		t.Fatalf("createCallCount = %d, want 1", sessions.createCallCount)
 	}
-	if sessions.createCallCount != 0 {
-		t.Fatalf("createCallCount = %d, want 0", sessions.createCallCount)
+	if sessions.createInput.Provider != "codex" || sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("create input = %#v", sessions.createInput)
+	}
+}
+
+func TestGenericStartCanonicalizesLegacyProviderAndRejectsDisabledProvider(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+	).newStartCommand()
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"provider": "claude", "prompt": "do work"},
+	}); err != nil {
+		t.Fatalf("legacy provider Handler: %v", err)
+	}
+	if sessions.createInput.Provider != "claude-code" || sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("create input = %#v", sessions.createInput)
+	}
+
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	targets[0].Enabled = false
+	disabledSessions := &fakeAgentSessions{}
+	disabledCommand := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		disabledSessions,
+		nil,
+		fakeAgentTargetLister{targets: targets},
+	).newStartCommand()
+	_, err := disabledCommand.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"provider": "codex", "prompt": "do work"},
+	})
+	var unavailable *agentservice.ProviderUnavailableError
+	if !errors.As(err, &unavailable) || unavailable.ReasonCode != "agent_provider_not_enabled" {
+		t.Fatalf("err = %v, want agent_provider_not_enabled", err)
+	}
+	if disabledSessions.createCallCount != 0 {
+		t.Fatalf("createCallCount = %d, want 0", disabledSessions.createCallCount)
 	}
 }
 
@@ -857,20 +917,24 @@ func TestProvidersCommandReturnsAvailability(t *testing.T) {
 		t.Fatalf("Handler: %v", err)
 	}
 	providers := output.Value["providers"].([]any)
-	if len(providers) != 1 || providers[0].(map[string]any)["provider"] != "codex" {
+	if len(providers) != 1 || providers[0].(map[string]any)["providerId"] != "codex" {
 		t.Fatalf("providers = %#v", providers)
 	}
-	if output.Value["defaultProvider"] != "codex" {
-		t.Fatalf("defaultProvider = %#v, want codex", output.Value["defaultProvider"])
+	if output.Value["schemaVersion"] != 2 {
+		t.Fatalf("schemaVersion = %#v, want 2", output.Value["schemaVersion"])
+	}
+	if output.Value["defaultProviderId"] != "codex" {
+		t.Fatalf("defaultProviderId = %#v, want codex", output.Value["defaultProviderId"])
 	}
 }
 
 func TestProvidersCommandReturnsDefaultProviderFromPreferences(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProviderWithLaunchPublisher(
+	command := NewProviderWithAgentTargets(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		sessions,
 		nil,
+		enabledTestAgentTargets(),
 		fakeDesktopPreferencesReader{
 			preferences: preferencesbiz.DesktopPreferences{
 				DefaultAgentProvider: "claude-code",
@@ -886,8 +950,98 @@ func TestProvidersCommandReturnsDefaultProviderFromPreferences(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if output.Value["defaultProvider"] != "claude-code" {
-		t.Fatalf("defaultProvider = %#v, want claude-code", output.Value["defaultProvider"])
+	if output.Value["defaultProviderId"] != "claude-code" {
+		t.Fatalf("defaultProviderId = %#v, want claude-code", output.Value["defaultProviderId"])
+	}
+}
+
+func TestProvidersCommandUsesEnabledTargetOrderAndStructuredAvailability(t *testing.T) {
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	targets[0].Enabled = false
+	targets = []agenttargetbiz.Target{targets[2], targets[1], targets[0]}
+	sessions := &fakeAgentSessions{availability: []agentservice.ProviderAvailability{
+		availableProvider("claude-code"),
+		{
+			Provider: "tutti-agent",
+			Status:   agentservice.ProviderAvailabilityUnavailable,
+			LastError: &agentservice.ProviderAvailabilityError{
+				Code:    "cli_not_found",
+				Message: "runtime missing",
+			},
+		},
+		availableProvider("codex"),
+	}}
+	command := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+		nil,
+		fakeAgentTargetLister{targets: targets},
+		fakeDesktopPreferencesReader{preferences: preferencesbiz.DesktopPreferences{DefaultAgentProvider: "codex"}},
+	).newProvidersCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{OutputMode: cliservice.OutputModeJSON})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	providers := output.Value["providers"].([]any)
+	if len(providers) != 2 {
+		t.Fatalf("providers = %#v, want two enabled targets", providers)
+	}
+	first := providers[0].(map[string]any)
+	second := providers[1].(map[string]any)
+	if first["providerId"] != "tutti-agent" || first["agentTargetId"] != agenttargetbiz.IDLocalTuttiAgent || first["displayName"] != "Tutti Agent" {
+		t.Fatalf("first provider = %#v", first)
+	}
+	availability := first["availability"].(map[string]any)
+	if availability["status"] != agentservice.ProviderAvailabilityUnavailable || availability["reasonCode"] != "cli_not_found" || availability["detail"] != "runtime missing" {
+		t.Fatalf("availability = %#v", availability)
+	}
+	if second["providerId"] != "claude-code" {
+		t.Fatalf("second provider = %#v", second)
+	}
+	if output.Value["defaultProviderId"] != "tutti-agent" {
+		t.Fatalf("defaultProviderId = %#v, want first enabled provider", output.Value["defaultProviderId"])
+	}
+}
+
+func TestProvidersCommandAllowsEmptyEnabledTargetCatalog(t *testing.T) {
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	for index := range targets {
+		targets[index].Enabled = false
+	}
+	command := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		&fakeAgentSessions{},
+		nil,
+		fakeAgentTargetLister{targets: targets},
+	).newProvidersCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{OutputMode: cliservice.OutputModeJSON})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if providers := output.Value["providers"].([]any); len(providers) != 0 {
+		t.Fatalf("providers = %#v, want empty", providers)
+	}
+	if output.Value["defaultProviderId"] != "" {
+		t.Fatalf("defaultProviderId = %#v, want empty", output.Value["defaultProviderId"])
+	}
+}
+
+func TestProvidersCommandKeepsTableOutputCompatible(t *testing.T) {
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		&fakeAgentSessions{},
+	).newProvidersCommand()
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"provider": "codex"},
+		OutputMode: cliservice.OutputModeTable,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if len(output.Rows) != 1 || output.Rows[0]["provider"] != "codex" || output.Rows[0]["status"] != "available" || output.Rows[0]["detail"] != "codex status" {
+		t.Fatalf("rows = %#v", output.Rows)
 	}
 }
 
@@ -916,6 +1070,9 @@ func TestComposerOptionsCommandReturnsProviderOptions(t *testing.T) {
 	if output.Value["provider"] != "codex" {
 		t.Fatalf("output = %#v", output.Value)
 	}
+	if output.Value["schemaVersion"] != 1 {
+		t.Fatalf("schemaVersion = %#v, want 1", output.Value["schemaVersion"])
+	}
 	effectiveSettings := output.Value["effectiveSettings"].(map[string]any)
 	if effectiveSettings["model"] != "gpt-5" || effectiveSettings["reasoningEffort"] != "high" {
 		t.Fatalf("effectiveSettings = %#v", effectiveSettings)
@@ -935,6 +1092,58 @@ func TestComposerOptionsCommandReturnsProviderOptions(t *testing.T) {
 	speedOptions := speedConfig["options"].([]any)
 	if len(speedOptions) != 2 || speedOptions[0].(map[string]any)["value"] != "standard" || speedOptions[1].(map[string]any)["value"] != "fast" {
 		t.Fatalf("speed options = %#v", speedOptions)
+	}
+}
+
+func TestComposerOptionsCommandRejectsDisabledProviderBeforeDiscovery(t *testing.T) {
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	targets[0].Enabled = false
+	sessions := &fakeAgentSessions{}
+	command := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+		nil,
+		fakeAgentTargetLister{targets: targets},
+	).newComposerOptionsCommand()
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{Input: map[string]any{"provider": "codex"}})
+	var unavailable *agentservice.ProviderUnavailableError
+	if !errors.As(err, &unavailable) || unavailable.ReasonCode != "agent_provider_not_enabled" {
+		t.Fatalf("err = %v, want agent_provider_not_enabled", err)
+	}
+	if sessions.composerInput.Provider != "" {
+		t.Fatalf("composer discovery was called: %#v", sessions.composerInput)
+	}
+}
+
+func TestComposerOptionsCommandRejectsUnknownProviderAsInvalidArgument(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+	).newComposerOptionsCommand()
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{Input: map[string]any{"provider": "codxe"}})
+	if !errors.Is(err, agentservice.ErrInvalidArgument) {
+		t.Fatalf("err = %v, want ErrInvalidArgument", err)
+	}
+	if sessions.composerInput.Provider != "" {
+		t.Fatalf("composer discovery was called: %#v", sessions.composerInput)
+	}
+}
+
+func TestComposerOptionsCommandCanonicalizesLegacyProviderInput(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+	).newComposerOptionsCommand()
+
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{Input: map[string]any{"provider": "claude"}}); err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.composerInput.Provider != "claude-code" {
+		t.Fatalf("provider = %q, want claude-code", sessions.composerInput.Provider)
 	}
 }
 
@@ -961,10 +1170,11 @@ func TestComposerOptionsCommandCanDisableCapabilityCatalog(t *testing.T) {
 
 func TestComposerOptionsCommandUsesComposerDefaultsFromPreferences(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProviderWithLaunchPublisher(
+	command := NewProviderWithAgentTargets(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		sessions,
 		nil,
+		enabledTestAgentTargets(),
 		fakeDesktopPreferencesReader{
 			preferences: preferencesbiz.DesktopPreferences{
 				AgentComposerDefaultsByAgentTarget: map[string]preferencesbiz.AgentComposerDefaults{

@@ -5015,7 +5015,11 @@ describe("AgentComposer", () => {
       );
 
       const drafts = screen.getByTestId("agent-gui-composer-image-drafts");
-      fireEvent.click(within(drafts).getByRole("button", { name: "移除引用" }));
+      const removeButton = within(drafts).getByRole("button", {
+        name: "移除引用"
+      });
+      expect(removeButton).toHaveClass("z-[2]");
+      fireEvent.click(removeButton);
       rerender(renderComposer());
 
       expect(
@@ -5368,6 +5372,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     reasoningOptionHigh: "高",
     reasoningOptionXHigh: "超高",
     reasoningOptionMax: "最高",
+    reasoningOptionUltra: "极致",
     speedLabel: "Speed",
     speedSelectionLabel: "Speed",
     speedOptionStandard: "Standard",

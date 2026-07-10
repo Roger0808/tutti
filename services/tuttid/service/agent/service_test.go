@@ -12,12 +12,12 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
-	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
@@ -1510,9 +1510,9 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
-		result: agentsidecarservice.PreparedRuntime{
+		result: runtimeprep.PreparedRuntime{
 			Cwd: "/prepared/workdir",
 			Env: []string{"CODEX_HOME=/prepared/codex-home"},
 		},
@@ -1562,7 +1562,7 @@ func TestServiceCreateRejectsInvalidCatalogModelBeforePreparingRuntime(t *testin
 			},
 		},
 	}
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
 	}
@@ -1598,7 +1598,7 @@ func TestServiceCreateRejectsInvalidCachedClaudeModelBeforePreparingRuntime(t *t
 		{Value: "default", Label: "Default"},
 		{Value: "sonnet", Label: "Sonnet"},
 	})
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
 	}
@@ -1640,7 +1640,7 @@ func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 			},
 		},
 	}
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
 	}
@@ -1719,9 +1719,9 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.startErr = startErr
 	service := newTestService(runtime)
-	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
+	cleanupCalls := make([]runtimeprep.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
-		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
+		result:       runtimeprep.PreparedRuntime{Cwd: "/prepared/workdir"},
 		cleanupCalls: &cleanupCalls,
 	}
 
@@ -1744,7 +1744,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
-	prepareInput := (*agentsidecarservice.PrepareInput)(nil)
+	prepareInput := (*runtimeprep.PrepareInput)(nil)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: prepareInput,
 	}
@@ -1770,10 +1770,10 @@ func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) 
 func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
-		result: agentsidecarservice.PreparedRuntime{
+		result: runtimeprep.PreparedRuntime{
 			Cwd: "/prepared/workdir",
 		},
 	}
@@ -1962,9 +1962,9 @@ func TestServiceCreateCleansPreparedRuntimeWhenInitialPromptFails(t *testing.T) 
 	runtime := newFakeRuntime()
 	runtime.execErr = execErr
 	service := newTestService(runtime)
-	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
+	cleanupCalls := make([]runtimeprep.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
-		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
+		result:       runtimeprep.PreparedRuntime{Cwd: "/prepared/workdir"},
 		cleanupCalls: &cleanupCalls,
 	}
 
@@ -2230,11 +2230,11 @@ func TestServiceSendInputWaitsForClaudeStartupSlotBeforeExec(t *testing.T) {
 
 func TestServiceCreateGeneratesSessionIDBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service := newTestService(runtime)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
-		result: agentsidecarservice.PreparedRuntime{
+		result: runtimeprep.PreparedRuntime{
 			Cwd: "/prepared/workdir",
 		},
 	}
@@ -2265,11 +2265,11 @@ func TestServiceCreateGeneratesSessionIDBeforePreparingRuntime(t *testing.T) {
 
 func TestServiceCreatePassesExtraSkillsToRuntimePreparer(t *testing.T) {
 	runtime := newFakeRuntime()
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service := newTestService(runtime)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
-		result: agentsidecarservice.PreparedRuntime{
+		result: runtimeprep.PreparedRuntime{
 			Cwd: "/prepared/workdir",
 		},
 	}
@@ -2306,16 +2306,16 @@ func TestServiceCreatePassesExtraSkillsToRuntimePreparer(t *testing.T) {
 
 func TestServiceGetSkillBundleUsesRuntimeRenderer(t *testing.T) {
 	runtime := newFakeRuntime()
-	var renderInput agentsidecarservice.PrepareInput
+	var renderInput runtimeprep.PrepareInput
 	service := NewService(runtime)
 	service.RuntimePreparer = fakeSkillBundleRenderer{
 		input: &renderInput,
-		bundle: agentsidecarservice.SkillBundle{
+		bundle: runtimeprep.SkillBundle{
 			SchemaVersion:  1,
 			Provider:       "codex",
 			AgentSessionID: "run-1",
 			CLICommand:     "tutti-dev",
-			Skills: []agentsidecarservice.SkillMaterializationRecord{
+			Skills: []runtimeprep.SkillMaterializationRecord{
 				{SkillID: "tutti/tutti-cli", Slug: "tutti-cli", DeliveryMode: "materialized-files"},
 			},
 		},
@@ -2361,9 +2361,9 @@ func TestServiceGetSkillBundleRequiresRenderer(t *testing.T) {
 func TestServiceDeleteCleansPreparedRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
-	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
+	cleanupCalls := make([]runtimeprep.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
-		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
+		result:       runtimeprep.PreparedRuntime{Cwd: "/prepared/workdir"},
 		cleanupCalls: &cleanupCalls,
 	}
 	cwd := "/user/workdir"
@@ -2695,6 +2695,9 @@ func TestServiceGetsComposerOptionsFromTuttiAgentModelCatalog(t *testing.T) {
 	if options.ModelConfig.CurrentValue != "gpt-5.4" || len(options.ModelConfig.Options) != 2 {
 		t.Fatalf("modelConfig = %#v, want catalog-backed tutti-agent models", options.ModelConfig)
 	}
+	if len(options.ReasoningConfig.Options) != 1 || options.ReasoningConfig.Options[0].Value != "high" {
+		t.Fatalf("reasoningConfig = %#v, want only the selected value without a static fallback list", options.ReasoningConfig)
+	}
 	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
 	if !ok || len(configOptions) < 3 {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
@@ -2713,6 +2716,57 @@ func TestServiceGetsComposerOptionsFromTuttiAgentModelCatalog(t *testing.T) {
 	}
 	if len(runtime.sessions) != 0 {
 		t.Fatalf("runtime sessions = %d, want no started sessions", len(runtime.sessions))
+	}
+}
+
+func TestServiceGetsComposerOptionsUsesSelectedTuttiAgentModelReasoningEfforts(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "tutti-agent",
+			Source:   "tutti-agent-cli",
+			Models: []AgentModelOption{
+				{
+					ID:                         "gpt-5.6-sol",
+					DisplayName:                "GPT-5.6 Sol",
+					DefaultReasoningEffort:     "high",
+					IsDefault:                  true,
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "high"},
+						{Value: "ultra"},
+					},
+				},
+				{
+					ID:                         "nova-micro",
+					DisplayName:                "Nova Micro",
+					DefaultReasoningEffort:     "low",
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "low"},
+						{Value: "medium"},
+					},
+				},
+			},
+		},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "tutti-agent",
+		Settings: ComposerSettings{
+			Model:           "nova-micro",
+			ReasoningEffort: "medium",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.ReasoningConfig.CurrentValue != "medium" || len(options.ReasoningConfig.Options) != 2 {
+		t.Fatalf("reasoningConfig = %#v, want selected model reasoning options", options.ReasoningConfig)
+	}
+	if options.ReasoningConfig.Options[0].Value != "low" || options.ReasoningConfig.Options[1].Value != "medium" {
+		t.Fatalf("reasoningConfig.options = %#v, want nova-micro options", options.ReasoningConfig.Options)
 	}
 }
 
@@ -2789,8 +2843,156 @@ func TestServiceGetsComposerOptionsWithResolvedCodexDefaultModel(t *testing.T) {
 			Provider: "codex",
 			Source:   "codex-cli",
 			Models: []AgentModelOption{
-				{ID: "gpt-5.5", DisplayName: "GPT-5.5", IsDefault: true},
+				{
+					ID:                         "gpt-5.6-sol",
+					DisplayName:                "GPT-5.6-Sol",
+					DefaultReasoningEffort:     "low",
+					IsDefault:                  true,
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "low", Description: "Fast responses with lighter reasoning"},
+						{Value: "medium"},
+						{Value: "high"},
+						{Value: "xhigh"},
+						{Value: "max"},
+						{Value: "ultra", Description: "Maximum reasoning with automatic task delegation"},
+					},
+				},
 				{ID: "gpt-5.4", DisplayName: "GPT-5.4"},
+			},
+		},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+		Locale:   "zh-CN",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.EffectiveSettings.Model != "gpt-5.6-sol" {
+		t.Fatalf("effectiveSettings.model = %q, want gpt-5.6-sol", options.EffectiveSettings.Model)
+	}
+	if options.EffectiveSettings.ReasoningEffort != "low" {
+		t.Fatalf("effectiveSettings.reasoningEffort = %q, want low", options.EffectiveSettings.ReasoningEffort)
+	}
+	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) == 0 {
+		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
+	}
+	if configOptions[0]["currentValue"] != "gpt-5.6-sol" {
+		t.Fatalf("model option = %#v", configOptions[0])
+	}
+	if len(configOptions) < 2 || configOptions[1]["currentValue"] != "low" {
+		t.Fatalf("reasoning option = %#v", configOptions)
+	}
+	reasoningRuntimeOptions, ok := configOptions[1]["options"].([]map[string]string)
+	if !ok || len(reasoningRuntimeOptions) != 6 || reasoningRuntimeOptions[5]["value"] != "ultra" {
+		t.Fatalf("reasoning runtime options = %#v, want model-advertised ultra", configOptions[1]["options"])
+	}
+	if len(options.ReasoningConfig.Options) != 6 ||
+		options.ReasoningConfig.Options[5].Value != "ultra" ||
+		options.ReasoningConfig.Options[5].Label != "极致" ||
+		options.ReasoningConfig.Options[5].Description != "最高强度推理，并自动委派任务" {
+		t.Fatalf("reasoningConfig = %#v, want model-advertised ultra", options.ReasoningConfig)
+	}
+	profiles, ok := options.RuntimeContext["modelReasoningOptionsByModel"].(map[string]any)
+	if !ok {
+		t.Fatalf("modelReasoningOptionsByModel = %#v", options.RuntimeContext["modelReasoningOptionsByModel"])
+	}
+	solProfile, ok := profiles["gpt-5.6-sol"].(map[string]any)
+	if !ok || solProfile["defaultValue"] != "low" {
+		t.Fatalf("sol reasoning profile = %#v, want low default", profiles["gpt-5.6-sol"])
+	}
+	solOptions, ok := solProfile["options"].([]map[string]string)
+	if !ok || len(solOptions) != 6 || solOptions[5]["name"] != "极致" {
+		t.Fatalf("sol reasoning profile options = %#v, want localized ultra", solProfile["options"])
+	}
+}
+
+func TestServiceGetsComposerOptionsUsesSelectedCodexModelReasoningEfforts(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "codex",
+			Source:   "codex-cli",
+			Models: []AgentModelOption{
+				{
+					ID:                         "gpt-5.6-sol",
+					DisplayName:                "GPT-5.6-Sol",
+					DefaultReasoningEffort:     "low",
+					IsDefault:                  true,
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "low"},
+						{Value: "ultra"},
+					},
+				},
+				{
+					ID:                         "gpt-5.6-luna",
+					DisplayName:                "GPT-5.6-Luna",
+					DefaultReasoningEffort:     "medium",
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "low"},
+						{Value: "medium"},
+						{Value: "high"},
+						{Value: "xhigh"},
+						{Value: "max"},
+					},
+				},
+			},
+		},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+		Settings: ComposerSettings{
+			Model:           "gpt-5.6-luna",
+			ReasoningEffort: "ultra",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.EffectiveSettings.ReasoningEffort != "medium" {
+		t.Fatalf("effectiveSettings.reasoningEffort = %q, want medium", options.EffectiveSettings.ReasoningEffort)
+	}
+	values := make([]string, 0, len(options.ReasoningConfig.Options))
+	for _, option := range options.ReasoningConfig.Options {
+		values = append(values, option.Value)
+	}
+	if !slices.Equal(values, []string{"low", "medium", "high", "xhigh", "max"}) {
+		t.Fatalf("reasoningConfig values = %#v, want selected Luna model capabilities", values)
+	}
+	profiles, ok := options.RuntimeContext["modelReasoningOptionsByModel"].(map[string]any)
+	if !ok {
+		t.Fatalf("modelReasoningOptionsByModel = %#v", options.RuntimeContext["modelReasoningOptionsByModel"])
+	}
+	solProfile := profiles["gpt-5.6-sol"].(map[string]any)
+	lunaProfile := profiles["gpt-5.6-luna"].(map[string]any)
+	if len(solProfile["options"].([]map[string]string)) != 2 ||
+		len(lunaProfile["options"].([]map[string]string)) != 5 {
+		t.Fatalf("reasoning profiles = %#v, want model-specific option counts", profiles)
+	}
+}
+
+func TestServiceGetsComposerOptionsPreservesAdvertisedEmptyReasoningEfforts(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "codex",
+			Source:   "codex-cli",
+			Models: []AgentModelOption{
+				{
+					ID:                         "no-reasoning",
+					DisplayName:                "No Reasoning",
+					IsDefault:                  true,
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts:  []AgentModelReasoningEffortOption{},
+				},
 			},
 		},
 	}
@@ -2801,21 +3003,59 @@ func TestServiceGetsComposerOptionsWithResolvedCodexDefaultModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
 	}
-	if options.EffectiveSettings.Model != "gpt-5.5" {
-		t.Fatalf("effectiveSettings.model = %q, want gpt-5.5", options.EffectiveSettings.Model)
+	if options.EffectiveSettings.ReasoningEffort != "" || len(options.ReasoningConfig.Options) != 0 {
+		t.Fatalf("reasoningConfig = %#v, want authoritative empty options", options.ReasoningConfig)
 	}
-	if options.EffectiveSettings.ReasoningEffort != "high" {
-		t.Fatalf("effectiveSettings.reasoningEffort = %q, want high", options.EffectiveSettings.ReasoningEffort)
+	profiles, ok := options.RuntimeContext["modelReasoningOptionsByModel"].(map[string]any)
+	if !ok {
+		t.Fatalf("modelReasoningOptionsByModel = %#v", options.RuntimeContext["modelReasoningOptionsByModel"])
 	}
-	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
-	if !ok || len(configOptions) == 0 {
-		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
+	profile, ok := profiles["no-reasoning"].(map[string]any)
+	if !ok {
+		t.Fatalf("no-reasoning profile = %#v", profiles["no-reasoning"])
 	}
-	if configOptions[0]["currentValue"] != "gpt-5.5" {
-		t.Fatalf("model option = %#v", configOptions[0])
+	profileOptions, ok := profile["options"].([]map[string]string)
+	if !ok || len(profileOptions) != 0 {
+		t.Fatalf("no-reasoning profile options = %#v, want empty", profile["options"])
 	}
-	if len(configOptions) < 2 || configOptions[1]["currentValue"] != "high" {
-		t.Fatalf("reasoning option = %#v", configOptions)
+}
+
+func TestServiceGetsComposerOptionsPreservesAdvertisedMinimalReasoningEffort(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "codex",
+			Source:   "codex-cli",
+			Models: []AgentModelOption{
+				{
+					ID:                         "minimal-only",
+					DisplayName:                "Minimal Only",
+					DefaultReasoningEffort:     "minimal",
+					IsDefault:                  true,
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "minimal"},
+					},
+				},
+			},
+		},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.EffectiveSettings.ReasoningEffort != "minimal" {
+		t.Fatalf("effectiveSettings.reasoningEffort = %q, want minimal", options.EffectiveSettings.ReasoningEffort)
+	}
+	if options.ReasoningConfig.CurrentValue != "minimal" {
+		t.Fatalf("reasoningConfig.currentValue = %q, want minimal", options.ReasoningConfig.CurrentValue)
+	}
+	if len(options.ReasoningConfig.Options) != 1 || options.ReasoningConfig.Options[0].Value != "minimal" {
+		t.Fatalf("reasoningConfig.options = %#v, want only minimal", options.ReasoningConfig.Options)
 	}
 }
 
@@ -5698,11 +5938,11 @@ func TestServiceCancelReportsNoActiveTurn(t *testing.T) {
 
 func TestServiceResumesPersistedSessionWithPreparedRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service := NewService(runtime)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
-		result: agentsidecarservice.PreparedRuntime{
+		result: runtimeprep.PreparedRuntime{
 			Cwd: "/prepared/workdir",
 			Env: []string{"CODEX_HOME=/prepared/codex-home"},
 		},
@@ -5857,20 +6097,20 @@ func (f fakeAgentTargetStore) GetAgentTarget(_ context.Context, id string) (agen
 }
 
 type fakeRuntimePreparer struct {
-	result       agentsidecarservice.PreparedRuntime
+	result       runtimeprep.PreparedRuntime
 	err          error
-	input        *agentsidecarservice.PrepareInput
-	cleanupCalls *[]agentsidecarservice.CleanupInput
+	input        *runtimeprep.PrepareInput
+	cleanupCalls *[]runtimeprep.CleanupInput
 }
 
-func (f fakeRuntimePreparer) Prepare(_ context.Context, input agentsidecarservice.PrepareInput) (agentsidecarservice.PreparedRuntime, error) {
+func (f fakeRuntimePreparer) Prepare(_ context.Context, input runtimeprep.PrepareInput) (runtimeprep.PreparedRuntime, error) {
 	if f.input != nil {
 		*f.input = input
 	}
 	return f.result, f.err
 }
 
-func (f fakeRuntimePreparer) Cleanup(_ context.Context, input agentsidecarservice.CleanupInput) error {
+func (f fakeRuntimePreparer) Cleanup(_ context.Context, input runtimeprep.CleanupInput) error {
 	if f.cleanupCalls != nil {
 		*f.cleanupCalls = append(*f.cleanupCalls, input)
 	}
@@ -5879,12 +6119,12 @@ func (f fakeRuntimePreparer) Cleanup(_ context.Context, input agentsidecarservic
 
 type fakeSkillBundleRenderer struct {
 	fakeRuntimePreparer
-	bundle agentsidecarservice.SkillBundle
+	bundle runtimeprep.SkillBundle
 	err    error
-	input  *agentsidecarservice.PrepareInput
+	input  *runtimeprep.PrepareInput
 }
 
-func (f fakeSkillBundleRenderer) RenderSkillBundle(_ context.Context, input agentsidecarservice.PrepareInput) (agentsidecarservice.SkillBundle, error) {
+func (f fakeSkillBundleRenderer) RenderSkillBundle(_ context.Context, input runtimeprep.PrepareInput) (runtimeprep.SkillBundle, error) {
 	if f.input != nil {
 		*f.input = input
 	}
