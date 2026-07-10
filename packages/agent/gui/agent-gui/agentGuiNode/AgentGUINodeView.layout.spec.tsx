@@ -5798,6 +5798,7 @@ function createLabels(): AgentGUIViewLabels {
     reasoningOptionHigh: "reasoningOptionHigh",
     reasoningOptionXHigh: "reasoningOptionXHigh",
     reasoningOptionMax: "reasoningOptionMax",
+    reasoningOptionUltra: "reasoningOptionUltra",
     speedLabel: "Speed",
     speedSelectionLabel: "Speed",
     speedOptionStandard: "Standard",

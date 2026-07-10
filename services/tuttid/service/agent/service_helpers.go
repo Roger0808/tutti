@@ -335,7 +335,13 @@ func normalizeRuntimeConfigOptionsForProvider(
 				runtimeConfigOptionString(record, "currentValue", "current_value"),
 			)
 		}
-		nextRecord["options"] = reasoningEffortOptions(provider, currentValue)
+		// Catalog-backed Codex runtimes advertise reasoning efforts for the
+		// currently selected model. Preserve that authoritative list so values
+		// such as max and ultra are not replaced by a static compatibility list.
+		normalizedProvider := agentprovider.Normalize(provider)
+		if normalizedProvider != agentprovider.Codex && normalizedProvider != agentprovider.TuttiAgent {
+			nextRecord["options"] = reasoningEffortOptions(provider, currentValue)
+		}
 		if currentValue == "" {
 			nextRecord["currentValue"] = nil
 			delete(nextRecord, "current_value")

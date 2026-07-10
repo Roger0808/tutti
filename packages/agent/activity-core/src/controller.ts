@@ -92,10 +92,40 @@ export function createAgentActivityController({
     Promise<AgentActivityComposerOptions>
   >();
   const composerOptionsLoadVersions = new Map<string, number>();
-  const composerOptionsCwdByTargetKey = new Map<string, string>();
-  const activeComposerOptionsLoadCwds = new Map<string, string>();
+  const composerOptionsRequestKeyByTargetKey = new Map<string, string>();
+  const activeComposerOptionsLoadRequestKeys = new Map<string, string>();
   const normalizeComposerCwd = (cwd: string | null | undefined): string =>
     (cwd ?? "").trim();
+  const normalizeComposerSetting = (
+    value: string | null | undefined
+  ): string | null => {
+    const normalized = value?.trim() ?? "";
+    return normalized || null;
+  };
+  const composerOptionsRequestKey = (
+    input: AgentActivityLoadComposerOptionsControllerInput
+  ): string =>
+    JSON.stringify([
+      input.provider.trim(),
+      normalizeComposerCwd(input.cwd),
+      normalizeComposerSetting(input.settings?.model),
+      normalizeComposerSetting(input.settings?.reasoningEffort),
+      normalizeComposerSetting(input.settings?.speed),
+      input.settings?.planMode ?? null,
+      normalizeComposerSetting(input.settings?.permissionModeId)
+    ]);
+  const composerOptionsProviderFromRequestKey = (
+    requestKey: string
+  ): string | null => {
+    try {
+      const values = JSON.parse(requestKey) as unknown;
+      return Array.isArray(values) && typeof values[0] === "string"
+        ? values[0]
+        : null;
+    } catch {
+      return null;
+    }
+  };
   const autoRetainedStreamReleases = new Map<string, () => void>();
   const retainedStreams = new Map<string, RetainedSessionStream>();
   let snapshot: AgentActivitySnapshot =
@@ -185,12 +215,13 @@ export function createAgentActivityController({
       if (!targetKey) {
         throw new Error("Agent composer options targetKey is required.");
       }
-      const requestedCwd = normalizeComposerCwd(input.cwd);
+      const requestedRequestKey = composerOptionsRequestKey(input);
       if (!input.force) {
         const cached = snapshot.composerOptionsByTargetKey?.[targetKey];
         if (
           cached &&
-          composerOptionsCwdByTargetKey.get(targetKey) === requestedCwd
+          composerOptionsRequestKeyByTargetKey.get(targetKey) ===
+            requestedRequestKey
         ) {
           return cloneAgentActivityComposerOptions(cached);
         }
@@ -199,7 +230,8 @@ export function createAgentActivityController({
       if (
         existingLoad &&
         !input.force &&
-        activeComposerOptionsLoadCwds.get(targetKey) === requestedCwd
+        activeComposerOptionsLoadRequestKeys.get(targetKey) ===
+          requestedRequestKey
       ) {
         return existingLoad.then(cloneAgentActivityComposerOptions);
       }
@@ -223,7 +255,10 @@ export function createAgentActivityController({
           if (composerOptionsLoadVersions.get(targetKey) !== loadVersion) {
             return cloneAgentActivityComposerOptions(normalizedOptions);
           }
-          composerOptionsCwdByTargetKey.set(targetKey, requestedCwd);
+          composerOptionsRequestKeyByTargetKey.set(
+            targetKey,
+            requestedRequestKey
+          );
           updateSnapshot((current) => {
             const currentOptions =
               current.composerOptionsByTargetKey?.[targetKey];
@@ -246,11 +281,11 @@ export function createAgentActivityController({
         .finally(() => {
           if (activeComposerOptionsLoads.get(targetKey) === load) {
             activeComposerOptionsLoads.delete(targetKey);
-            activeComposerOptionsLoadCwds.delete(targetKey);
+            activeComposerOptionsLoadRequestKeys.delete(targetKey);
           }
         });
       activeComposerOptionsLoads.set(targetKey, load);
-      activeComposerOptionsLoadCwds.set(targetKey, requestedCwd);
+      activeComposerOptionsLoadRequestKeys.set(targetKey, requestedRequestKey);
       return load.then(cloneAgentActivityComposerOptions);
     },
     invalidateComposerOptions(input) {
@@ -273,17 +308,31 @@ export function createAgentActivityController({
           staleTargetKeys.add(targetKey);
         }
       }
-      if (providers === null) {
-        // A full invalidation also clears in-flight freshness markers that have
-        // no snapshot entry yet; those cannot be provider-matched (no cached
-        // value to read the provider from), so only clear them when dropping
-        // everything.
-        for (const targetKey of composerOptionsCwdByTargetKey.keys()) {
+      for (const targetKey of composerOptionsRequestKeyByTargetKey.keys()) {
+        if (providers === null) {
+          staleTargetKeys.add(targetKey);
+        }
+      }
+      for (const [
+        targetKey,
+        requestKey
+      ] of activeComposerOptionsLoadRequestKeys) {
+        const requestProvider =
+          composerOptionsProviderFromRequestKey(requestKey);
+        if (
+          providers === null ||
+          (requestProvider && providers.has(requestProvider))
+        ) {
           staleTargetKeys.add(targetKey);
         }
       }
       for (const targetKey of staleTargetKeys) {
-        composerOptionsCwdByTargetKey.delete(targetKey);
+        composerOptionsRequestKeyByTargetKey.delete(targetKey);
+        activeComposerOptionsLoadRequestKeys.delete(targetKey);
+        composerOptionsLoadVersions.set(
+          targetKey,
+          (composerOptionsLoadVersions.get(targetKey) ?? 0) + 1
+        );
       }
     },
     async listSessionMessages({
