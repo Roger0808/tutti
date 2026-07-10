@@ -4,6 +4,7 @@ package agentruntime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,8 +16,9 @@ import (
 )
 
 type recordingReporter struct {
-	mu    sync.Mutex
-	calls []reportCall
+	mu      sync.Mutex
+	calls   []reportCall
+	updates chan struct{}
 }
 
 type reportCall struct {
@@ -35,6 +37,12 @@ func (r *recordingReporter) Report(_ context.Context, report agentsessionstore.R
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls = append(r.calls, reportCall{report: report})
+	if r.updates != nil {
+		select {
+		case r.updates <- struct{}{}:
+		default:
+		}
+	}
 	return nil
 }
 
@@ -46,16 +54,36 @@ func (r *recordingReporter) snapshot() []reportCall {
 
 func (r *recordingReporter) waitForCalls(t *testing.T, count int) []reportCall {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	return r.waitForReports(t, fmt.Sprintf("at least %d report calls", count), func(calls []reportCall) bool {
+		return len(calls) >= count
+	})
+}
+
+func (r *recordingReporter) waitForReports(
+	t *testing.T,
+	description string,
+	matches func([]reportCall) bool,
+) []reportCall {
+	t.Helper()
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
 	for {
-		calls := r.snapshot()
-		if len(calls) >= count {
+		r.mu.Lock()
+		calls := append([]reportCall(nil), r.calls...)
+		if matches(calls) {
+			r.mu.Unlock()
 			return calls
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("report calls = %d, want at least %d", len(calls), count)
+		if r.updates == nil {
+			r.updates = make(chan struct{}, 1)
 		}
-		time.Sleep(10 * time.Millisecond)
+		updates := r.updates
+		r.mu.Unlock()
+		select {
+		case <-updates:
+		case <-timer.C:
+			t.Fatalf("timed out waiting for %s; report calls = %d", description, len(calls))
+		}
 	}
 }
 
@@ -768,11 +796,11 @@ func TestControllerStartExecCancelPublishesAndReports(t *testing.T) {
 	if cancelResult.Canceled {
 		t.Fatalf("Cancel result = %#v, want no active turn cancel", cancelResult)
 	}
-	reporter.waitForCalls(t, 2)
-	waitForCondition(t, func() bool {
-		return len(reportsWithTimelineItem(reportInputs(reporter.snapshot()), "message.assistant")) > 0
+	reportCalls := reporter.waitForReports(t, "assistant and turn completion reports", func(calls []reportCall) bool {
+		reports := reportInputs(calls)
+		return len(reportsWithTimelineItem(reports, "message.assistant")) > 0 &&
+			hasTurnCompletionPatchInReports(reports, execResult.TurnID)
 	})
-	reportCalls := reporter.snapshot()
 	if len(reportCalls[0].report.StatePatches) == 0 ||
 		reportCalls[0].report.StatePatches[0].LifecycleStatus != string(activityshared.SessionLifecycleStatusActive) {
 		t.Fatalf("first report = %#v, want session started state patch", reportCalls[0].report)

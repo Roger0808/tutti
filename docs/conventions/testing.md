@@ -58,6 +58,12 @@ failure identifies the missing transition. Protocol mocks should also cover
 valid response/notification reorderings; an RPC response must not be assumed to
 arrive before the notifications caused by that request.
 
+Protocol fixtures must answer every synchronous startup/capability probe they
+can receive. Return an empty supported result or an explicit method-not-found
+error for unsupported probes; never rely on the production RPC timeout as mock
+behavior, because one missing response can add tens of seconds to every test
+that starts the adapter.
+
 ## Output and Logs
 
 Root test runners execute independent lanes with bounded concurrency. Successful
