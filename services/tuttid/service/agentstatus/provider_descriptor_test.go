@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -24,5 +25,46 @@ func TestCodexStatusSpecComesFromProviderDescriptor(t *testing.T) {
 	}
 	if spec.Install.Kind != InstallerKindCodexCLILatest || spec.Install.CodexCLI == nil {
 		t.Fatalf("Install = %#v", spec.Install)
+	}
+	if spec.MinVersion != providerregistry.CodexMinVersion || spec.NPMRegistryPackage != "@openai/codex" {
+		t.Fatalf("status registration = %#v", spec)
+	}
+	if spec.Install.CodexCLI.PackageName != "@openai/codex" || spec.Install.CodexCLI.BinaryName != "codex" || !spec.Install.CodexCLI.IncludeOptional {
+		t.Fatalf("codex installer registration = %#v", spec.Install.CodexCLI)
+	}
+}
+
+func TestProviderStatusAdapterConsumesDescriptorInstallerData(t *testing.T) {
+	descriptor, ok := providerregistry.Find(providerregistry.CodexProviderID)
+	if !ok {
+		t.Fatal("codex descriptor missing")
+	}
+	descriptor.Status.MinVersion = "9.9.9"
+	descriptor.Status.NPMRegistryPackage = "@poison/codex"
+	descriptor.Status.Install.PackageName = "@poison/codex"
+	descriptor.Status.Install.BinaryName = "poison-codex"
+	descriptor.Status.Install.IncludeOptional = false
+
+	spec, err := providerSpecFromDescriptor(descriptor)
+	if err != nil {
+		t.Fatalf("providerSpecFromDescriptor() error = %v", err)
+	}
+	if spec.MinVersion != "9.9.9" || spec.NPMRegistryPackage != "@poison/codex" {
+		t.Fatalf("status descriptor values = %#v", spec)
+	}
+	if spec.Install.CodexCLI == nil || spec.Install.CodexCLI.PackageName != "@poison/codex" ||
+		spec.Install.CodexCLI.BinaryName != "poison-codex" || spec.Install.CodexCLI.IncludeOptional {
+		t.Fatalf("installer descriptor values = %#v", spec.Install.CodexCLI)
+	}
+}
+
+func TestProviderStatusAdapterRejectsUnknownInstallerKind(t *testing.T) {
+	descriptor, ok := providerregistry.Find(providerregistry.CodexProviderID)
+	if !ok {
+		t.Fatal("codex descriptor missing")
+	}
+	descriptor.Status.Install.Kind = providerregistry.InstallerKind("poison")
+	if _, err := providerSpecFromDescriptor(descriptor); err == nil {
+		t.Fatal("providerSpecFromDescriptor() error = nil, want unsupported installer kind")
 	}
 }

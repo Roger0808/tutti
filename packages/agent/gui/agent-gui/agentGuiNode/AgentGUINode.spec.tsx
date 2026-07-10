@@ -4659,6 +4659,7 @@ describe("AgentGUINode", () => {
         {
           name: "architecture-review",
           trigger: "$architecture-review",
+          invocation: "promptItem",
           sourceKind: "project",
           description: "Review architecture changes"
         }
@@ -4690,6 +4691,7 @@ describe("AgentGUINode", () => {
         {
           name: "architecture-review",
           trigger: "$architecture-review",
+          invocation: "promptItem",
           sourceKind: "project",
           description: "Review architecture changes"
         }
@@ -7561,6 +7563,17 @@ function createViewModel(
       speedUnavailable: false,
       availableSpeeds: [],
       supportsPlanMode: true,
+      slashCommandPolicy: {
+        fallbackCommands: ["compact", "status", "fast", "goal", "review"],
+        commandEffects: [
+          { command: "init", effect: "submitImmediate" },
+          { command: "compact", effect: "submitImmediate" },
+          { command: "review", effect: "showReviewPicker" },
+          { command: "plan", effect: "togglePlanMode" },
+          { command: "status", effect: "showStatus" },
+          { command: "fast", effect: "toggleSpeed" }
+        ]
+      },
       isSettingsLoading: false,
       modelUnavailable: false,
       reasoningUnavailable: false,

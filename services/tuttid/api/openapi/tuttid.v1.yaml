@@ -6989,6 +6989,12 @@ components:
           type: boolean
         goalPause:
           type: boolean
+        planImplementation:
+          type: boolean
+        permissionModeChangeDuringTurn:
+          type: boolean
+        permissionModeChangeDeferred:
+          type: boolean
         review:
           type: boolean
         resumeRunningTurn:

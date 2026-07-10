@@ -49,6 +49,19 @@ export {
 export type { AgentGuiI18nLocale } from "./i18n/index";
 export { agentGuiDockIconUrl, agentGuiDockIconUrls } from "./dockIcons";
 export {
+  agentGUIProviderIdentityDisplayName,
+  migratedAgentGUIProviderIdentityCatalog,
+  resolveAgentGUIProviderCatalogIdentity,
+  resolveMigratedAgentGUIProviderIdentity,
+  type AgentGUIProviderIdentityCatalogEntry
+} from "./providerIdentityCatalog";
+export {
+  PROVIDER_ICON_ASSETS_BY_ICON_KEY,
+  resolveProviderIconAsset,
+  type ProviderIconAssetSet,
+  type ProviderIconAssetVariant
+} from "./providerIconAssets";
+export {
   resolveAgentGUIExpandedWindowFrame,
   shouldAutoCollapseAgentGUIConversationRail
 } from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";

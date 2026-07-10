@@ -266,7 +266,7 @@ func TestRunCodexCLILatestInstallerPinsDedicatedCache(t *testing.T) {
 
 	if _, err := service.runCodexCLILatestInstaller(context.Background(), InstallerSpec{
 		Kind:     InstallerKindCodexCLILatest,
-		CodexCLI: &CodexCLILatestInstallerSpec{},
+		CodexCLI: codexCLIInstallerSpec().CodexCLI,
 	}, ""); err != nil {
 		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)
 	}

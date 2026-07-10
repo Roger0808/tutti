@@ -38,9 +38,10 @@ func (s Service) runCodexCLILatestInstaller(
 		return InstallCommandResult{ExitCode: 1, Stderr: "codex CLI latest installer config is required"}, nil
 	}
 	return s.runManagedNPMPackageInstaller(ctx, agentprovider.Codex, ManagedNPMPackageInstallerSpec{
-		PackageName:     "@openai/codex",
-		BinaryName:      "codex",
-		IncludeOptional: true,
+		PackageName:     spec.CodexCLI.PackageName,
+		BinaryName:      spec.CodexCLI.BinaryName,
+		IncludeOptional: spec.CodexCLI.IncludeOptional,
+		InstallDir:      spec.CodexCLI.InstallDir,
 	}, existingCLIPath)
 }
 

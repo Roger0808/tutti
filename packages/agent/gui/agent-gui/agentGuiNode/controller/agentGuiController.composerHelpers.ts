@@ -131,8 +131,22 @@ export function providerSkillsFromComposerOptions(
   if (!options) {
     return [];
   }
+  const invocationByTrigger = new Map(
+    (options.capabilityCatalog ?? []).flatMap((capability) =>
+      capability.trigger &&
+      (capability.invocation === "promptItem" ||
+        capability.invocation === "textTrigger")
+        ? [[capability.trigger, capability.invocation] as const]
+        : []
+    )
+  );
   return dedupeProviderSkills([
-    ...options.skills.map((skill) => ({ ...skill })),
+    ...options.skills.map((skill) => ({
+      ...skill,
+      ...(invocationByTrigger.get(skill.trigger)
+        ? { invocation: invocationByTrigger.get(skill.trigger) }
+        : {})
+    })),
     ...(options.capabilityCatalog ?? [])
       .filter(
         (capability) =>
@@ -147,6 +161,7 @@ export function providerSkillsFromComposerOptions(
         return {
           name: isConnector ? capability.label : capability.name,
           trigger: capability.trigger!,
+          invocation: "promptItem",
           sourceKind: isConnector ? "connector" : "plugin",
           kind: isConnector ? "connector" : "skill",
           ...(capability.description
@@ -168,6 +183,7 @@ export function areProviderSkillOptionsEqual(
   return (
     left.name === right.name &&
     left.trigger === right.trigger &&
+    left.invocation === right.invocation &&
     left.sourceKind === right.sourceKind &&
     left.description === right.description &&
     left.pluginName === right.pluginName &&
@@ -457,37 +473,6 @@ export function nodeComposerOverridesForProvider(
     data.composerOverrides ??
     null
   );
-}
-
-export function composerSupportForProvider(
-  provider: AgentGUINodeData["provider"]
-): {
-  model: boolean;
-  permission: boolean;
-  reasoning: boolean;
-  speed: boolean;
-  plan: boolean;
-} {
-  if (
-    provider === "claude-code" ||
-    provider === "codex" ||
-    provider === "opencode"
-  ) {
-    return {
-      model: true,
-      permission: provider === "claude-code" || provider === "codex",
-      reasoning: provider !== "opencode",
-      speed: provider === "claude-code" || provider === "codex",
-      plan: false
-    };
-  }
-  return {
-    model: false,
-    permission: provider === "nexight",
-    reasoning: false,
-    speed: false,
-    plan: false
-  };
 }
 
 export function permissionModeOptions(

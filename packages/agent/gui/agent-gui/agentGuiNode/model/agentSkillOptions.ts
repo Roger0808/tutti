@@ -29,9 +29,9 @@ export function promptForProviderSkills(input: {
   provider: string;
   skills: readonly AgentGUIProviderSkillOption[];
 }): string {
-  const nativePrefix = input.provider.trim() === "codex" ? "$" : "/";
   let prompt = input.prompt;
   for (const skill of input.skills) {
+    const nativePrefix = skill.invocation === "promptItem" ? "$" : "/";
     const nativeTrigger = skillTriggerForPrefix(skill, nativePrefix);
     const aliasPrefix = nativePrefix === "$" ? "/" : "$";
     const aliasTrigger = skillTriggerForPrefix(skill, aliasPrefix);

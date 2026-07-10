@@ -1426,6 +1426,9 @@ export type WorkspaceAgentCapabilities = {
   browserUse?: boolean;
   computerUse?: boolean;
   goalPause?: boolean;
+  planImplementation?: boolean;
+  permissionModeChangeDuringTurn?: boolean;
+  permissionModeChangeDeferred?: boolean;
   review?: boolean;
   resumeRunningTurn?: boolean;
 };

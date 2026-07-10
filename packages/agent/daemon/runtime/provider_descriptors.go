@@ -39,6 +39,9 @@ func newAdapterFromProviderDescriptor(
 	switch descriptor.Runtime.Kind {
 	case providerregistry.RuntimeKindCodexAppServer:
 		adapter := NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(transport, host, commandResolver)
+		adapter.config.provider = descriptor.Identity.ID
+		adapter.config.runtimeName = descriptor.Runtime.Name
+		adapter.config.displayName = descriptor.Identity.DisplayName
 		adapter.config.command = append([]string(nil), descriptor.Runtime.Command...)
 		return adapter
 	default:

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
@@ -158,6 +159,9 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		"reasoningEffort":  nullableString(effectiveSettings.ReasoningEffort),
 		"speed":            nullableString(effectiveSettings.Speed),
 	}
+	if slashCommandPolicy := composerSlashCommandPolicyRuntimeContext(provider); slashCommandPolicy != nil {
+		runtimeContext["slashCommandPolicy"] = slashCommandPolicy
+	}
 	if agentTargetID != "" {
 		runtimeContext["agentTargetId"] = agentTargetID
 	}
@@ -296,7 +300,7 @@ func composerDefaultModel(
 			}
 		}
 	}
-	if composerProfileFor(provider).ModelCatalog == "codex-cli" {
+	if composerProfileFor(provider).ModelCatalog == providerregistry.ModelCatalogKindCodexCLI {
 		return strings.TrimSpace(readCodexConfiguredDefaultModel())
 	}
 	switch provider {
@@ -304,6 +308,24 @@ func composerDefaultModel(
 		return strings.TrimSpace(readClaudeCodeConfiguredDefaultModel())
 	default:
 		return ""
+	}
+}
+
+func composerSlashCommandPolicyRuntimeContext(provider string) map[string]any {
+	policy := composerProfileFor(provider).SlashCommandPolicy
+	if len(policy.FallbackCommands) == 0 && len(policy.CommandEffects) == 0 {
+		return nil
+	}
+	effects := make([]map[string]any, 0, len(policy.CommandEffects))
+	for _, descriptor := range policy.CommandEffects {
+		effects = append(effects, map[string]any{
+			"command": strings.TrimSpace(descriptor.Command),
+			"effect":  string(descriptor.Effect),
+		})
+	}
+	return map[string]any{
+		"fallbackCommands": append([]string(nil), policy.FallbackCommands...),
+		"commandEffects":   effects,
 	}
 }
 

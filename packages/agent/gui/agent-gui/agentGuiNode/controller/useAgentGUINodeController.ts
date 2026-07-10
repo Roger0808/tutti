@@ -189,11 +189,11 @@ import {
 } from "../agentRichText/agentFileMentionExtension";
 import { resolveAgentGUIExplicitConversationTitle } from "../model/agentGuiProviderIdentity";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
+import { slashCommandPolicyFromComposerOptions } from "../model/agentSlashCommandProviderPolicy";
 import {
   buildNodeDefaultComposerSettings,
   cloneComposerSettings,
   composerOptionsMissingLiveModelValues,
-  composerSupportForProvider,
   liveModelOptionValuesFromRuntimeContext,
   mergeRuntimeContextComposerSettings,
   nodeDataFromComposerSettings,
@@ -2649,8 +2649,22 @@ function providerSkillsFromComposerOptions(
   if (!options) {
     return [];
   }
+  const invocationByTrigger = new Map(
+    (options.capabilityCatalog ?? []).flatMap((capability) =>
+      capability.trigger &&
+      (capability.invocation === "promptItem" ||
+        capability.invocation === "textTrigger")
+        ? [[capability.trigger, capability.invocation] as const]
+        : []
+    )
+  );
   return dedupeProviderSkills([
-    ...options.skills.map((skill) => ({ ...skill })),
+    ...options.skills.map((skill) => ({
+      ...skill,
+      ...(invocationByTrigger.get(skill.trigger)
+        ? { invocation: invocationByTrigger.get(skill.trigger) }
+        : {})
+    })),
     ...(options.capabilityCatalog ?? [])
       .filter(
         (capability) =>
@@ -2665,6 +2679,7 @@ function providerSkillsFromComposerOptions(
         return {
           name: isConnector ? capability.label : capability.name,
           trigger: capability.trigger!,
+          invocation: "promptItem",
           sourceKind: isConnector ? "connector" : "plugin",
           kind: isConnector ? "connector" : "skill",
           ...(capability.description
@@ -2686,6 +2701,7 @@ function areProviderSkillOptionsEqual(
   return (
     left.name === right.name &&
     left.trigger === right.trigger &&
+    left.invocation === right.invocation &&
     left.sourceKind === right.sourceKind &&
     left.description === right.description &&
     left.pluginName === right.pluginName &&
@@ -2878,6 +2894,9 @@ function areComposerSettingsVMsEqual(
     (left.supportsBrowser ?? false) === (right.supportsBrowser ?? false) &&
     (left.supportsComputerUse ?? false) ===
       (right.supportsComputerUse ?? false) &&
+    (left.permissionModeChangeDuringTurn ?? false) ===
+      (right.permissionModeChangeDuringTurn ?? false) &&
+    left.slashCommandPolicy === right.slashCommandPolicy &&
     left.isSettingsLoading === right.isSettingsLoading &&
     Boolean(left.isModelOptionsLoading) ===
       Boolean(right.isModelOptionsLoading) &&
@@ -4385,10 +4404,6 @@ export function useAgentGUINodeController({
       ),
     [providerComposerOptions, activeSessionRuntimeContext]
   );
-  // Provider-static capability flags used to gate composer-options effects
-  // (the options-derived `composerSupport` above can be empty before options
-  // load). Kept from the upstream refactor that those effects depend on.
-  const supports = composerSupportForProvider(composerTargetData.provider);
   const usage = useMemo(
     () =>
       resolveAgentActivityUsage({
@@ -6716,9 +6731,6 @@ export function useAgentGUINodeController({
     if (previewMode) {
       return;
     }
-    if (!supports.model && !supports.reasoning && !supports.permission) {
-      return;
-    }
     const projectKey = `${composerTargetData.agentTargetId ?? composerTargetData.provider}\0${selectedProjectPath ?? ""}`;
     const previousProjectKey = composerOptionsProjectKeyRef.current;
     composerOptionsProjectKeyRef.current = projectKey;
@@ -6731,10 +6743,7 @@ export function useAgentGUINodeController({
     composerTargetData.provider,
     loadDraftComposerOptions,
     previewMode,
-    selectedProjectPath,
-    supports.model,
-    supports.permission,
-    supports.reasoning
+    selectedProjectPath
   ]);
 
   // Providers such as Cursor only expose their model list through the live
@@ -6780,9 +6789,6 @@ export function useAgentGUINodeController({
     if (previewMode) {
       return undefined;
     }
-    if (!supports.model && !supports.reasoning && !supports.permission) {
-      return undefined;
-    }
     return subscribeCoalesced(
       "agent-model-catalog-invalidated",
       {
@@ -6812,15 +6818,7 @@ export function useAgentGUINodeController({
         });
       }
     );
-  }, [
-    loadDraftComposerOptions,
-    loadSessionState,
-    previewMode,
-    workspaceId,
-    supports.model,
-    supports.permission,
-    supports.reasoning
-  ]);
+  }, [loadDraftComposerOptions, loadSessionState, previewMode, workspaceId]);
 
   useEffect(() => {
     if (previewMode) {
@@ -9194,8 +9192,8 @@ export function useAgentGUINodeController({
       optionId?: string;
       payload?: Record<string, unknown>;
     }) => {
-      // Codex plan-implementation actions are client-orchestrated (no server
-      // submitInteractive); route them to the plan decision handlers.
+      // Plan-implementation actions are client-orchestrated; route them to the
+      // plan decision handlers instead of submitInteractive.
       if (input.action === PLAN_IMPLEMENTATION_ACTION_IMPLEMENT) {
         planActionsRef.current.implement();
         return;
@@ -9741,18 +9739,12 @@ export function useAgentGUINodeController({
       ) {
         sessionSettingsPatch.permissionModeId =
           normalizePermissionModeId(nextPermission);
-        // Codex has no live mid-turn RPC for approval/sandbox policy: the
-        // daemon only re-derives it fresh on the *next* turn/start call, so a
-        // change made while a turn is actively running won't affect that
-        // turn. Claude Code applies it immediately via query.setPermissionMode
-        // even mid-turn, so no such gap exists there. Surface the deferral
-        // honestly instead of letting the optimistic UI update imply the
-        // change is already in effect. There is no turn at all yet during
-        // the pre-activation window, so this deferral notice does not apply.
+        // Descriptor capability data decides whether an in-flight change is
+        // deferred until the next turn. Pre-activation has no turn to defer.
         const turnPhase = activeSessionState?.turnLifecycle?.phase;
         const isTurnInFlight =
           turnPhase === "running" || turnPhase === "submitted";
-        if (dataRef.current.provider === "codex" && isTurnInFlight) {
+        if (composerSupport.permissionModeChangeDeferred && isTurnInFlight) {
           onShowMessageRef.current?.(
             translate("messages.agentPermissionModeAppliesNextTurn"),
             "info"
@@ -9879,8 +9871,10 @@ export function useAgentGUINodeController({
     },
     [
       activation,
+      activeSessionState,
       defaultReasoningEffort,
       activeTimelineItems,
+      composerSupport.permissionModeChangeDeferred,
       flushQueuedComposerSettingsUpdate,
       loadDraftComposerOptions,
       markSessionSettingsRequestState,
@@ -9958,8 +9952,7 @@ export function useAgentGUINodeController({
       if (!trimmed) {
         return;
       }
-      // Feedback keeps plan mode on so the agent refines the plan rather than
-      // implementing it (mirrors the codex TUI's "tell it how to adjust").
+      // Feedback keeps plan mode on so the agent refines rather than implements.
       submitPrompt(textPromptContent(trimmed));
     },
     [dismissPlanImplementation, submitPrompt]
@@ -11298,19 +11291,18 @@ export function useAgentGUINodeController({
     draftSettings.speed
   ) as AgentSessionSpeed | null;
   // The offer is derived from the same timeline data that renders the plan
-  // card (the latest turn produced a plan item), gated on codex + plan mode
-  // and a settled (non-working) conversation. No status-edge/runtimeContext
+  // card, gated by provider capability, plan mode, and a settled conversation. No status-edge/runtimeContext
   // race; keyed by plan turn id so dismiss suppresses only that plan.
   const planImplementationTurnId =
     activeConversationId !== null &&
-    dataRef.current.provider === "codex" &&
+    composerSupport.planImplementation &&
     composerSupport.plan &&
     Boolean(draftSettings.planMode) &&
     activeConversation?.status !== "working"
       ? latestPlanTurnId(activeTimelineItems)
       : null;
   planImplementationTurnIdRef.current = planImplementationTurnId;
-  // Fold the codex plan decision into the unified interactive-prompt machinery
+  // Fold the plan decision into the unified interactive-prompt machinery
   // (server exit-plan wins if both somehow apply). Suppressed once skipped for
   // that plan turn; a fresh plan turn re-arms it.
   const planImplementationPromptVM =
@@ -11592,15 +11584,6 @@ export function useAgentGUINodeController({
       activeSessionRuntimeContext,
       "models"
     );
-    // Before the daemon's composer options arrive, the options-derived
-    // `composerSupport` is all-false, which would hide every settings control
-    // and leave an empty row. Fall back to the provider-static capabilities
-    // while loading so the controls still render (disabled, with a loading
-    // hint); once options load, the accurate options-derived flags take over.
-    const optionsLoading = isSettingsLoading || isModelOptionsLoading;
-    const providerSupport = composerSupportForProvider(
-      composerTargetData.provider
-    );
     const selectedModelValue = draftModel;
     const selectedReasoningEffortValue =
       draftReasoningEffort as AgentSessionReasoningEffort | null;
@@ -11622,17 +11605,17 @@ export function useAgentGUINodeController({
           draftSettings.permissionModeId
         )
       },
-      supportsModel:
-        composerSupport.model || (optionsLoading && providerSupport.model),
-      supportsReasoningEffort:
-        composerSupport.reasoning ||
-        (optionsLoading && providerSupport.reasoning),
+      supportsModel: composerSupport.model,
+      supportsReasoningEffort: composerSupport.reasoning,
       supportsSpeed: composerSupport.speed,
       supportsBrowser: composerSupport.browser,
       supportsComputerUse: composerSupport.computer,
-      supportsPermissionMode:
-        supportsPermissionMode ||
-        (optionsLoading && providerSupport.permission),
+      permissionModeChangeDuringTurn:
+        composerSupport.permissionModeChangeDuringTurn,
+      slashCommandPolicy: slashCommandPolicyFromComposerOptions(
+        providerComposerOptions
+      ),
+      supportsPermissionMode,
       supportsPlanMode: composerSupport.plan,
       planExclusiveWithPermissionMode:
         composerTargetData.provider === "claude-code",

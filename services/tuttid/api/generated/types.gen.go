@@ -3685,18 +3685,21 @@ type WorkspaceAgentBackgroundAgents struct {
 
 // WorkspaceAgentCapabilities Protocol v2 daemon-issued capability descriptor. Clients branch on these booleans instead of provider identity. Field names mirror the canonical capability keys in packages/agent/daemon/runtime/capabilities.go.
 type WorkspaceAgentCapabilities struct {
-	BrowserUse        *bool `json:"browserUse,omitempty"`
-	Compact           *bool `json:"compact,omitempty"`
-	ComputerUse       *bool `json:"computerUse,omitempty"`
-	GoalPause         *bool `json:"goalPause,omitempty"`
-	ImageInput        *bool `json:"imageInput,omitempty"`
-	Interrupt         *bool `json:"interrupt,omitempty"`
-	PlanMode          *bool `json:"planMode,omitempty"`
-	RateLimits        *bool `json:"rateLimits,omitempty"`
-	ResumeRunningTurn *bool `json:"resumeRunningTurn,omitempty"`
-	Review            *bool `json:"review,omitempty"`
-	Skills            *bool `json:"skills,omitempty"`
-	TokenUsage        *bool `json:"tokenUsage,omitempty"`
+	BrowserUse                     *bool `json:"browserUse,omitempty"`
+	Compact                        *bool `json:"compact,omitempty"`
+	ComputerUse                    *bool `json:"computerUse,omitempty"`
+	GoalPause                      *bool `json:"goalPause,omitempty"`
+	ImageInput                     *bool `json:"imageInput,omitempty"`
+	Interrupt                      *bool `json:"interrupt,omitempty"`
+	PermissionModeChangeDeferred   *bool `json:"permissionModeChangeDeferred,omitempty"`
+	PermissionModeChangeDuringTurn *bool `json:"permissionModeChangeDuringTurn,omitempty"`
+	PlanImplementation             *bool `json:"planImplementation,omitempty"`
+	PlanMode                       *bool `json:"planMode,omitempty"`
+	RateLimits                     *bool `json:"rateLimits,omitempty"`
+	ResumeRunningTurn              *bool `json:"resumeRunningTurn,omitempty"`
+	Review                         *bool `json:"review,omitempty"`
+	Skills                         *bool `json:"skills,omitempty"`
+	TokenUsage                     *bool `json:"tokenUsage,omitempty"`
 }
 
 // WorkspaceAgentCompletedCommand Protocol v2 closed-enum replacement for AgentActivityCompletedCommand.

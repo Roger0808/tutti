@@ -345,11 +345,11 @@ function promptItemBlocksForProviderSkills(input: {
   provider: string;
   skills: readonly AgentGUIProviderSkillOption[];
 }): AgentPromptContentBlock[] {
-  if (input.provider.trim() !== "codex") {
-    return [];
-  }
   const result: AgentPromptContentBlock[] = [];
   for (const skill of input.skills) {
+    if (skill.invocation !== "promptItem") {
+      continue;
+    }
     const path = skill.path?.trim();
     if (!path) {
       continue;

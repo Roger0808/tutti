@@ -109,6 +109,8 @@ const (
 // auth assumptions.
 type appServerAdapterConfig struct {
 	provider            string
+	runtimeName         string
+	displayName         string
 	command             []string
 	clientInfoName      string
 	authRequiredMessage string
@@ -117,6 +119,8 @@ type appServerAdapterConfig struct {
 func codexAppServerAdapterConfig() appServerAdapterConfig {
 	return appServerAdapterConfig{
 		provider:            ProviderCodex,
+		runtimeName:         "codex-app-server",
+		displayName:         "Codex",
 		command:             []string{codexAppServerCommand, codexAppServerSubcmd},
 		clientInfoName:      codexOfficialOriginator,
 		authRequiredMessage: codexAppServerAuthRequiredMessage,
@@ -126,6 +130,8 @@ func codexAppServerAdapterConfig() appServerAdapterConfig {
 func tuttiAgentAppServerAdapterConfig() appServerAdapterConfig {
 	return appServerAdapterConfig{
 		provider:            ProviderTuttiAgent,
+		runtimeName:         "tutti-agent-app-server",
+		displayName:         "Tutti Agent",
 		command:             []string{tuttiAgentAppServerCommand, codexAppServerSubcmd},
 		clientInfoName:      tuttiAgentClientInfoName,
 		authRequiredMessage: tuttiAgentAppServerAuthRequiredMessage,
@@ -463,7 +469,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 			a.removeSession(session.AgentSessionID)
 		}
 	}()
-	serverInfo := appServerInfo(initializeResult)
+	serverInfo := a.appServerInfo(initializeResult)
 	a.storeSession(session.AgentSessionID, &codexAppServerSession{
 		client:          client,
 		serverInfo:      serverInfo,
@@ -617,7 +623,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 			}
 		}
 	}()
-	serverInfo := appServerInfo(initializeResult)
+	serverInfo := a.appServerInfo(initializeResult)
 
 	account, authRequired := a.fetchAccount(ctx, client, session, trace)
 	if authRequired {

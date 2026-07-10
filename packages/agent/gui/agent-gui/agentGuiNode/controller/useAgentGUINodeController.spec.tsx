@@ -12371,10 +12371,27 @@ describe("useAgentGUINodeController", () => {
       })),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => ({
+        provider: "codex",
+        modelConfig: { configurable: true, options: [] },
+        reasoningConfig: { configurable: true, options: [] },
+        runtimeContext: {
+          capabilities: [
+            "permissionModeChangeDuringTurn",
+            "permissionModeChangeDeferred"
+          ]
+        }
+      })),
       getState: vi.fn(async () =>
         agentSessionState("session-1", {
           provider: "codex",
           permissionModeId: "auto",
+          runtimeContext: {
+            capabilities: [
+              "permissionModeChangeDuringTurn",
+              "permissionModeChangeDeferred"
+            ]
+          },
           turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
           settings: {
             model: "gpt-5.4",
@@ -15144,14 +15161,18 @@ describe("useAgentGUINodeController", () => {
         provider: "codex",
         modelConfig: { configurable: true, options: [] },
         reasoningConfig: { configurable: true, options: [] },
-        runtimeContext: { capabilities: ["planMode"] }
+        runtimeContext: {
+          capabilities: ["planMode", "planImplementation"]
+        }
       })),
       getState: vi.fn(async () =>
         agentSessionState("session-1", {
           provider: "codex",
           status: "ready",
           settings: { planMode: true, permissionModeId: "auto" },
-          runtimeContext: { capabilities: ["planMode"] }
+          runtimeContext: {
+            capabilities: ["planMode", "planImplementation"]
+          }
         })
       )
     });
@@ -15280,7 +15301,9 @@ describe("useAgentGUINodeController", () => {
             planMode: true,
             permissionModeId: "auto"
           },
-          runtimeContext: { capabilities: ["planMode"] }
+          runtimeContext: {
+            capabilities: ["planMode", "planImplementation"]
+          }
         })
       ),
       exec,

@@ -349,7 +349,7 @@ func (s Service) providerCLIRequiresInstall(spec ProviderSpec, runtime providerR
 	if !s.codexPlatformBinaryOK(runtime.CLIPath) {
 		return true
 	}
-	return !codexVersionMeetsMinimum(s.cliVersion(context.Background(), runtime.CLIPath, runtime.Env))
+	return !cliVersionMeetsMinimum(s.cliVersion(context.Background(), runtime.CLIPath, runtime.Env), spec.MinVersion)
 }
 
 func adapterPackageRequirementSatisfied(requirement AdapterPackageRequirement, version string) bool {

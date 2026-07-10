@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -102,7 +103,11 @@ func defaultAgentModelCatalogSpecs() map[string]agentModelCatalogSpec {
 		},
 	}
 	for _, descriptor := range providerregistry.Migrated() {
-		if spec, ok := agentModelCatalogSpecFromDescriptor(descriptor); ok {
+		spec, ok, err := agentModelCatalogSpecFromDescriptor(descriptor)
+		if err != nil {
+			panic(fmt.Sprintf("invalid provider model catalog descriptor: %v", err))
+		}
+		if ok {
 			specs[descriptor.Identity.ID] = spec
 		}
 	}
@@ -111,11 +116,13 @@ func defaultAgentModelCatalogSpecs() map[string]agentModelCatalogSpec {
 
 var agentModelCatalogSpecs = defaultAgentModelCatalogSpecs()
 
-func agentModelCatalogSpecFromDescriptor(descriptor providerregistry.ProviderDescriptor) (agentModelCatalogSpec, bool) {
+func agentModelCatalogSpecFromDescriptor(descriptor providerregistry.ProviderDescriptor) (agentModelCatalogSpec, bool, error) {
 	switch descriptor.ComposerProfile.ModelCatalog {
-	case "codex-cli":
+	case "":
+		return agentModelCatalogSpec{}, false, nil
+	case providerregistry.ModelCatalogKindCodexCLI:
 		return agentModelCatalogSpec{
-			source: descriptor.ComposerProfile.ModelCatalog,
+			source: string(descriptor.ComposerProfile.ModelCatalog),
 			ttl:    codexModelCacheTTL,
 			errTTL: codexModelErrorCacheTTL,
 			lister: func(c *CachedAgentModelCatalog) AgentModelLister {
@@ -126,9 +133,13 @@ func agentModelCatalogSpecFromDescriptor(descriptor providerregistry.ProviderDes
 			},
 			configuredDefaultModel:    readCodexConfiguredDefaultModel,
 			missingDefaultDescription: descriptor.Identity.DisplayName + " configured custom model",
-		}, true
+		}, true, nil
 	default:
-		return agentModelCatalogSpec{}, false
+		return agentModelCatalogSpec{}, false, fmt.Errorf(
+			"provider %q model catalog kind %q is unsupported",
+			descriptor.Identity.ID,
+			descriptor.ComposerProfile.ModelCatalog,
+		)
 	}
 }
 

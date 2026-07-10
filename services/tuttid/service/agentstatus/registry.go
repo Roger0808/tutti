@@ -23,6 +23,8 @@ const DisabledReasonProviderTemporarilyUnsupported = "provider_temporarily_unsup
 type ProviderSpec struct {
 	Kind                         providerregistry.StatusKind
 	Provider                     string
+	MinVersion                   string
+	NPMRegistryPackage           string
 	SupportStatus                ProviderSupportStatus
 	DisabledReasonCode           string
 	BinaryNames                  []string
@@ -211,6 +213,8 @@ func providerSpecFromDescriptor(descriptor providerregistry.ProviderDescriptor) 
 	return ProviderSpec{
 		Kind:               descriptor.Status.Kind,
 		Provider:           descriptor.Identity.ID,
+		MinVersion:         descriptor.Status.MinVersion,
+		NPMRegistryPackage: descriptor.Status.NPMRegistryPackage,
 		BinaryNames:        append([]string(nil), descriptor.Status.BinaryNames...),
 		AdapterBinaryNames: adapterBinaryNames,
 		AdapterCommand:     append([]string(nil), descriptor.Runtime.Command...),
@@ -245,7 +249,11 @@ func installerSpecFromProviderDescriptor(descriptor providerregistry.InstallerDe
 		return InstallerSpec{
 			Kind:           InstallerKindCodexCLILatest,
 			DisplayCommand: descriptor.DisplayCommand,
-			CodexCLI:       &CodexCLILatestInstallerSpec{},
+			CodexCLI: &CodexCLILatestInstallerSpec{
+				PackageName:     descriptor.PackageName,
+				BinaryName:      descriptor.BinaryName,
+				IncludeOptional: descriptor.IncludeOptional,
+			},
 		}, nil
 	default:
 		return InstallerSpec{}, fmt.Errorf("unsupported installer kind %q", descriptor.Kind)

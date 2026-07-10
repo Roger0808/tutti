@@ -93,7 +93,7 @@ func TestRunCodexCLILatestInstallerRepairsInPlace(t *testing.T) {
 
 	if _, err := service.runCodexCLILatestInstaller(context.Background(), InstallerSpec{
 		Kind:     InstallerKindCodexCLILatest,
-		CodexCLI: &CodexCLILatestInstallerSpec{},
+		CodexCLI: codexCLIInstallerSpec().CodexCLI,
 	}, existingCLIPath); err != nil {
 		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)
 	}
@@ -134,7 +134,7 @@ func TestRunCodexCLILatestInstallerFallsBackToLocalBin(t *testing.T) {
 
 	if _, err := service.runCodexCLILatestInstaller(context.Background(), InstallerSpec{
 		Kind:     InstallerKindCodexCLILatest,
-		CodexCLI: &CodexCLILatestInstallerSpec{},
+		CodexCLI: codexCLIInstallerSpec().CodexCLI,
 	}, standalone); err != nil {
 		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)
 	}
@@ -180,7 +180,7 @@ func TestRunCodexCLILatestInstallerUsesManagedRuntimeNPMWhenUserNPMMissing(t *te
 
 	if _, err := service.runCodexCLILatestInstaller(context.Background(), InstallerSpec{
 		Kind:     InstallerKindCodexCLILatest,
-		CodexCLI: &CodexCLILatestInstallerSpec{},
+		CodexCLI: codexCLIInstallerSpec().CodexCLI,
 	}, ""); err != nil {
 		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)
 	}

@@ -5240,6 +5240,17 @@ function createComposerSettings(
     speedUnavailable: false,
     availableSpeeds: [],
     supportsPlanMode: false,
+    slashCommandPolicy: {
+      fallbackCommands: ["compact", "status", "fast", "goal", "review"],
+      commandEffects: [
+        { command: "init", effect: "submitImmediate" },
+        { command: "compact", effect: "submitImmediate" },
+        { command: "review", effect: "showReviewPicker" },
+        { command: "plan", effect: "togglePlanMode" },
+        { command: "status", effect: "showStatus" },
+        { command: "fast", effect: "toggleSpeed" }
+      ]
+    },
     isSettingsLoading: false,
     modelUnavailable: false,
     reasoningUnavailable: false,

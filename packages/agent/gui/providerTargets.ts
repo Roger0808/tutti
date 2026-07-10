@@ -4,17 +4,7 @@ import type {
   AgentGUIProviderTargetBadge,
   AgentGUIProviderTargetRef
 } from "./types.ts";
-
-const agentGUIProviderTargetStaticLabels: Record<AgentGUIProvider, string> = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-  cursor: "Cursor",
-  hermes: "Hermes",
-  nexight: "Tutti Agent",
-  openclaw: "OpenClaw",
-  opencode: "OpenCode",
-  "tutti-agent": "Tutti Agent"
-};
+import { resolveAgentGUIProviderCatalogIdentity } from "./providerIdentityCatalog.ts";
 
 export const agentGUIDefaultTargetProviders = [
   "codex",
@@ -34,6 +24,7 @@ const agentGUIDisabledPlaceholderProviders = [
 export function createLocalAgentGUIProviderTarget(
   provider: AgentGUIProvider
 ): AgentGUIProviderTarget {
+  const identity = resolveAgentGUIProviderCatalogIdentity(provider);
   const targetId = localAgentGUIProviderTargetId(provider);
   const agentTargetId = localAgentGUIAgentTargetId(provider);
   return {
@@ -44,7 +35,7 @@ export function createLocalAgentGUIProviderTarget(
       kind: "local",
       provider
     },
-    label: agentGUIProviderTargetStaticLabels[provider] ?? provider
+    label: identity?.targetDisplayName ?? identity?.displayName ?? provider
   };
 }
 
@@ -124,32 +115,16 @@ function createStaticAgentGUIProviderTargets(
 export function localAgentGUIProviderTargetId(
   provider: AgentGUIProvider
 ): string {
-  return `local:${provider}`;
+  return (
+    resolveAgentGUIProviderCatalogIdentity(provider)?.target.id ??
+    `local:${provider}`
+  );
 }
 
 export function localAgentGUIAgentTargetId(
   provider: AgentGUIProvider
 ): string | null {
-  switch (provider) {
-    case "codex":
-      return "local:codex";
-    case "claude-code":
-      return "local:claude-code";
-    case "tutti-agent":
-      return "local:tutti-agent";
-    case "cursor":
-      return "local:cursor";
-    case "hermes":
-      return "local:hermes";
-    case "nexight":
-      return "local:nexight";
-    case "openclaw":
-      return "local:openclaw";
-    case "opencode":
-      return "local:opencode";
-    default:
-      return null;
-  }
+  return resolveAgentGUIProviderCatalogIdentity(provider)?.target.id ?? null;
 }
 
 export function normalizeAgentGUIProviderTargets(

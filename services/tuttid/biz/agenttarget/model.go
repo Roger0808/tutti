@@ -242,9 +242,11 @@ func normalizeSource(value string) string {
 }
 
 func normalizeFirstIterationProvider(value string) string {
-	switch agentproviderbiz.Normalize(value) {
-	case agentproviderbiz.Codex:
-		return agentproviderbiz.Codex
+	normalized := agentproviderbiz.Normalize(value)
+	if _, ok := providerregistry.Find(normalized); ok {
+		return normalized
+	}
+	switch normalized {
 	case agentproviderbiz.ClaudeCode:
 		return agentproviderbiz.ClaudeCode
 	case agentproviderbiz.TuttiAgent:

@@ -38,6 +38,7 @@ describe("agentSkillOptions", () => {
           {
             name: "caveman",
             trigger: "$caveman",
+            invocation: "promptItem",
             sourceKind: "personal"
           }
         ]
@@ -52,6 +53,7 @@ describe("agentSkillOptions", () => {
           {
             name: "frontend-design",
             trigger: "/product-design:frontend-design",
+            invocation: "textTrigger",
             sourceKind: "plugin",
             pluginName: "product-design"
           }

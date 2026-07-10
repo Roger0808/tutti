@@ -27,7 +27,7 @@ describe("resolvePermissionModeControlsDisabled", () => {
   it("stays enabled mid-turn for claude-code, since the SDK applies the change live", () => {
     expect(
       resolvePermissionModeControlsDisabled({
-        provider: "claude-code",
+        changeDuringTurnSupported: true,
         isSendingTurn: true,
         isSubmittingPrompt: false,
         showStopButton: true
@@ -38,7 +38,7 @@ describe("resolvePermissionModeControlsDisabled", () => {
   it("stays enabled mid-turn for codex, which re-derives the policy on the next turn/start regardless", () => {
     expect(
       resolvePermissionModeControlsDisabled({
-        provider: "codex",
+        changeDuringTurnSupported: true,
         isSendingTurn: true,
         isSubmittingPrompt: false,
         showStopButton: true
@@ -49,7 +49,7 @@ describe("resolvePermissionModeControlsDisabled", () => {
   it("still blocks claude-code/codex during the brief prompt-submission race", () => {
     expect(
       resolvePermissionModeControlsDisabled({
-        provider: "claude-code",
+        changeDuringTurnSupported: true,
         isSendingTurn: false,
         isSubmittingPrompt: true,
         showStopButton: false
@@ -60,7 +60,7 @@ describe("resolvePermissionModeControlsDisabled", () => {
   it("keeps the broader turn-in-flight gate for other ACP-backed providers", () => {
     expect(
       resolvePermissionModeControlsDisabled({
-        provider: "nexight",
+        changeDuringTurnSupported: false,
         isSendingTurn: false,
         isSubmittingPrompt: false,
         showStopButton: true
@@ -71,7 +71,7 @@ describe("resolvePermissionModeControlsDisabled", () => {
   it("leaves ACP-backed providers enabled once no turn is in flight", () => {
     expect(
       resolvePermissionModeControlsDisabled({
-        provider: "openclaw",
+        changeDuringTurnSupported: false,
         isSendingTurn: false,
         isSubmittingPrompt: false,
         showStopButton: false

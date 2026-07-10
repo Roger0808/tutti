@@ -616,7 +616,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrPlatformPkgIncomplete))
 		actions = append(actions, daemonAction(ActionInstall))
-	} else if isCodexStatusSpec(spec) && !codexVersionMeetsMinimum(cliVersion) {
+	} else if isCodexStatusSpec(spec) && !cliVersionMeetsMinimum(cliVersion, spec.MinVersion) {
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrVersionTooOld))
 		actions = append(actions, daemonAction(ActionInstall))
@@ -686,7 +686,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		)
 	}
 	if isCodexStatusSpec(spec) {
-		status.CLI.MinVersion = MinSupportedCodexVersion
+		status.CLI.MinVersion = spec.MinVersion
 		status.Checks = codexProviderChecks(status, codexPlatformOK, s.codexNodeRuntimeCheck(spec))
 		status.LastError = codexProviderLastError(status)
 		slog.Info(
@@ -716,8 +716,8 @@ func (s Service) probeReadyAfterForSpec(spec ProviderSpec) time.Duration {
 }
 
 func agentNPMRegistryProbePackage(spec ProviderSpec) string {
-	if status, ok := migratedProviderStatus(spec.Provider); ok && strings.TrimSpace(status.NPMRegistryPackage) != "" {
-		return strings.TrimSpace(status.NPMRegistryPackage)
+	if strings.TrimSpace(spec.NPMRegistryPackage) != "" {
+		return strings.TrimSpace(spec.NPMRegistryPackage)
 	}
 	if spec.AdapterInstall.RegistryNPM != nil {
 		packageName, _ := splitNPMPackageSpec(spec.AdapterInstall.RegistryNPM.Package)

@@ -1408,7 +1408,7 @@ func TestServiceRunCodexCLILatestInstallerPrefersManagedNPM(t *testing.T) {
 	}
 	result, err := service.runCodexCLILatestInstaller(context.Background(), InstallerSpec{
 		Kind:     InstallerKindCodexCLILatest,
-		CodexCLI: &CodexCLILatestInstallerSpec{},
+		CodexCLI: codexCLIInstallerSpec().CodexCLI,
 	}, "")
 	if err != nil {
 		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)

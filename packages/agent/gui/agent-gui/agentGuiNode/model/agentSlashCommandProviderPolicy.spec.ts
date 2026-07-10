@@ -6,12 +6,25 @@ import {
   resolveTuttiBrowserUseSubmitEffect
 } from "./agentSlashCommandProviderPolicy";
 
+const CODEX_POLICY = {
+  fallbackCommands: ["compact", "status", "fast", "goal", "review"],
+  commandEffects: [
+    { command: "init", effect: "submitImmediate" },
+    { command: "compact", effect: "submitImmediate" },
+    { command: "review", effect: "showReviewPicker" },
+    { command: "plan", effect: "togglePlanMode" },
+    { command: "status", effect: "showStatus" },
+    { command: "fast", effect: "toggleSpeed" }
+  ]
+} as const;
+
 describe("agentSlashCommandProviderPolicy", () => {
   const reviewPickerProviders = ["codex", "claude-code"] as const;
 
   it("adds browser-use as a composer capability when browser use is supported", () => {
     const commands = resolveSlashCommandsForProvider({
       provider: "codex",
+      policy: CODEX_POLICY,
       commands: [],
       browserSupported: true
     });
@@ -31,6 +44,7 @@ describe("agentSlashCommandProviderPolicy", () => {
   it("fills a canonical browser token from Chinese and English slash capability names", () => {
     const commands = resolveSlashCommandsForProvider({
       provider: "codex",
+      policy: CODEX_POLICY,
       commands: [],
       browserSupported: true
     });
@@ -38,6 +52,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "codex",
+        policy: CODEX_POLICY,
         command: commands.find((command) => command.name === "browser")!,
         currentDraft: "/浏览"
       })
@@ -45,6 +60,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSubmitEffect({
         provider: "codex",
+        policy: CODEX_POLICY,
         commands,
         draft: "/浏览器"
       })
@@ -86,6 +102,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandsForProvider({
         provider: "codex",
+        policy: CODEX_POLICY,
         commands: [{ name: "web" }, { name: "compact", description: "ACP" }]
       })
     ).toEqual([
@@ -135,6 +152,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandsForProvider({
         provider: "codex",
+        policy: CODEX_POLICY,
         commands: [{ name: "compact", description: "from provider" }],
         hasCompactableContext: false
       })
@@ -165,6 +183,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "codex",
+        policy: CODEX_POLICY,
         command: { name: "init" },
         currentDraft: "/"
       })
@@ -172,6 +191,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "codex",
+        policy: CODEX_POLICY,
         command: { name: " compact " },
         currentDraft: "/"
       })
@@ -182,6 +202,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "codex",
+        policy: CODEX_POLICY,
         command: { name: "web" },
         currentDraft: "/"
       })
@@ -189,6 +210,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "codex",
+        policy: CODEX_POLICY,
         command: { name: "goal" },
         currentDraft: "/"
       })
@@ -199,6 +221,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "codex",
+        policy: CODEX_POLICY,
         command: { name: "status" },
         currentDraft: "/sta"
       })
@@ -206,6 +229,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "codex",
+        policy: CODEX_POLICY,
         command: { name: "plan" },
         currentDraft: "/pla"
       })
@@ -252,6 +276,7 @@ describe("agentSlashCommandProviderPolicy", () => {
   it("parses manual Codex status and toggles plan mode on submit", () => {
     const commands = resolveSlashCommandsForProvider({
       provider: "codex",
+      policy: CODEX_POLICY,
       commands: [],
       planSupported: true
     });
@@ -259,6 +284,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSubmitEffect({
         provider: "codex",
+        policy: CODEX_POLICY,
         commands,
         draft: "/status"
       })
@@ -266,6 +292,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSubmitEffect({
         provider: "codex",
+        policy: CODEX_POLICY,
         commands,
         draft: "/plan"
       })
@@ -306,6 +333,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandsForProvider({
         provider: "codex",
+        policy: CODEX_POLICY,
         commands: [{ name: "plan" }],
         planSupported: false
       }).some((command) => command.name === "plan")
@@ -313,6 +341,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandsForProvider({
         provider: "codex",
+        policy: CODEX_POLICY,
         commands: [],
         planSupported: true
       }).filter((command) => command.name === "plan")
@@ -358,8 +387,10 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSubmitEffect({
         provider: "codex",
+        policy: CODEX_POLICY,
         commands: resolveSlashCommandsForProvider({
           provider: "codex",
+          policy: CODEX_POLICY,
           commands: []
         }),
         draft: "/unknown"
@@ -373,6 +404,8 @@ describe("agentSlashCommandProviderPolicy", () => {
       expect(
         resolveSlashCommandSelectionEffect({
           provider,
+
+          policy: provider === "codex" ? CODEX_POLICY : undefined,
           command: { name: "review", description: "Review code changes" },
           currentDraft: "/rev"
         })
@@ -385,11 +418,15 @@ describe("agentSlashCommandProviderPolicy", () => {
     (provider) => {
       const commands = resolveSlashCommandsForProvider({
         provider,
+
+        policy: provider === "codex" ? CODEX_POLICY : undefined,
         commands: [{ name: "review", description: "Review code changes" }]
       });
       expect(
         resolveSlashCommandSubmitEffect({
           provider,
+
+          policy: provider === "codex" ? CODEX_POLICY : undefined,
           commands,
           draft: "/review"
         })
@@ -402,6 +439,8 @@ describe("agentSlashCommandProviderPolicy", () => {
     (provider) => {
       const commands = resolveSlashCommandsForProvider({
         provider,
+
+        policy: provider === "codex" ? CODEX_POLICY : undefined,
         commands: [],
         hasCompactableContext: false
       });
@@ -409,6 +448,8 @@ describe("agentSlashCommandProviderPolicy", () => {
       expect(
         resolveSlashCommandSubmitEffect({
           provider,
+
+          policy: provider === "codex" ? CODEX_POLICY : undefined,
           commands,
           draft: "/review"
         })
@@ -421,11 +462,15 @@ describe("agentSlashCommandProviderPolicy", () => {
     (provider) => {
       const commands = resolveSlashCommandsForProvider({
         provider,
+
+        policy: provider === "codex" ? CODEX_POLICY : undefined,
         commands: [{ name: "review", description: "Review code changes" }]
       });
       expect(
         resolveSlashCommandSubmitEffect({
           provider,
+
+          policy: provider === "codex" ? CODEX_POLICY : undefined,
           commands,
           draft: "/review check the auth flow"
         })

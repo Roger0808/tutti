@@ -3,6 +3,7 @@ package providerregistry
 const (
 	CodexProviderID = "codex"
 	CodexTargetID   = "local:codex"
+	CodexMinVersion = "0.126.0"
 )
 
 func codexDescriptor() ProviderDescriptor {
@@ -11,14 +12,24 @@ func codexDescriptor() ProviderDescriptor {
 			ID:          CodexProviderID,
 			DisplayName: "Codex",
 			IconKey:     "codex",
-			LocaleKey:   "codex",
+			LocaleKey:   "agentGUI.labels.conversationFilterCodex",
 		},
 		Runtime: RuntimeDescriptor{
 			Kind:    RuntimeKindCodexAppServer,
+			Name:    "codex-app-server",
 			Command: []string{"codex", "app-server"},
+			Endpoint: RuntimeEndpointDescriptor{
+				BaseURLEnvVars: []string{
+					"OPENAI_BASE_URL",
+					"OPENAI_API_BASE_URL",
+					"OPENAI_API_BASE",
+				},
+				ConfigKind: EndpointConfigKindCodexCLI,
+			},
 		},
 		Status: StatusDescriptor{
 			Kind:              StatusKindCodexCLI,
+			MinVersion:        CodexMinVersion,
 			BinaryNames:       []string{"codex"},
 			AuthStatusCommand: []string{"login", "-c", `service_tier="fast"`, "status"},
 			AuthMarkerPaths:   []string{"~/.codex/auth.json"},
@@ -35,14 +46,22 @@ func codexDescriptor() ProviderDescriptor {
 			CredentialEnvVars:  []string{"OPENAI_API_KEY"},
 			NPMRegistryPackage: "@openai/codex",
 			Install: InstallerDescriptor{
-				Kind:           InstallerKindCodexCLILatest,
-				DisplayCommand: "npm install -g @openai/codex --include=optional",
+				Kind:            InstallerKindCodexCLILatest,
+				DisplayCommand:  "npm install -g @openai/codex --include=optional",
+				PackageName:     "@openai/codex",
+				BinaryName:      "codex",
+				IncludeOptional: true,
 			},
 			LoginArgs: []string{"login", "-c", `service_tier="fast"`},
+			AuthWatch: AuthWatchDescriptor{
+				RootEnvVar:  "CODEX_HOME",
+				DefaultRoot: "~/.codex",
+				Paths:       []string{"auth.json", "config.toml"},
+			},
 		},
 		ComposerProfile: ComposerProfileDescriptor{
 			ModelSelection:         true,
-			ModelCatalog:           "codex-cli",
+			ModelCatalog:           ModelCatalogKindCodexCLI,
 			ReasoningEffort:        true,
 			ReasoningEffortValues:  []string{"low", "medium", "high", "xhigh"},
 			DefaultReasoningEffort: "high",
@@ -55,6 +74,9 @@ func codexDescriptor() ProviderDescriptor {
 				"rateLimits",
 				"planMode",
 				"interrupt",
+				"planImplementation",
+				"permissionModeChangeDuringTurn",
+				"permissionModeChangeDeferred",
 			},
 			PermissionConfigurable:  true,
 			DefaultPermissionModeID: "auto",
@@ -70,16 +92,33 @@ func codexDescriptor() ProviderDescriptor {
 				Permission: "mode",
 			},
 			Skills: SkillDescriptor{
-				Kind:       "codex",
-				Invocation: "promptItem",
+				Kind:       SkillKindCodex,
+				Invocation: SkillInvocationPromptItem,
+			},
+			CapabilityCatalog: CapabilityCatalogDescriptor{
+				Kind: CapabilityCatalogKindCodexAppServer,
+			},
+			SlashCommandPolicy: SlashCommandPolicyDescriptor{
+				FallbackCommands: []string{"compact", "status", "fast", "goal", "review"},
+				CommandEffects: []SlashCommandEffectDescriptor{
+					{Command: "init", Effect: SlashCommandEffectSubmitImmediate},
+					{Command: "compact", Effect: SlashCommandEffectSubmitImmediate},
+					{Command: "review", Effect: SlashCommandEffectShowReviewPicker},
+					{Command: "plan", Effect: SlashCommandEffectTogglePlanMode},
+					{Command: "status", Effect: SlashCommandEffectShowStatus},
+					{Command: "fast", Effect: SlashCommandEffectToggleSpeed},
+				},
 			},
 		},
 		Target: TargetDescriptor{
 			ID:            CodexTargetID,
-			LaunchRefType: "local_cli",
+			LaunchRefType: TargetLaunchRefTypeLocalCLI,
 			Enabled:       true,
 			SortOrder:     10,
 		},
-		Events: EventsDescriptor{Enabled: true},
+		Events: EventsDescriptor{
+			Enabled:                 true,
+			TurnLifecycleProjection: TurnLifecycleProjectionExplicit,
+		},
 	}
 }

@@ -1390,16 +1390,22 @@ structured catalog vocabulary, default target seeding, and event provider
 normalization must consume that descriptor. Do not restore a migrated provider
 to the legacy maps or provider switches in those layers.
 
-Codex is the first migrated provider. Its native app-server adapter remains
-provider-specific, while its adapter selection, install/login probe values,
-permission and config-option vocabulary, model/skill catalog selection,
-`local:codex` target presentation, and event aliases are descriptor-driven.
+Codex is the first fully migrated provider. Its native app-server adapter
+remains provider-specific, while adapter selection and identity, endpoint
+resolution, install/login probe values, minimum version, auth/config watcher,
+permission and config-option vocabulary, model/skill/capability/slash catalogs,
+turn-lifecycle projection policy, `local:codex` target presentation, and event
+aliases are descriptor-driven. GUI plan/permission/skill/slash behavior reads
+daemon-issued capabilities and catalogs; it must not branch on the Codex id.
 Unmigrated providers temporarily retain their legacy registrations; migrate
 each one atomically by adding the descriptor conversion kinds it needs and
 deleting its old entries in the same change. Production target presentation
-uses the descriptor-owned target name and icon key. Package-level static AgentGUI
-targets remain compatibility fallback until every provider is migrated and the
-generated identity catalog replaces them.
+uses the descriptor-owned target name and icon key. A generated identity
+catalog carries migrated identity and target fields into AgentGUI and has a
+drift check in the full validation lane. Package-level static identities remain
+an explicitly legacy fallback for unmigrated providers only. Unknown migrated
+icon keys fail validation or render neutral; they must not silently fall back
+to another provider's icon.
 
 Every migrated descriptor must remain present in the generated OpenAPI provider
 and agent-target enums. The daemon API test enforces this during the staged

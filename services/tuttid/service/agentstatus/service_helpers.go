@@ -393,7 +393,7 @@ func codexProviderChecks(status ProviderStatus, platformBinaryOK bool, nodeRunti
 		},
 		{
 			Name:   "version_floor",
-			Passed: codexVersionMeetsMinimum(status.CLI.Version),
+			Passed: cliVersionMeetsMinimum(status.CLI.Version, status.CLI.MinVersion),
 			Detail: firstNonBlank(status.CLI.Version, "version unknown"),
 		},
 		nodeRuntime,
@@ -434,7 +434,7 @@ func codexProviderLastError(status ProviderStatus) *ProviderLastError {
 	case "codex_platform_pkg_incomplete":
 		return &ProviderLastError{Code: string(CodexErrPlatformPkgIncomplete), Message: "Codex platform package is incomplete"}
 	case "codex_version_too_old":
-		return &ProviderLastError{Code: string(CodexErrVersionTooOld), Message: "Codex CLI version is below " + MinSupportedCodexVersion}
+		return &ProviderLastError{Code: string(CodexErrVersionTooOld), Message: "Codex CLI version is below " + status.CLI.MinVersion}
 	case "auth_required", "auth_unknown":
 		return &ProviderLastError{Code: string(CodexErrAuthRequired), Message: "authentication required"}
 	default:

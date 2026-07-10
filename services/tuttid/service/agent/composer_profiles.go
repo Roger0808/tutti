@@ -32,7 +32,13 @@ type composerProfile struct {
 	// AgentModelCatalog (CLI/schema-backed lists).
 	UsesModelCatalog bool
 	// ModelCatalog identifies the descriptor-backed catalog implementation.
-	ModelCatalog string
+	ModelCatalog providerregistry.ModelCatalogKind
+	// CapabilityCatalogKind selects the dynamic capability discovery protocol.
+	// CapabilityCatalogCommand is cloned from the provider runtime command so
+	// the executable remains a single descriptor-owned fact.
+	CapabilityCatalogKind    providerregistry.CapabilityCatalogKind
+	CapabilityCatalogCommand []string
+	SlashCommandPolicy       providerregistry.SlashCommandPolicyDescriptor
 	// ReasoningEffort: the composer exposes a reasoning-effort selector.
 	ReasoningEffort bool
 	// DefaultReasoningEffort seeds the selector when nothing is persisted.
@@ -159,14 +165,15 @@ func defaultComposerProfiles() map[string]composerProfile {
 		},
 	}
 	for _, descriptor := range providerregistry.Migrated() {
-		profiles[descriptor.Identity.ID] = composerProfileFromDescriptor(descriptor.ComposerProfile)
+		profiles[descriptor.Identity.ID] = composerProfileFromDescriptor(descriptor)
 	}
 	return profiles
 }
 
 var composerProfiles = defaultComposerProfiles()
 
-func composerProfileFromDescriptor(descriptor providerregistry.ComposerProfileDescriptor) composerProfile {
+func composerProfileFromDescriptor(provider providerregistry.ProviderDescriptor) composerProfile {
+	descriptor := provider.ComposerProfile
 	permissionModes := make([]PermissionModeOption, 0, len(descriptor.PermissionModes))
 	for _, mode := range descriptor.PermissionModes {
 		permissionModes = append(permissionModes, PermissionModeOption{
@@ -176,8 +183,14 @@ func composerProfileFromDescriptor(descriptor providerregistry.ComposerProfileDe
 	}
 	return composerProfile{
 		ModelSelection:           descriptor.ModelSelection,
-		UsesModelCatalog:         strings.TrimSpace(descriptor.ModelCatalog) != "",
-		ModelCatalog:             strings.TrimSpace(descriptor.ModelCatalog),
+		UsesModelCatalog:         strings.TrimSpace(string(descriptor.ModelCatalog)) != "",
+		ModelCatalog:             descriptor.ModelCatalog,
+		CapabilityCatalogKind:    descriptor.CapabilityCatalog.Kind,
+		CapabilityCatalogCommand: append([]string(nil), provider.Runtime.Command...),
+		SlashCommandPolicy: providerregistry.SlashCommandPolicyDescriptor{
+			FallbackCommands: append([]string(nil), descriptor.SlashCommandPolicy.FallbackCommands...),
+			CommandEffects:   append([]providerregistry.SlashCommandEffectDescriptor(nil), descriptor.SlashCommandPolicy.CommandEffects...),
+		},
 		ReasoningEffort:          descriptor.ReasoningEffort,
 		ReasoningEffortValues:    append([]string(nil), descriptor.ReasoningEffortValues...),
 		DefaultReasoningEffort:   strings.TrimSpace(descriptor.DefaultReasoningEffort),
@@ -190,8 +203,8 @@ func composerProfileFromDescriptor(descriptor providerregistry.ComposerProfileDe
 		ReasoningConfigOptionID:  strings.TrimSpace(descriptor.ConfigOptionIDs.Reasoning),
 		SpeedConfigOptionID:      strings.TrimSpace(descriptor.ConfigOptionIDs.Speed),
 		PermissionConfigOptionID: strings.TrimSpace(descriptor.ConfigOptionIDs.Permission),
-		SkillKind:                strings.TrimSpace(descriptor.Skills.Kind),
-		SkillInvocation:          strings.TrimSpace(descriptor.Skills.Invocation),
+		SkillKind:                strings.TrimSpace(string(descriptor.Skills.Kind)),
+		SkillInvocation:          strings.TrimSpace(string(descriptor.Skills.Invocation)),
 	}
 }
 

@@ -9,6 +9,20 @@ const (
 	RuntimeKindCodexAppServer RuntimeKind = "codex_app_server"
 )
 
+// EndpointConfigKind identifies an optional provider-owned config source for
+// endpoint discovery. Runtime consumers switch on this protocol/config shape,
+// never on provider identity.
+type EndpointConfigKind string
+
+const (
+	EndpointConfigKindCodexCLI EndpointConfigKind = "codex_cli"
+)
+
+type RuntimeEndpointDescriptor struct {
+	BaseURLEnvVars []string
+	ConfigKind     EndpointConfigKind
+}
+
 // InstallerKind is a transport-neutral installer identifier. tuttid converts
 // it to the concrete installer service contract at its composition boundary.
 type InstallerKind string
@@ -32,17 +46,23 @@ type IdentityDescriptor struct {
 }
 
 type RuntimeDescriptor struct {
-	Kind    RuntimeKind
-	Command []string
+	Kind     RuntimeKind
+	Name     string
+	Command  []string
+	Endpoint RuntimeEndpointDescriptor
 }
 
 type InstallerDescriptor struct {
-	Kind           InstallerKind
-	DisplayCommand string
+	Kind            InstallerKind
+	DisplayCommand  string
+	PackageName     string
+	BinaryName      string
+	IncludeOptional bool
 }
 
 type StatusDescriptor struct {
 	Kind                StatusKind
+	MinVersion          string
 	BinaryNames         []string
 	AdapterBinaryNames  []string
 	AuthStatusCommand   []string
@@ -53,6 +73,16 @@ type StatusDescriptor struct {
 	NPMRegistryPackage  string
 	Install             InstallerDescriptor
 	LoginArgs           []string
+	AuthWatch           AuthWatchDescriptor
+}
+
+// AuthWatchDescriptor identifies files whose changes can invalidate
+// provider-owned catalog data. RootEnvVar supports provider-specific home
+// overrides without teaching consumers the provider's identity.
+type AuthWatchDescriptor struct {
+	RootEnvVar  string
+	DefaultRoot string
+	Paths       []string
 }
 
 type PermissionModeDescriptor struct {
@@ -67,14 +97,63 @@ type ComposerConfigOptionIDs struct {
 	Permission string
 }
 
+type SkillKind string
+
+const SkillKindCodex SkillKind = "codex"
+
+type SkillInvocation string
+
+const (
+	SkillInvocationPromptItem  SkillInvocation = "promptItem"
+	SkillInvocationTextTrigger SkillInvocation = "textTrigger"
+)
+
 type SkillDescriptor struct {
-	Kind       string
-	Invocation string
+	Kind       SkillKind
+	Invocation SkillInvocation
+}
+
+type ModelCatalogKind string
+
+const (
+	ModelCatalogKindCodexCLI ModelCatalogKind = "codex-cli"
+)
+
+// CapabilityCatalogKind identifies the protocol used to discover the
+// provider's dynamic composer capabilities.
+type CapabilityCatalogKind string
+
+const (
+	CapabilityCatalogKindCodexAppServer CapabilityCatalogKind = "codex_app_server"
+)
+
+type CapabilityCatalogDescriptor struct {
+	Kind CapabilityCatalogKind
+}
+
+type SlashCommandEffect string
+
+const (
+	SlashCommandEffectSubmitImmediate  SlashCommandEffect = "submitImmediate"
+	SlashCommandEffectShowReviewPicker SlashCommandEffect = "showReviewPicker"
+	SlashCommandEffectTogglePlanMode   SlashCommandEffect = "togglePlanMode"
+	SlashCommandEffectShowStatus       SlashCommandEffect = "showStatus"
+	SlashCommandEffectToggleSpeed      SlashCommandEffect = "toggleSpeed"
+)
+
+type SlashCommandEffectDescriptor struct {
+	Command string
+	Effect  SlashCommandEffect
+}
+
+type SlashCommandPolicyDescriptor struct {
+	FallbackCommands []string
+	CommandEffects   []SlashCommandEffectDescriptor
 }
 
 type ComposerProfileDescriptor struct {
 	ModelSelection          bool
-	ModelCatalog            string
+	ModelCatalog            ModelCatalogKind
 	ReasoningEffort         bool
 	ReasoningEffortValues   []string
 	DefaultReasoningEffort  string
@@ -85,6 +164,8 @@ type ComposerProfileDescriptor struct {
 	PermissionModes         []PermissionModeDescriptor
 	ConfigOptionIDs         ComposerConfigOptionIDs
 	Skills                  SkillDescriptor
+	CapabilityCatalog       CapabilityCatalogDescriptor
+	SlashCommandPolicy      SlashCommandPolicyDescriptor
 }
 
 type TargetDescriptor struct {
@@ -94,9 +175,19 @@ type TargetDescriptor struct {
 	SortOrder     int
 }
 
+const TargetLaunchRefTypeLocalCLI = "local_cli"
+
+type TurnLifecycleProjectionPolicy string
+
+const (
+	TurnLifecycleProjectionLegacy   TurnLifecycleProjectionPolicy = "legacy"
+	TurnLifecycleProjectionExplicit TurnLifecycleProjectionPolicy = "explicit"
+)
+
 type EventsDescriptor struct {
-	Enabled bool
-	Aliases []string
+	Enabled                 bool
+	Aliases                 []string
+	TurnLifecycleProjection TurnLifecycleProjectionPolicy
 }
 
 // ProviderDescriptor is the single registration contract for a migrated

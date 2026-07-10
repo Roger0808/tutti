@@ -23,6 +23,22 @@ func TestMigratedCodexDescriptorBuildsDefaultAdapter(t *testing.T) {
 	if adapter.Provider() != ProviderCodex {
 		t.Fatalf("adapter.Provider() = %q", adapter.Provider())
 	}
+	appServerAdapter, ok := adapter.(*CodexAppServerAdapter)
+	if !ok {
+		t.Fatalf("adapter type = %T", adapter)
+	}
+	serverInfo := appServerAdapter.appServerInfo(nil)
+	if serverInfo["name"] != descriptor.Runtime.Name || serverInfo["title"] != descriptor.Identity.DisplayName {
+		t.Fatalf("server info = %#v, want descriptor runtime/display identity", serverInfo)
+	}
+}
+
+func TestSharedAppServerAdapterKeepsTuttiAgentIdentity(t *testing.T) {
+	adapter := NewTuttiAgentAppServerAdapterWithHostMetadata(nil, HostMetadata{})
+	serverInfo := adapter.appServerInfo(nil)
+	if serverInfo["name"] != "tutti-agent-app-server" || serverInfo["title"] != "Tutti Agent" {
+		t.Fatalf("server info = %#v, want Tutti Agent identity", serverInfo)
+	}
 }
 
 func TestMigratedCodexDescriptorOwnsPermissionModes(t *testing.T) {
