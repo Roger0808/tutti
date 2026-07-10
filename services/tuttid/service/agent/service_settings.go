@@ -12,11 +12,14 @@ func (s *Service) clampReasoningEffortForModel(
 	selected string,
 ) string {
 	selected = strings.TrimSpace(selected)
-	// Catalog-backed values are open-ended provider capabilities. Apply the
-	// legacy provider normalization only when no authoritative model effort list
-	// is available.
-	if !composerOptionsProviderUsesModelCatalog(provider) {
+	// Only Codex-derived providers currently treat model-advertised reasoning
+	// values as authoritative. OpenCode uses its model catalog for discovery but
+	// keeps the static reasoning vocabulary.
+	if !composerProviderUsesModelReasoningCatalog(provider) {
 		return normalizeReasoningEffortForProvider(provider, selected)
+	}
+	if strings.TrimSpace(model) == "" && s.ModelCatalog != nil {
+		model = composerDefaultModel(ctx, provider, s.ModelCatalog)
 	}
 	catalogOptions, ok := composerModelOptionsFromCatalog(ctx, s.ModelCatalog, provider, model)
 	if !ok || !catalogOptions.ReasoningEffortsAdvertised {
@@ -43,6 +46,22 @@ func (s *Service) clampReasoningEffortPointerForModel(
 	return &clamped
 }
 
+func (s *Service) clampPersistedSessionReasoningEffortForResume(
+	ctx context.Context,
+	session PersistedSession,
+) PersistedSession {
+	if strings.TrimSpace(session.Settings.ReasoningEffort) == "" {
+		return session
+	}
+	session.Settings.ReasoningEffort = s.clampReasoningEffortForModel(
+		ctx,
+		session.Provider,
+		session.Settings.Model,
+		session.Settings.ReasoningEffort,
+	)
+	return session
+}
+
 func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentSessionID string, settings ComposerSettingsPatch) (Session, error) {
 	ensured, err := s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID)
 	if err != nil {
@@ -61,7 +80,11 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 	if settings.ReasoningEffort != nil {
 		selectedReasoningEffort = *settings.ReasoningEffort
 	}
-	if settings.Model != nil || settings.ReasoningEffort != nil {
+	// A live Codex-derived runtime owns the freshest per-model reasoning
+	// catalog. Let its adapter resolve active updates; the daemon-side catalog
+	// remains the authority for pre-session create/resume only.
+	if (settings.Model != nil || settings.ReasoningEffort != nil) &&
+		!composerProviderUsesModelReasoningCatalog(provider) {
 		clampedReasoningEffort := s.clampReasoningEffortForModel(
 			ctx,
 			provider,
@@ -82,9 +105,6 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 		Settings:       settings,
 	}); err != nil {
 		return Session{}, normalizeRuntimeError(err)
-	}
-	if err := s.persistUpdatedRuntimeSettings(ctx, workspaceID, agentSessionID); err != nil {
-		return Session{}, err
 	}
 	session, err := s.Get(ctx, workspaceID, agentSessionID)
 	if err != nil {

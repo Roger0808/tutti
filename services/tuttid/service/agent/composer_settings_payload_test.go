@@ -111,6 +111,17 @@ func TestCreateSessionInputFromPersistedNormalizesLegacyReasoningEffort(t *testi
 	}
 }
 
+func TestCreateSessionInputFromPersistedPreservesOpenCodeModelReasoningEffort(t *testing.T) {
+	input := createSessionInputFromPersisted(PersistedSession{
+		ID:       "session-1",
+		Provider: "opencode",
+		Settings: ComposerSettings{ReasoningEffort: "none"},
+	})
+	if input.ReasoningEffort == nil || *input.ReasoningEffort != "none" {
+		t.Fatalf("ReasoningEffort = %#v, want none", input.ReasoningEffort)
+	}
+}
+
 func TestCreateSessionInputFromPersistedCarriesExternalRolloutSourcePath(t *testing.T) {
 	input := createSessionInputFromPersisted(PersistedSession{
 		ID:       "session-1",

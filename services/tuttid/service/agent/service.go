@@ -120,6 +120,12 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	logAgentSubmitTrace("service.create.model_validated", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
 		"model": value(input.Model),
 	})
+	input.ReasoningEffort = s.clampReasoningEffortPointerForModel(
+		ctx,
+		provider,
+		value(input.Model),
+		input.ReasoningEffort,
+	)
 	nodeStartedAt = time.Now()
 	cwd, err := s.resolveCwd(ctx, input.Cwd)
 	if err != nil {

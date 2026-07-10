@@ -120,7 +120,7 @@ func createSessionInputFromPersisted(session PersistedSession) CreateSessionInpu
 		input.ComputerUse = &value
 	}
 	if reasoningEffort := strings.TrimSpace(settings.ReasoningEffort); reasoningEffort != "" {
-		if !composerOptionsProviderUsesModelCatalog(session.Provider) {
+		if !composerProviderUsesModelReasoningCatalog(session.Provider) {
 			reasoningEffort = normalizeReasoningEffortForProvider(session.Provider, reasoningEffort)
 		}
 		input.ReasoningEffort = &reasoningEffort

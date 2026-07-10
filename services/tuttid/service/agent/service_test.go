@@ -1092,7 +1092,7 @@ func TestServiceImportPreservesLocalCodexModelAndReasoningEffort(t *testing.T) {
 		map[string]any{
 			"timestamp": now,
 			"type":      "turn_context",
-			"payload":   map[string]any{"turn_id": "turn-1", "cwd": project, "model": "gpt-5.4", "effort": "xhigh"},
+			"payload":   map[string]any{"turn_id": "turn-1", "cwd": project, "model": "gpt-5.4", "effort": "minimal"},
 		},
 		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
 			"type": "message", "id": "codex-model-1", "role": "user",
@@ -1122,8 +1122,8 @@ func TestServiceImportPreservesLocalCodexModelAndReasoningEffort(t *testing.T) {
 	if session.Settings.Model != "gpt-5.4" {
 		t.Fatalf("settings.Model = %q, want imported turn_context model", session.Settings.Model)
 	}
-	if session.Settings.ReasoningEffort != "xhigh" {
-		t.Fatalf("settings.ReasoningEffort = %q, want imported turn_context effort", session.Settings.ReasoningEffort)
+	if session.Settings.ReasoningEffort != "minimal" {
+		t.Fatalf("settings.ReasoningEffort = %q, want raw catalog-backed turn_context effort", session.Settings.ReasoningEffort)
 	}
 }
 
@@ -3752,7 +3752,7 @@ func TestServiceUpdateSettingsPreservesAdvertisedReasoningEffort(t *testing.T) {
 	for _, effort := range []string{"minimal", "none"} {
 		t.Run(effort, func(t *testing.T) {
 			runtime := newFakeRuntime()
-			runtime.sessions["ws-1:session-1"] = RuntimeSession{
+			runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
 				ID:          "session-1",
 				Provider:    "codex",
 				WorkspaceID: "ws-1",
@@ -3791,9 +3791,9 @@ func TestServiceUpdateSettingsPreservesAdvertisedReasoningEffort(t *testing.T) {
 	}
 }
 
-func TestServiceUpdateSettingsClampsReasoningWhenModelChanges(t *testing.T) {
+func TestServiceUpdateSettingsDefersModelChangeReasoningClampToLiveRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
 		ID:          "session-1",
 		Provider:    "codex",
 		WorkspaceID: "ws-1",
@@ -3838,8 +3838,11 @@ func TestServiceUpdateSettingsClampsReasoningWhenModelChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateSettings returned error: %v", err)
 	}
-	if session.Settings == nil || session.Settings.Model != model || session.Settings.ReasoningEffort != "high" {
-		t.Fatalf("session settings = %#v, want Luna/high", session.Settings)
+	// The daemon-side catalog intentionally lacks Luna/ultra, while a live
+	// target may advertise it. The service must not downgrade before the live
+	// adapter gets a chance to resolve its fresher model/list snapshot.
+	if session.Settings == nil || session.Settings.Model != model || session.Settings.ReasoningEffort != "ultra" {
+		t.Fatalf("session settings = %#v, want unclamped Luna/ultra runtime input", session.Settings)
 	}
 }
 
@@ -5192,6 +5195,59 @@ func TestServiceResumesPersistedSessionWithPreparedRuntime(t *testing.T) {
 		resume.Settings.PermissionModeID != "auto" ||
 		resume.Settings.ReasoningEffort != "high" {
 		t.Fatalf("resume settings = %#v, want persisted settings", resume.Settings)
+	}
+}
+
+func TestServiceResumeClampsPersistedReasoningToSelectedModelCatalog(t *testing.T) {
+	runtime := newFakeRuntime()
+	var prepareInput runtimeprep.PrepareInput
+	service := NewService(runtime)
+	service.RuntimePreparer = fakeRuntimePreparer{
+		input:  &prepareInput,
+		result: runtimeprep.PreparedRuntime{Cwd: "/prepared/workdir"},
+	}
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "codex",
+			Source:   "codex-cli",
+			Models: []AgentModelOption{{
+				ID:                         "gpt-5.6-luna",
+				DefaultReasoningEffort:     "high",
+				ReasoningEffortsAdvertised: true,
+				SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+					{Value: "low"}, {Value: "medium"}, {Value: "high"},
+				},
+			}},
+		},
+	}
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "codex",
+				Cwd:         "/persisted/workdir",
+				Settings: ComposerSettings{
+					Model:           "gpt-5.6-luna",
+					ReasoningEffort: "ultra",
+				},
+			},
+		},
+	}
+
+	if _, err := service.SendInput(
+		context.Background(),
+		"ws-1",
+		"session-1",
+		SendInput{Content: TextPromptContent("hello")},
+	); err != nil {
+		t.Fatalf("SendInput returned error: %v", err)
+	}
+	if prepareInput.ReasoningEffort != "high" {
+		t.Fatalf("prepare reasoning effort = %q, want selected model default high", prepareInput.ReasoningEffort)
+	}
+	if len(runtime.resumeCalls) != 1 || runtime.resumeCalls[0].Settings.ReasoningEffort != "high" {
+		t.Fatalf("resume calls = %#v, want selected model default high", runtime.resumeCalls)
 	}
 }
 
