@@ -187,12 +187,16 @@ type codexAppServerSessionLock struct {
 }
 
 type codexAppServerSession struct {
-	client                 *codexAppServerClient
-	threadID               string
-	serverInfo             map[string]any
-	account                map[string]any
-	rateLimits             map[string]any
-	goal                   map[string]any
+	client     *codexAppServerClient
+	threadID   string
+	serverInfo map[string]any
+	account    map[string]any
+	rateLimits map[string]any
+	goal       map[string]any
+	// goalRevision prevents a slow startup thread/goal/get response from
+	// overwriting a newer user control or provider notification. Guarded by
+	// the adapter mutex and incremented on every local goal mutation.
+	goalRevision           uint64
 	startupModelsReady     bool
 	startupRateLimitsReady bool
 	// lifecycleSeq numbers the adapter's TurnLifecycle snapshots (ADR 0008):
@@ -1230,10 +1234,11 @@ func (a *CodexAppServerAdapter) refreshStartupMetadataAsync(
 		// The goal lives in codex's thread state; restore it after start or
 		// resume so the banner survives daemon restarts and adopted
 		// continuation turns find the goal status they gate on.
-		if appSession := a.getSession(agentSessionID); appSession != nil && appSession.client != nil {
+		if appSession, goalRevision := a.goalRefreshGuard(agentSessionID); appSession != nil && appSession.client != nil {
 			if goal := a.fetchGoal(ctx, appSession.client, appSession.threadID, trace); len(goal) > 0 {
-				a.applyGoalUpdate(agentSessionID, goal)
-				a.emitStartupMetadataRefreshEvent(session, agentSessionID)
+				if a.applyStartupGoalRefresh(agentSessionID, appSession, goalRevision, goal) {
+					a.emitStartupMetadataRefreshEvent(session, agentSessionID)
+				}
 			}
 		}
 	}()
@@ -1719,7 +1724,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 	// arrives with the turn/completed notification.
 	initialTurn := appServerTurnFromResult(result)
 	if providerTurnID := asString(initialTurn["id"]); providerTurnID != "" {
-		if a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID) {
+		if a.setSessionActiveTurnID(session.AgentSessionID, appTurn, providerTurnID) {
 			a.interruptActiveTurnAsync(appSession, session, appTurn, providerTurnID, "queued cancel")
 		}
 	}
@@ -2122,7 +2127,7 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 			// so goal progress never depends on this Exec staying alive.
 			initialTurn := appServerTurnFromResult(result)
 			if providerTurnID := asString(initialTurn["id"]); providerTurnID != "" {
-				if a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID) {
+				if a.setSessionActiveTurnID(session.AgentSessionID, appTurn, providerTurnID) {
 					a.interruptActiveTurnAsync(appSession, session, appTurn, providerTurnID, "queued cancel")
 				}
 			}
@@ -2259,7 +2264,7 @@ func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, provid
 		// A registered turn won the race; leave tracking to it.
 		return
 	}
-	a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID)
+	a.setSessionActiveTurnID(session.AgentSessionID, appTurn, providerTurnID)
 	// The adopted id comes from the turn/started notification itself.
 	a.confirmSessionActiveTurnStarted(session.AgentSessionID, providerTurnID)
 	slog.Info("agent session app-server goal turn adopted",
@@ -3208,14 +3213,21 @@ func (a *CodexAppServerAdapter) requestActiveTurnCancel(agentSessionID string) (
 	return "", true
 }
 
-func (a *CodexAppServerAdapter) setSessionActiveTurnID(agentSessionID string, turnID string) bool {
+func (a *CodexAppServerAdapter) setSessionActiveTurnID(
+	agentSessionID string,
+	expectedTurn *codexAppServerActiveTurn,
+	turnID string,
+) bool {
 	if a == nil {
 		return false
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
-	if appSession != nil {
+	// A fast terminal notification can settle and clear this turn before the
+	// turn/start RPC result reaches its caller. Do not let that stale result
+	// rebind the provider id after the slot is already empty or reused.
+	if appSession != nil && appSession.activeTurn == expectedTurn {
 		appSession.activeTurnID = strings.TrimSpace(turnID)
 		// The binding starts unconfirmed; a matching turn/started notification
 		// confirms it via confirmSessionActiveTurnStarted.

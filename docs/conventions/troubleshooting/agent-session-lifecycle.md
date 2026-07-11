@@ -44,23 +44,39 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   Compare renderer state with `tuttid.log` submit traces. If `api.send.failed`
   reports `agent session already has an active turn` after a settled/available
   state patch, inspect whether the controller still has an in-memory `c.turns`
-  entry while the adapter lifecycle snapshot has already settled.
+  entry while the adapter lifecycle snapshot has already settled. For Codex
+  app-server sessions, also compare `turn/completed` notification timing with
+  the triggering `turn/start` RPC result; a stale provider turn id with no
+  active turn object indicates that the late result rebound an already-settled
+  slot.
 - Root cause:
   The controller's async turn registry is separate from adapter lifecycle
   projection. Async execution must clear `c.turns` when the owning adapter
   publishes a non-live `TurnLifecycleSnapshot`, even if the event type is not a
-  terminal `turn.completed`/`turn.failed` event.
+  terminal `turn.completed`/`turn.failed` event. The settled session and the
+  registry cleanup must also become visible together; storing `ready` first
+  leaves a follow-up rejection window. Separately, app-server notifications can
+  settle a turn before the `turn/start` response is applied, so binding that
+  response without checking turn identity can recreate a stale active id.
 - Fix:
   Treat same-turn non-live lifecycle snapshots as async turn completion, in
-  addition to terminal event types and steered prompt messages.
+  addition to terminal event types and steered prompt messages. Clear the
+  matching controller turn record before publishing/storing the terminal
+  session view. Bind a provider turn id only while the exact active-turn object
+  that issued the request still owns the adapter slot.
 - Validation:
   Add controller coverage where an async adapter emits only a settled lifecycle
   snapshot for the turn and no terminal event, then verify a follow-up `Exec`
-  no longer returns `ErrSessionActiveTurn`. Run
+  no longer returns `ErrSessionActiveTurn`. Also cover a terminal snapshot that
+  waits for an open call and assert `ready` is never observable with an active
+  controller turn. For Codex, deliver `turn/completed` before the `turn/start`
+  result and verify the late result cannot restore the provider turn id. Run
   `go test ./packages/agent/daemon/runtime`.
 - References:
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [controller_test.go](../../../packages/agent/daemon/runtime/controller_test.go)
+  [codex_appserver_adapter.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
+  [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
 
 ### AgentGUI loading disappears before active turn settles
 
@@ -141,6 +157,31 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   repeated focused runs; use event channels rather than polling shared slices.
 - References:
   [codex_appserver_adapter.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
+  [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
+
+### Codex goal reappears after pause, edit, or clear
+
+- Symptom:
+  A goal control succeeds, but the banner shortly returns to an older objective
+  or status; a cleared goal can reappear as paused.
+- Quick checks:
+  Compare the startup background `thread/goal/get` with later goal-control RPCs.
+  If the get began before the control and completed afterwards, inspect whether
+  its older snapshot was applied unconditionally.
+- Root cause:
+  Startup restores the persisted thread goal asynchronously. Its response can
+  race with newer user controls or provider goal notifications, so arrival
+  order is not a safe freshness signal.
+- Fix:
+  Version the session goal state. Capture the session identity and revision
+  before the startup fetch, and apply its result only when both are unchanged;
+  increment the revision on every update and clear.
+- Validation:
+  Capture a startup refresh guard, clear the goal, then attempt to apply the
+  older paused snapshot and verify it is rejected.
+- References:
+  [codex_appserver_adapter.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
+  [codex_appserver_events.go](../../../packages/agent/daemon/runtime/codex_appserver_events.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
 
 ### Agent session stays loading after a completed turn
