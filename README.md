@@ -242,11 +242,7 @@ No. Tutti is useful for coding, design, content, app workflows, and any work whe
 ## Star History
 
 <a href="https://www.star-history.com/?repos=tutti-os%2Ftutti&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=tutti-os/tutti&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=tutti-os/tutti&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=tutti-os/tutti&type=date&legend=top-left" />
- </picture>
+ <img alt="Star History Chart" src="docs/assets/star-history.png" />
 </a>
 
 ## Contributors
