@@ -7,7 +7,6 @@ import {
   isAgentGuiWorkbenchProvider,
   normalizeAgentGuiWorkbenchProvider
 } from "./providerCatalog.ts";
-import { agentGUIProviderTargetRefsEqual } from "../providerTargets.ts";
 import type {
   AgentGuiWorkbenchComposerOverrides,
   AgentGuiWorkbenchComposerOverridesByAgentTargetId,
@@ -17,7 +16,6 @@ import type {
   AgentGuiWorkbenchState,
   AgentGuiWorkbenchWorkspaceState
 } from "./types.ts";
-import type { AgentGUIProviderTargetRef } from "../types.ts";
 
 type AgentGuiWorkbenchStateLookupRequest = Pick<
   WorkbenchHostExternalStateLookupInput,
@@ -38,9 +36,7 @@ export function createDefaultAgentGuiWorkbenchNodeState(
     conversationRailWidthPx: null,
     lastActiveAgentSessionId: null,
     lastActiveConversationTitle: null,
-    provider,
-    providerTargetId: null,
-    providerTargetRef: null
+    provider
   };
 }
 
@@ -72,9 +68,7 @@ export function normalizeAgentGuiWorkbenchState(
 export function projectAgentGuiWorkbenchState(
   state: AgentGuiWorkbenchNodeState
 ): AgentGuiWorkbenchState {
-  const agentTargetId =
-    normalizeOptionalNonEmptyString(state.agentTargetId) ??
-    normalizeOptionalNonEmptyString(state.providerTargetId);
+  const agentTargetId = normalizeOptionalNonEmptyString(state.agentTargetId);
   return {
     ...(agentTargetId ? { agentTargetId } : {}),
     conversationRailCollapsed: state.conversationRailCollapsed === true,
@@ -110,11 +104,15 @@ export function normalizeAgentGuiWorkbenchNodeState(
     state?.provider,
     fallbackProvider
   );
+  const legacyState = state as
+    | (Record<string, unknown> & Partial<AgentGuiWorkbenchNodeState>)
+    | null
+    | undefined;
   return {
     ...createDefaultAgentGuiWorkbenchNodeState(provider),
     agentTargetId:
       normalizeOptionalNonEmptyString(state?.agentTargetId) ??
-      normalizeOptionalNonEmptyString(state?.providerTargetId),
+      normalizeOptionalNonEmptyString(legacyState?.providerTargetId),
     composerOverrides: normalizeAgentGuiWorkbenchComposerOverrides(
       state?.composerOverrides
     ),
@@ -141,12 +139,7 @@ export function normalizeAgentGuiWorkbenchNodeState(
       typeof state?.lastActiveConversationTitle === "string"
         ? state.lastActiveConversationTitle
         : null,
-    provider,
-    providerTargetId: normalizeOptionalNonEmptyString(state?.providerTargetId),
-    providerTargetRef: normalizeAgentGuiProviderTargetRef(
-      state?.providerTargetRef,
-      provider
-    )
+    provider
   };
 }
 
@@ -171,12 +164,7 @@ export function areAgentGuiWorkbenchNodeStatesEqual(
     left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
     left.lastActiveConversationTitle === right.lastActiveConversationTitle &&
     left.provider === right.provider &&
-    (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
-    (left.providerTargetId ?? null) === (right.providerTargetId ?? null) &&
-    agentGUIProviderTargetRefsEqual(
-      left.providerTargetRef,
-      right.providerTargetRef
-    )
+    (left.agentTargetId ?? null) === (right.agentTargetId ?? null)
   );
 }
 
@@ -361,28 +349,6 @@ function createDefaultAgentGuiWorkbenchState(): AgentGuiWorkbenchState {
 
 function normalizeOptionalNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function normalizeAgentGuiProviderTargetRef(
-  value: unknown,
-  expectedProvider?: AgentGuiWorkbenchProvider
-): AgentGUIProviderTargetRef | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  const kind = normalizeOptionalNonEmptyString(value.kind);
-  const provider = value.provider;
-  if (!kind || !isAgentGuiWorkbenchProvider(provider)) {
-    return null;
-  }
-  if (expectedProvider && provider !== expectedProvider) {
-    return null;
-  }
-  return {
-    ...value,
-    kind,
-    provider
-  };
 }
 
 function normalizeAgentGuiWorkbenchComposerOverrides(
