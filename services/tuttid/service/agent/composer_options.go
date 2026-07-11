@@ -778,8 +778,7 @@ func reasoningEffortValuesForProvider(provider string) []string {
 	if len(profile.ReasoningEffortValues) > 0 {
 		return append([]string(nil), profile.ReasoningEffortValues...)
 	}
-	if provider == agentprovider.ClaudeCode ||
-		provider == agentprovider.OpenCode {
+	if provider == agentprovider.ClaudeCode {
 		return []string{"low", "medium", "high", "xhigh"}
 	}
 	return []string{"minimal", "low", "medium", "high", "xhigh"}

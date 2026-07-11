@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-var migratedDescriptors = []ProviderDescriptor{codexDescriptor()}
+var migratedDescriptors = []ProviderDescriptor{codexDescriptor(), openCodeDescriptor()}
 
 var providerDescriptorIndex = buildProviderDescriptorIndex(migratedDescriptors)
 
@@ -117,6 +117,13 @@ func Validate(descriptor ProviderDescriptor) error {
 	}
 	switch descriptor.Runtime.Kind {
 	case RuntimeKindCodexAppServer:
+		if strings.TrimSpace(descriptor.Runtime.ClientInfoName) == "" {
+			return fmt.Errorf("provider %q runtime client info name is required", providerID)
+		}
+	case RuntimeKindStandardACP:
+		if err := validateStandardACPRuntime(descriptor.Runtime.StandardACP); err != nil {
+			return fmt.Errorf("provider %q standard ACP runtime: %w", providerID, err)
+		}
 	case "":
 		return fmt.Errorf("provider %q runtime kind is required", providerID)
 	default:
@@ -124,9 +131,6 @@ func Validate(descriptor ProviderDescriptor) error {
 	}
 	if strings.TrimSpace(descriptor.Runtime.Name) == "" {
 		return fmt.Errorf("provider %q runtime name is required", providerID)
-	}
-	if strings.TrimSpace(descriptor.Runtime.ClientInfoName) == "" {
-		return fmt.Errorf("provider %q runtime client info name is required", providerID)
 	}
 	if strings.TrimSpace(descriptor.Runtime.AuthRequiredMessage) == "" {
 		return fmt.Errorf("provider %q runtime auth required message is required", providerID)
@@ -140,13 +144,13 @@ func Validate(descriptor ProviderDescriptor) error {
 		return fmt.Errorf("provider %q endpoint config kind %q is unsupported", providerID, descriptor.Runtime.Endpoint.ConfigKind)
 	}
 	switch descriptor.Status.Kind {
-	case StatusKindCodexCLI:
+	case StatusKindCodexCLI, StatusKindOpenCodeCLI:
 	case "":
 		return fmt.Errorf("provider %q status kind is required", providerID)
 	default:
 		return fmt.Errorf("provider %q status kind %q is unsupported", providerID, descriptor.Status.Kind)
 	}
-	if strings.TrimSpace(descriptor.Status.MinVersion) == "" {
+	if descriptor.Status.Kind == StatusKindCodexCLI && strings.TrimSpace(descriptor.Status.MinVersion) == "" {
 		return fmt.Errorf("provider %q minimum version is required", providerID)
 	}
 	if len(descriptor.Status.BinaryNames) == 0 {
@@ -167,11 +171,32 @@ func Validate(descriptor ProviderDescriptor) error {
 	if err := validateCommand(descriptor.Status.LoginArgs); err != nil {
 		return fmt.Errorf("provider %q login args: %w", providerID, err)
 	}
-	if strings.TrimSpace(descriptor.Status.NPMRegistryPackage) == "" {
-		return fmt.Errorf("provider %q npm registry package is required", providerID)
-	}
 	switch descriptor.Status.Install.Kind {
 	case InstallerKindCodexCLILatest:
+		if strings.TrimSpace(descriptor.Status.NPMRegistryPackage) == "" {
+			return fmt.Errorf("provider %q npm registry package is required", providerID)
+		}
+		if strings.TrimSpace(descriptor.Status.Install.PackageName) == "" {
+			return fmt.Errorf("provider %q installer package name is required", providerID)
+		}
+		if strings.TrimSpace(descriptor.Status.Install.BinaryName) == "" {
+			return fmt.Errorf("provider %q installer binary name is required", providerID)
+		}
+		if descriptor.Status.Install.PackageName != descriptor.Status.NPMRegistryPackage {
+			return fmt.Errorf(
+				"provider %q installer package %q does not match npm registry package %q",
+				providerID,
+				descriptor.Status.Install.PackageName,
+				descriptor.Status.NPMRegistryPackage,
+			)
+		}
+	case InstallerKindOfficialScript:
+		if strings.TrimSpace(descriptor.Status.Install.ScriptURL) == "" {
+			return fmt.Errorf("provider %q installer script URL is required", providerID)
+		}
+		if strings.TrimSpace(descriptor.Status.Install.ScriptShell) == "" {
+			return fmt.Errorf("provider %q installer script shell is required", providerID)
+		}
 	case "":
 		return fmt.Errorf("provider %q installer kind is required", providerID)
 	default:
@@ -180,31 +205,11 @@ func Validate(descriptor ProviderDescriptor) error {
 	if strings.TrimSpace(descriptor.Status.Install.DisplayCommand) == "" {
 		return fmt.Errorf("provider %q installer display command is required", providerID)
 	}
-	if strings.TrimSpace(descriptor.Status.Install.PackageName) == "" {
-		return fmt.Errorf("provider %q installer package name is required", providerID)
-	}
-	if strings.TrimSpace(descriptor.Status.Install.BinaryName) == "" {
-		return fmt.Errorf("provider %q installer binary name is required", providerID)
-	}
-	if descriptor.Status.Install.PackageName != descriptor.Status.NPMRegistryPackage {
-		return fmt.Errorf(
-			"provider %q installer package %q does not match npm registry package %q",
-			providerID,
-			descriptor.Status.Install.PackageName,
-			descriptor.Status.NPMRegistryPackage,
-		)
-	}
-	if len(descriptor.Status.AuthWatch.Paths) > 0 {
-		if strings.TrimSpace(descriptor.Status.AuthWatch.RootEnvVar) == "" &&
-			strings.TrimSpace(descriptor.Status.AuthWatch.DefaultRoot) == "" {
-			return fmt.Errorf("provider %q auth watch root is required", providerID)
-		}
-		if err := validateUniqueNonBlankStrings(descriptor.Status.AuthWatch.Paths); err != nil {
-			return fmt.Errorf("provider %q auth watch paths: %w", providerID, err)
-		}
+	if err := validateAuthWatch(descriptor.Status.AuthWatch); err != nil {
+		return fmt.Errorf("provider %q auth watch: %w", providerID, err)
 	}
 	switch descriptor.ComposerProfile.ModelCatalog {
-	case "", ModelCatalogKindCodexCLI:
+	case "", ModelCatalogKindCodexCLI, ModelCatalogKindOpenCodeCLI:
 	default:
 		return fmt.Errorf("provider %q model catalog kind %q is unsupported", providerID, descriptor.ComposerProfile.ModelCatalog)
 	}
@@ -214,14 +219,26 @@ func Validate(descriptor ProviderDescriptor) error {
 		return fmt.Errorf("provider %q capability catalog kind %q is unsupported", providerID, descriptor.ComposerProfile.CapabilityCatalog.Kind)
 	}
 	switch descriptor.ComposerProfile.Skills.Kind {
+	case "":
+		if descriptor.ComposerProfile.Skills.Invocation != "" {
+			return fmt.Errorf("provider %q skill invocation requires a skill kind", providerID)
+		}
 	case SkillKindCodex:
+		switch descriptor.ComposerProfile.Skills.Invocation {
+		case SkillInvocationPromptItem, SkillInvocationTextTrigger:
+		default:
+			return fmt.Errorf("provider %q skill invocation %q is unsupported", providerID, descriptor.ComposerProfile.Skills.Invocation)
+		}
 	default:
 		return fmt.Errorf("provider %q skill kind %q is unsupported", providerID, descriptor.ComposerProfile.Skills.Kind)
 	}
-	switch descriptor.ComposerProfile.Skills.Invocation {
-	case SkillInvocationPromptItem, SkillInvocationTextTrigger:
-	default:
-		return fmt.Errorf("provider %q skill invocation %q is unsupported", providerID, descriptor.ComposerProfile.Skills.Invocation)
+	if err := validateUniqueNonBlankStrings(descriptor.ComposerProfile.Capabilities); err != nil {
+		return fmt.Errorf("provider %q capabilities: %w", providerID, err)
+	}
+	for _, capability := range descriptor.ComposerProfile.Capabilities {
+		if !isKnownCapability(capability) {
+			return fmt.Errorf("provider %q capability %q is unsupported", providerID, capability)
+		}
 	}
 	if err := validateSlashCommandPolicy(descriptor.ComposerProfile.SlashCommandPolicy); err != nil {
 		return fmt.Errorf("provider %q slash command policy: %w", providerID, err)
@@ -274,6 +291,111 @@ func Validate(descriptor ProviderDescriptor) error {
 		}
 		if !found {
 			return fmt.Errorf("provider %q default permission mode %q is not declared", providerID, defaultPermissionModeID)
+		}
+	}
+	return nil
+}
+
+func validateStandardACPRuntime(descriptor StandardACPRuntimeDescriptor) error {
+	modeIDs := make(map[string]struct{}, len(descriptor.PermissionModes))
+	for index, mode := range descriptor.PermissionModes {
+		inputID := strings.TrimSpace(mode.InputID)
+		if _, ok := modeIDs[inputID]; ok {
+			return fmt.Errorf("permission mode input %q is duplicated", inputID)
+		}
+		modeIDs[inputID] = struct{}{}
+		if strings.TrimSpace(mode.RuntimeID) == "" {
+			return fmt.Errorf("permission mode %d runtime id is empty", index)
+		}
+	}
+	environment := descriptor.SettingsEnvironment
+	variable := strings.TrimSpace(environment.Variable)
+	if variable == "" && len(environment.JSONFields) == 0 {
+		return nil
+	}
+	if variable == "" {
+		return fmt.Errorf("settings environment variable is required")
+	}
+	if len(environment.JSONFields) == 0 {
+		return fmt.Errorf("settings environment JSON fields are required")
+	}
+	jsonKeys := make(map[string]struct{}, len(environment.JSONFields))
+	settings := make(map[RuntimeSettingField]struct{}, len(environment.JSONFields))
+	for index, field := range environment.JSONFields {
+		switch field.Setting {
+		case RuntimeSettingFieldModel:
+		default:
+			return fmt.Errorf("settings environment field %d setting %q is unsupported", index, field.Setting)
+		}
+		if _, ok := settings[field.Setting]; ok {
+			return fmt.Errorf("settings environment setting %q is duplicated", field.Setting)
+		}
+		settings[field.Setting] = struct{}{}
+		jsonKey := strings.TrimSpace(field.JSONKey)
+		if jsonKey == "" {
+			return fmt.Errorf("settings environment field %d JSON key is empty", index)
+		}
+		if _, ok := jsonKeys[jsonKey]; ok {
+			return fmt.Errorf("settings environment JSON key %q is duplicated", jsonKey)
+		}
+		jsonKeys[jsonKey] = struct{}{}
+	}
+	return nil
+}
+
+func isKnownCapability(value string) bool {
+	switch strings.TrimSpace(value) {
+	case CapabilityImageInput,
+		CapabilityModelImageInputRequired,
+		CapabilitySkills,
+		CapabilityCompact,
+		CapabilityTokenUsage,
+		CapabilityRateLimits,
+		CapabilityPlanMode,
+		CapabilityInterrupt,
+		CapabilityBrowserUse,
+		CapabilityComputerUse,
+		CapabilityGoalPause,
+		CapabilityPlanImplementation,
+		CapabilityPermissionModeChangeDuringTurn,
+		CapabilityPermissionModeChangeDeferred:
+		return true
+	default:
+		return false
+	}
+}
+
+func validateAuthWatch(descriptor AuthWatchDescriptor) error {
+	switch descriptor.ContentFingerprint {
+	case "", AuthWatchContentFingerprintFullFile:
+	default:
+		return fmt.Errorf("content fingerprint %q is unsupported", descriptor.ContentFingerprint)
+	}
+	if descriptor.ContentFingerprint != "" && len(descriptor.Sources) == 0 {
+		return fmt.Errorf("content fingerprint requires sources")
+	}
+	for index, source := range descriptor.Sources {
+		if err := validateUniqueNonBlankStrings(source.PathEnvVars); err != nil {
+			return fmt.Errorf("source %d path env vars: %w", index, err)
+		}
+		for candidateIndex, candidate := range source.RootCandidates {
+			if strings.TrimSpace(candidate.EnvVar) == "" {
+				return fmt.Errorf("source %d root candidate %d env var is empty", index, candidateIndex)
+			}
+		}
+		hasRoot := len(source.RootCandidates) > 0 || strings.TrimSpace(source.DefaultRoot) != ""
+		if hasRoot {
+			if err := validateUniqueNonBlankStrings(source.Paths); err != nil {
+				return fmt.Errorf("source %d paths: %w", index, err)
+			}
+			if len(source.Paths) == 0 {
+				return fmt.Errorf("source %d rooted paths are required", index)
+			}
+		} else if len(source.Paths) > 0 {
+			return fmt.Errorf("source %d paths require a root", index)
+		}
+		if len(source.PathEnvVars) == 0 && !hasRoot {
+			return fmt.Errorf("source %d has no path source", index)
 		}
 	}
 	return nil
@@ -378,6 +500,11 @@ func cloneDescriptor(value ProviderDescriptor) ProviderDescriptor {
 	value.Identity.Aliases = append([]string(nil), value.Identity.Aliases...)
 	value.Runtime.Command = append([]string(nil), value.Runtime.Command...)
 	value.Runtime.Endpoint.BaseURLEnvVars = append([]string(nil), value.Runtime.Endpoint.BaseURLEnvVars...)
+	value.Runtime.StandardACP.PermissionModes = append([]RuntimePermissionModeDescriptor(nil), value.Runtime.StandardACP.PermissionModes...)
+	value.Runtime.StandardACP.SettingsEnvironment.JSONFields = append(
+		[]RuntimeSettingsJSONFieldDescriptor(nil),
+		value.Runtime.StandardACP.SettingsEnvironment.JSONFields...,
+	)
 	value.Status.BinaryNames = append([]string(nil), value.Status.BinaryNames...)
 	value.Status.AdapterBinaryNames = append([]string(nil), value.Status.AdapterBinaryNames...)
 	value.Status.AuthStatusCommand = append([]string(nil), value.Status.AuthStatusCommand...)
@@ -386,7 +513,7 @@ func cloneDescriptor(value ProviderDescriptor) ProviderDescriptor {
 	value.Status.CustomConfigEnvVars = append([]string(nil), value.Status.CustomConfigEnvVars...)
 	value.Status.CredentialEnvVars = append([]string(nil), value.Status.CredentialEnvVars...)
 	value.Status.LoginArgs = append([]string(nil), value.Status.LoginArgs...)
-	value.Status.AuthWatch.Paths = append([]string(nil), value.Status.AuthWatch.Paths...)
+	value.Status.AuthWatch.Sources = cloneAuthWatchSources(value.Status.AuthWatch.Sources)
 	value.ComposerProfile.ReasoningEffortValues = append([]string(nil), value.ComposerProfile.ReasoningEffortValues...)
 	value.ComposerProfile.Capabilities = append([]string(nil), value.ComposerProfile.Capabilities...)
 	value.ComposerProfile.PermissionModes = append([]PermissionModeDescriptor(nil), value.ComposerProfile.PermissionModes...)
@@ -394,4 +521,15 @@ func cloneDescriptor(value ProviderDescriptor) ProviderDescriptor {
 	value.ComposerProfile.SlashCommandPolicy.CommandEffects = append([]SlashCommandEffectDescriptor(nil), value.ComposerProfile.SlashCommandPolicy.CommandEffects...)
 	value.Events.Aliases = append([]string(nil), value.Events.Aliases...)
 	return value
+}
+
+func cloneAuthWatchSources(values []AuthWatchSourceDescriptor) []AuthWatchSourceDescriptor {
+	result := make([]AuthWatchSourceDescriptor, len(values))
+	for index, source := range values {
+		result[index] = source
+		result[index].PathEnvVars = append([]string(nil), source.PathEnvVars...)
+		result[index].RootCandidates = append([]AuthWatchRootCandidateDescriptor(nil), source.RootCandidates...)
+		result[index].Paths = append([]string(nil), source.Paths...)
+	}
+	return result
 }

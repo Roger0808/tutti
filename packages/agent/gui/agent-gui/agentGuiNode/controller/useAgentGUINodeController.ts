@@ -441,11 +441,6 @@ function composerOptionsForTarget(input: {
   );
 }
 
-function providerUsesModelImageInputSupport(provider: string | null): boolean {
-  const normalized = provider?.trim().toLowerCase();
-  return normalized === "opencode" || normalized === "cursor";
-}
-
 function composerOptionValues(
   options: readonly { value: string }[]
 ): Set<string> {
@@ -4143,9 +4138,12 @@ export function useAgentGUINodeController({
         | null
         | undefined
     );
-  const selectedModelImageInputSupported = !providerUsesModelImageInputSupport(
-    composerTargetData.provider
-  )
+  const modelImageInputRequired =
+    resolveAgentActivityCapability("modelImageInputRequired", {
+      composerOptions: providerComposerOptions,
+      sessionRuntimeContext: activeSessionRuntimeContext
+    }) === true;
+  const selectedModelImageInputSupported = !modelImageInputRequired
     ? true
     : selectedModelForPromptImages === null
       ? false

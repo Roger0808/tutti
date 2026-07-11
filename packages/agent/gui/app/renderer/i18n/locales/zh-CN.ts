@@ -1,5 +1,6 @@
 import type { TranslationDictionary } from "./schema.ts";
 
+import { zhCNAgentGuiProviderIdentity } from "./zh-CN.agentGuiProviderIdentity.ts";
 import { zhCNMessages } from "./zh-CN.messages.ts";
 import { zhCNSettingsPanel } from "./zh-CN.settingsPanel.ts";
 import { zhCNWebsiteNode } from "./zh-CN.websiteNode.ts";
@@ -648,9 +649,7 @@ export const zhCN = {
       noConversations: "还没有会话",
       emptyProjectConversations: "暂无对话",
       conversationFilterAll: "全部",
-      conversationFilterCodex: "Codex",
-      conversationFilterClaudeCode: "Claude Code",
-      conversationFilterTutti: "Tutti",
+      ...zhCNAgentGuiProviderIdentity,
       providerSwitchLabel: "切换 Provider",
       handoffConversation: "Handoff",
       handoffConversationTooltip: "交接给其他 Agent",

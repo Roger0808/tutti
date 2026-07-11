@@ -120,9 +120,14 @@ func defaultComposerProfiles() map[string]composerProfile {
 			// `agent models` CLI list uses a different (flat) id namespace that
 			// ACP rejects — never feed it into the composer. No probe session:
 			// the model list is reused from running Cursor conversations only.
-			ModelSelection:         true,
-			LiveModelDiscovery:     true,
-			Capabilities:           []string{"imageInput", "interrupt", "planMode"},
+			ModelSelection:     true,
+			LiveModelDiscovery: true,
+			Capabilities: []string{
+				providerregistry.CapabilityImageInput,
+				providerregistry.CapabilityModelImageInputRequired,
+				providerregistry.CapabilityInterrupt,
+				providerregistry.CapabilityPlanMode,
+			},
 			PermissionConfigurable: true,
 			// Approval tiers matching the Codex/Claude Code experience instead of
 			// Cursor's raw agent/plan/ask execution modes: read-only maps to
@@ -155,13 +160,6 @@ func defaultComposerProfiles() map[string]composerProfile {
 		},
 		agentprovider.OpenClaw: {
 			Capabilities: []string{"interrupt"},
-		},
-		agentprovider.OpenCode: {
-			ModelSelection:         true,
-			UsesModelCatalog:       true,
-			ReasoningEffort:        true,
-			DefaultReasoningEffort: "high",
-			Capabilities:           []string{"imageInput", "planMode", "interrupt"},
 		},
 	}
 	for _, descriptor := range providerregistry.Migrated() {
@@ -223,4 +221,13 @@ func composerProfileFor(provider string) composerProfile {
 func composerProfileKnown(provider string) bool {
 	_, ok := composerProfiles[agentprovider.Normalize(provider)]
 	return ok
+}
+
+func composerProfileHasCapability(provider string, capability string) bool {
+	for _, candidate := range composerProfileFor(provider).Capabilities {
+		if candidate == capability {
+			return true
+		}
+	}
+	return false
 }

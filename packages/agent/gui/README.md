@@ -110,6 +110,12 @@ Hosts adapting daemon-owned agent targets must resolve the target's descriptor
 keys return `null`; hosts should render a neutral icon rather than silently
 substituting another provider's icon.
 
+Hosts that need provider identity presentation may call
+`resolveAgentGUIProviderIdentity(value)` from the narrow
+`@tutti-os/agent-gui/provider-identity` subpath. Migrated providers resolve from
+the generated descriptor catalog; explicit legacy identities remain only for
+providers that have not migrated yet.
+
 Hosts that need custom main-pane presentation for a disabled selected target may
 pass `renderProviderUnavailableState`. AgentGUI calls this renderer only when
 the selected `providerTargets[]` entry has `disabled: true`; install, login,

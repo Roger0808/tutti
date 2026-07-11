@@ -13,5 +13,18 @@ export const generatedProviderIdentityCatalog = [
       enabled: true,
       sortOrder: 10
     }
+  },
+  {
+    providerId: "opencode",
+    displayName: "OpenCode",
+    iconKey: "opencode",
+    localeKey: "agentHost.agentGui.conversationFilterOpenCode",
+    aliases: ["open-code", "open code", "opencode-ai", "opencode_ai"],
+    target: {
+      id: "local:opencode",
+      launchRefType: "local_cli",
+      enabled: true,
+      sortOrder: 50
+    }
   }
 ] as const;

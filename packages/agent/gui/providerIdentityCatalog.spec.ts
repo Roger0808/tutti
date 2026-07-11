@@ -24,6 +24,23 @@ describe("provider identity catalog", () => {
     });
   });
 
+  it("reads OpenCode aliases, identity, and target only from the generated catalog", () => {
+    expect(resolveMigratedAgentGUIProviderIdentity("open-code")).toMatchObject({
+      providerId: "opencode",
+      displayName: "OpenCode",
+      iconKey: "opencode",
+      localeKey: "agentHost.agentGui.conversationFilterOpenCode",
+      aliases: ["open-code", "open code", "opencode-ai", "opencode_ai"],
+      target: {
+        id: "local:opencode",
+        launchRefType: "local_cli",
+        enabled: true,
+        sortOrder: 50
+      },
+      source: "generated"
+    });
+  });
+
   it("keeps an explicit legacy fallback for providers not yet migrated", () => {
     expect(resolveAgentGUIProviderCatalogIdentity("Claude Code")).toMatchObject(
       {

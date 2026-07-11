@@ -16,6 +16,7 @@
     "./mention-file-presentation": "./agent-gui/shared/mentionFilePresentation.ts",
     "./queued-prompt-runtime": "./agentQueuedPromptRuntimeCore.ts",
     "./agent-title-text": "./shared/utils/agentTitleText.ts",
+    "./provider-identity": "./provider-identity.ts",
     "./provider-icons": "./provider-icons.ts",
     "./agentGuiSessionProviderIconUrls": "./agentGuiSessionProviderIconUrls.ts",
     "./workspace-agent-generated-files": "./shared/workspaceAgentActivityListViewModel.ts",
@@ -145,6 +146,10 @@
         "types": "./dist/provider-icons.d.ts",
         "import": "./dist/provider-icons.js"
       },
+      "./provider-identity": {
+        "types": "./dist/provider-identity.d.ts",
+        "import": "./dist/provider-identity.js"
+      },
       "./workspace-agent-generated-files": {
         "types": "./dist/workspace-agent-generated-files.d.ts",
         "import": "./dist/workspace-agent-generated-files.js"
@@ -215,6 +220,9 @@
         ],
         "provider-icons": [
           "./dist/provider-icons.d.ts"
+        ],
+        "provider-identity": [
+          "./dist/provider-identity.d.ts"
         ],
         "workspace-agent-generated-files": [
           "./dist/workspace-agent-generated-files.d.ts"

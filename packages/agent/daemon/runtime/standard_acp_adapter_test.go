@@ -1032,7 +1032,7 @@ func TestOpenCodeAdapterAllowsImagePromptWithoutInitializeCapability(t *testing.
 	t.Parallel()
 
 	transport := newStandardACPTransport("OpenCode", "opencode-session-1")
-	adapter := NewOpenCodeAdapter(transport)
+	adapter := newOpenCodeTestAdapter(transport)
 	session := standardTestSession(ProviderOpenCode)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)

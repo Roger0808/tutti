@@ -1413,13 +1413,21 @@ structured catalog vocabulary, default target seeding, and event provider
 normalization must consume that descriptor. Do not restore a migrated provider
 to the legacy maps or provider switches in those layers.
 
-Codex is the first fully migrated provider. Its native app-server adapter
-remains provider-specific, while adapter selection and identity, endpoint
-resolution, install/login probe values, minimum version, auth/config watcher,
-permission and config-option vocabulary, model/skill/capability/slash catalogs,
-turn-lifecycle projection policy, `local:codex` target presentation, and event
-aliases are descriptor-driven. GUI plan/permission/skill/slash behavior reads
-daemon-issued capabilities and catalogs; it must not branch on the Codex id.
+Codex and OpenCode are the first fully migrated providers. Codex's native
+app-server adapter remains provider-specific, while adapter selection and
+identity, endpoint resolution, install/login probe values, minimum version,
+auth/config watcher, permission and config-option vocabulary,
+model/skill/capability/slash catalogs, turn-lifecycle projection policy,
+`local:codex` target presentation, and event aliases are descriptor-driven.
+OpenCode uses the generic standard-ACP descriptor strategy: command,
+permission-mode mapping, spawn-time model environment, status/auth/install
+strategy, model and reasoning catalogs, auth/config watch sources,
+capabilities, `local:opencode` target, identity, and event aliases all come from
+the same descriptor. Its model-level image gating is advertised as the
+`modelImageInputRequired` capability; AgentGUI must not infer it from the
+OpenCode id. GUI plan/permission/skill/slash and model-gating behavior reads
+daemon-issued capabilities and catalogs rather than branching on migrated
+provider ids.
 Unmigrated providers temporarily retain their legacy registrations; migrate
 each one atomically by adding the descriptor conversion kinds it needs and
 deleting its old entries in the same change. Production target presentation

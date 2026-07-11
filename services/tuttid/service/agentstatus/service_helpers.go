@@ -547,8 +547,11 @@ func parseAuthStatusCommandOutput(provider string, output []byte) (AuthInfo, boo
 		return auth, true
 	}
 	if status, ok := migratedProviderStatus(provider); ok {
-		if status.Kind == providerregistry.StatusKindCodexCLI {
+		switch status.Kind {
+		case providerregistry.StatusKindCodexCLI:
 			return parseCodexAuthStatusOutput(output)
+		case providerregistry.StatusKindOpenCodeCLI:
+			return parseOpenCodeAuthStatusOutput(output)
 		}
 	}
 	switch agentprovider.Normalize(provider) {
@@ -560,8 +563,6 @@ func parseAuthStatusCommandOutput(provider string, output []byte) (AuthInfo, boo
 		return parseCodexAuthStatusOutput(output)
 	case agentprovider.Cursor:
 		return parseCursorAuthStatusOutput(output)
-	case agentprovider.OpenCode:
-		return parseOpenCodeAuthStatusOutput(output)
 	default:
 		return AuthInfo{}, false
 	}

@@ -1,5 +1,6 @@
 import type { AgentProvider } from "../../../../contexts/settings/domain/agentSettings";
 import { getActiveUiLanguage, translate } from "../../../../i18n/index";
+import { resolveMigratedAgentGUIProviderIdentity } from "../../../../providerIdentityCatalog.ts";
 import {
   formatAppErrorMessage,
   isAppErrorDescriptor,
@@ -138,19 +139,18 @@ export function toAgentNodeTitle(
   model: string | null
 ): string {
   const providerTitle =
-    provider === "claude-code"
+    resolveMigratedAgentGUIProviderIdentity(provider)?.providerId ??
+    (provider === "claude-code"
       ? "claude"
       : provider === "nexight"
         ? "nexight"
-        : provider === "opencode"
-          ? "opencode"
-          : provider === "openclaw"
-            ? "openclaw"
-            : provider === "hermes"
-              ? "hermes"
-              : provider === "cursor"
-                ? "cursor"
-                : "codex";
+        : provider === "openclaw"
+          ? "openclaw"
+          : provider === "hermes"
+            ? "hermes"
+            : provider === "cursor"
+              ? "cursor"
+              : "codex");
   return `${providerTitle} · ${model ?? translate("common.defaultModel")}`;
 }
 

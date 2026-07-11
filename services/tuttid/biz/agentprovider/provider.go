@@ -13,7 +13,7 @@ const (
 	Hermes     = "hermes"
 	Nexight    = "nexight"
 	OpenClaw   = "openclaw"
-	OpenCode   = "opencode"
+	OpenCode   = providerregistry.OpenCodeProviderID
 	TuttiAgent = "tutti-agent"
 )
 
@@ -31,7 +31,7 @@ func All() []string {
 	for _, descriptor := range providerregistry.Migrated() {
 		appendProvider(descriptor.Identity.ID)
 	}
-	for _, provider := range []string{TuttiAgent, Cursor, Nexight, Hermes, OpenClaw, OpenCode} {
+	for _, provider := range []string{TuttiAgent, Cursor, Nexight, Hermes, OpenClaw} {
 		appendProvider(provider)
 	}
 	return providers
@@ -54,8 +54,6 @@ func Normalize(provider string) string {
 		return Nexight
 	case "open-claw", OpenClaw:
 		return OpenClaw
-	case "open-code", "opencode-ai", OpenCode:
-		return OpenCode
 	default:
 		return ""
 	}

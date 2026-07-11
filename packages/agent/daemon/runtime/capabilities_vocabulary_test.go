@@ -29,6 +29,7 @@ func TestCapabilityVocabularyMatchesTypeScript(t *testing.T) {
 	}
 	want := []string{
 		CapabilityImageInput,
+		CapabilityModelImageInputRequired,
 		CapabilitySkills,
 		CapabilityCompact,
 		CapabilityTokenUsage,

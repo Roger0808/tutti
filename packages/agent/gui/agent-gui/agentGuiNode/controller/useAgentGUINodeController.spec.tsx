@@ -14620,7 +14620,7 @@ describe("useAgentGUINodeController", () => {
           }
         ],
         runtimeContext: {
-          capabilities: ["imageInput"],
+          capabilities: ["imageInput", "modelImageInputRequired"],
           model: "text-only"
         }
       }))
@@ -14657,7 +14657,7 @@ describe("useAgentGUINodeController", () => {
           }
         ],
         runtimeContext: {
-          capabilities: ["imageInput"],
+          capabilities: ["imageInput", "modelImageInputRequired"],
           model: "unknown-model"
         }
       }))
@@ -14700,7 +14700,7 @@ describe("useAgentGUINodeController", () => {
           }
         ],
         runtimeContext: {
-          capabilities: ["imageInput"],
+          capabilities: ["imageInput", "modelImageInputRequired"],
           model: "openai/gpt-5.5"
         }
       }))

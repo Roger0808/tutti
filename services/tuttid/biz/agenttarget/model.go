@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
@@ -17,7 +18,7 @@ const (
 	IDLocalClaudeCode = "local:claude-code"
 	IDLocalTuttiAgent = "local:tutti-agent"
 	IDLocalCursor     = "local:cursor"
-	IDLocalOpenCode   = "local:opencode"
+	IDLocalOpenCode   = providerregistry.OpenCodeTargetID
 
 	LaunchRefTypeLocalCLI = "local_cli"
 
@@ -49,11 +50,11 @@ type LaunchRef struct {
 }
 
 func DefaultSystemTargets(nowUnixMS int64) []Target {
-	targets := make([]Target, 0, len(providerregistry.Migrated())+4)
+	targets := make([]Target, 0, len(providerregistry.Migrated())+3)
 	for _, descriptor := range providerregistry.Migrated() {
 		targets = append(targets, systemTargetFromProviderDescriptor(descriptor, nowUnixMS))
 	}
-	return append(targets,
+	targets = append(targets,
 		Target{
 			ID:              IDLocalClaudeCode,
 			Provider:        agentproviderbiz.ClaudeCode,
@@ -90,19 +91,14 @@ func DefaultSystemTargets(nowUnixMS int64) []Target {
 			CreatedAtUnixMS: nowUnixMS,
 			UpdatedAtUnixMS: nowUnixMS,
 		},
-		Target{
-			ID:              IDLocalOpenCode,
-			Provider:        agentproviderbiz.OpenCode,
-			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.OpenCode),
-			Name:            "OpenCode",
-			IconKey:         "opencode",
-			Enabled:         true,
-			Source:          SourceSystem,
-			SortOrder:       40,
-			CreatedAtUnixMS: nowUnixMS,
-			UpdatedAtUnixMS: nowUnixMS,
-		},
 	)
+	sort.SliceStable(targets, func(left int, right int) bool {
+		if targets[left].SortOrder == targets[right].SortOrder {
+			return targets[left].ID < targets[right].ID
+		}
+		return targets[left].SortOrder < targets[right].SortOrder
+	})
+	return targets
 }
 
 func systemTargetFromProviderDescriptor(descriptor providerregistry.ProviderDescriptor, nowUnixMS int64) Target {
@@ -253,8 +249,6 @@ func normalizeFirstIterationProvider(value string) string {
 		return agentproviderbiz.TuttiAgent
 	case agentproviderbiz.Cursor:
 		return agentproviderbiz.Cursor
-	case agentproviderbiz.OpenCode:
-		return agentproviderbiz.OpenCode
 	default:
 		return ""
 	}

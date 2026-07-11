@@ -96,13 +96,6 @@ func providerCustomConfigEnvVars(provider string) []string {
 			"ANTHROPIC_BASE_URL",
 			"ANTHROPIC_API_BASE_URL",
 		}
-	case agentprovider.OpenCode:
-		return []string{
-			"OPENCODE_CONFIG",
-			"OPENCODE_CONFIG_DIR",
-			"OPENCODE_CONFIG_CONTENT",
-			"OPENCODE_PERMISSION",
-		}
 	default:
 		return nil
 	}

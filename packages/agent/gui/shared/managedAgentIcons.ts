@@ -13,8 +13,7 @@ const legacyManagedAgentProviderIconKeys = {
   cursor: "cursor",
   hermes: "hermes",
   tutti: "tutti",
-  openclaw: "openclaw",
-  opencode: "opencode"
+  openclaw: "openclaw"
 } as const;
 
 /** Square avatar art for the managed toolchain agents (used by Manage Agents and Launch home Agents floor). */

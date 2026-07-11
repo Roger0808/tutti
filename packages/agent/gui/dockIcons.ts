@@ -9,7 +9,6 @@ const legacyDockProviderIconKeys = {
   hermes: "hermes",
   nexight: "tutti",
   openclaw: "openclaw",
-  opencode: "opencode",
   "tutti-agent": "tutti"
 } as const satisfies Partial<Record<AgentGUIProvider, string>>;
 

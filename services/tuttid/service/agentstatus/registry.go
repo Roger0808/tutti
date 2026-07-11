@@ -164,20 +164,6 @@ func DefaultRegistry() Registry {
 			},
 			LoginArgs: []string{"login"},
 		},
-		agentprovider.OpenCode: {
-			Provider:          agentprovider.OpenCode,
-			BinaryNames:       []string{"opencode"},
-			AdapterCommand:    []string{"opencode", "acp"},
-			AuthStatusCommand: []string{"auth", "list"},
-			AuthMarkerPaths:   []string{"~/.local/share/opencode/auth.json"},
-			Install: InstallerSpec{
-				Kind:           InstallerKindOfficialScript,
-				DisplayCommand: "curl -fsSL https://opencode.ai/install | bash",
-				ScriptURL:      "https://opencode.ai/install",
-				ScriptShell:    "bash",
-			},
-			LoginArgs: []string{"auth", "login"},
-		},
 	}
 	for _, descriptor := range providerregistry.Migrated() {
 		spec, err := providerSpecFromDescriptor(descriptor)
@@ -254,6 +240,13 @@ func installerSpecFromProviderDescriptor(descriptor providerregistry.InstallerDe
 				BinaryName:      descriptor.BinaryName,
 				IncludeOptional: descriptor.IncludeOptional,
 			},
+		}, nil
+	case providerregistry.InstallerKindOfficialScript:
+		return InstallerSpec{
+			Kind:           InstallerKindOfficialScript,
+			DisplayCommand: descriptor.DisplayCommand,
+			ScriptURL:      descriptor.ScriptURL,
+			ScriptShell:    descriptor.ScriptShell,
 		}, nil
 	default:
 		return InstallerSpec{}, fmt.Errorf("unsupported installer kind %q", descriptor.Kind)

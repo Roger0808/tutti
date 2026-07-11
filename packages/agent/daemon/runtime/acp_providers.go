@@ -12,19 +12,23 @@ package agentruntime
 //	acp_provider_nexight.go   nexight-acp (codex-acp derived)
 //	acp_provider_openclaw.go  openclaw acp -v
 //
-// Codex is the only non-ACP adapter (codex_appserver_adapter.go talks to the
-// codex binary's own app-server protocol) and is not a template for new
-// providers.
+// Codex is a non-ACP adapter (codex_appserver_adapter.go talks to the codex
+// binary's own app-server protocol) and is not a template for new providers.
 //
 // Provider registration is migrating to providerregistry.ProviderDescriptor.
-// Codex has completed that migration: its runtime, status, composer, target,
-// identity, and event registration values live in providerregistry/codex.go.
-// Do not add Codex values back to the legacy registration sites below. The
-// checklist remains temporarily for ACP providers that have not yet migrated;
-// migrate the next provider by extending the descriptor runtime/conversion
-// kinds and then deleting that provider's legacy entries atomically.
+// Codex and OpenCode have completed that migration: their runtime, status,
+// composer, target, identity, and event registration values live in
+// providerregistry. OpenCode's standard ACP adapter is constructed by the
+// generic descriptor converter; it has no production provider-specific ACP
+// config file. Do not add migrated-provider values back to legacy registration
+// sites. The checklist remains temporarily to identify the registrations that
+// must be removed while migrating the remaining ACP providers atomically.
 //
-// # Adding an ACP provider (e.g. OpenCode)
+// # Legacy ACP registration sites to replace during migration
+//
+// The numbered list documents the old seams so a migration can prove each one
+// was removed. New providers must start in providerregistry instead of adding
+// entries to this list.
 //
 // Runtime (this package):
 //

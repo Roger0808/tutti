@@ -1,3 +1,4 @@
+import { enAgentGuiProviderIdentity } from "./en.agentGuiProviderIdentity.ts";
 import { enMessages } from "./en.messages.ts";
 import { enSettingsPanel } from "./en.settingsPanel.ts";
 import { enWebsiteNode } from "./en.websiteNode.ts";
@@ -699,9 +700,7 @@ export const en = {
       noConversations: "No sessions yet",
       emptyProjectConversations: "No chats yet",
       conversationFilterAll: "All",
-      conversationFilterCodex: "Codex",
-      conversationFilterClaudeCode: "Claude Code",
-      conversationFilterTutti: "Tutti",
+      ...enAgentGuiProviderIdentity,
       providerSwitchLabel: "Switch provider",
       handoffConversation: "Handoff",
       handoffConversationTooltip: "Hand off to another agent",

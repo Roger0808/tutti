@@ -7,6 +7,7 @@ type RuntimeKind string
 
 const (
 	RuntimeKindCodexAppServer RuntimeKind = "codex_app_server"
+	RuntimeKindStandardACP    RuntimeKind = "standard_acp"
 )
 
 // EndpointConfigKind identifies an optional provider-owned config source for
@@ -29,12 +30,14 @@ type InstallerKind string
 
 const (
 	InstallerKindCodexCLILatest InstallerKind = "codex_cli_latest"
+	InstallerKindOfficialScript InstallerKind = "official_script"
 )
 
 type StatusKind string
 
 const (
-	StatusKindCodexCLI StatusKind = "codex_cli"
+	StatusKindCodexCLI    StatusKind = "codex_cli"
+	StatusKindOpenCodeCLI StatusKind = "opencode_cli"
 )
 
 type IdentityDescriptor struct {
@@ -52,6 +55,31 @@ type RuntimeDescriptor struct {
 	ClientInfoName      string
 	AuthRequiredMessage string
 	Endpoint            RuntimeEndpointDescriptor
+	StandardACP         StandardACPRuntimeDescriptor
+}
+
+type RuntimePermissionModeDescriptor struct {
+	InputID   string
+	RuntimeID string
+}
+
+type RuntimeSettingField string
+
+const RuntimeSettingFieldModel RuntimeSettingField = "model"
+
+type RuntimeSettingsJSONFieldDescriptor struct {
+	Setting RuntimeSettingField
+	JSONKey string
+}
+
+type RuntimeSettingsEnvironmentDescriptor struct {
+	Variable   string
+	JSONFields []RuntimeSettingsJSONFieldDescriptor
+}
+
+type StandardACPRuntimeDescriptor struct {
+	PermissionModes     []RuntimePermissionModeDescriptor
+	SettingsEnvironment RuntimeSettingsEnvironmentDescriptor
 }
 
 type InstallerDescriptor struct {
@@ -60,6 +88,8 @@ type InstallerDescriptor struct {
 	PackageName     string
 	BinaryName      string
 	IncludeOptional bool
+	ScriptURL       string
+	ScriptShell     string
 }
 
 type StatusDescriptor struct {
@@ -78,14 +108,26 @@ type StatusDescriptor struct {
 	AuthWatch           AuthWatchDescriptor
 }
 
-// AuthWatchDescriptor identifies files whose changes can invalidate
-// provider-owned catalog data. RootEnvVar supports provider-specific home
-// overrides without teaching consumers the provider's identity.
 type AuthWatchDescriptor struct {
-	RootEnvVar  string
-	DefaultRoot string
-	Paths       []string
+	Sources            []AuthWatchSourceDescriptor
+	ContentFingerprint AuthWatchContentFingerprintKind
 }
+
+type AuthWatchRootCandidateDescriptor struct {
+	EnvVar string
+	Suffix string
+}
+
+type AuthWatchSourceDescriptor struct {
+	PathEnvVars    []string
+	RootCandidates []AuthWatchRootCandidateDescriptor
+	DefaultRoot    string
+	Paths          []string
+}
+
+type AuthWatchContentFingerprintKind string
+
+const AuthWatchContentFingerprintFullFile AuthWatchContentFingerprintKind = "full_file"
 
 type PermissionModeDescriptor struct {
 	ID       string
@@ -98,6 +140,25 @@ type ComposerConfigOptionIDs struct {
 	Speed      string
 	Permission string
 }
+
+// Canonical capability vocabulary shared by provider descriptors, daemon
+// runtime projections, and the generated/checked GUI mirror.
+const (
+	CapabilityImageInput                     = "imageInput"
+	CapabilityModelImageInputRequired        = "modelImageInputRequired"
+	CapabilitySkills                         = "skills"
+	CapabilityCompact                        = "compact"
+	CapabilityTokenUsage                     = "tokenUsage"
+	CapabilityRateLimits                     = "rateLimits"
+	CapabilityPlanMode                       = "planMode"
+	CapabilityInterrupt                      = "interrupt"
+	CapabilityBrowserUse                     = "browserUse"
+	CapabilityComputerUse                    = "computerUse"
+	CapabilityGoalPause                      = "goalPause"
+	CapabilityPlanImplementation             = "planImplementation"
+	CapabilityPermissionModeChangeDuringTurn = "permissionModeChangeDuringTurn"
+	CapabilityPermissionModeChangeDeferred   = "permissionModeChangeDeferred"
+)
 
 type SkillKind string
 
@@ -118,7 +179,8 @@ type SkillDescriptor struct {
 type ModelCatalogKind string
 
 const (
-	ModelCatalogKindCodexCLI ModelCatalogKind = "codex-cli"
+	ModelCatalogKindCodexCLI    ModelCatalogKind = "codex-cli"
+	ModelCatalogKindOpenCodeCLI ModelCatalogKind = "opencode-cli"
 )
 
 // CapabilityCatalogKind identifies the protocol used to discover the

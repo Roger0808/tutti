@@ -58,6 +58,62 @@ func TestProviderStatusAdapterConsumesDescriptorInstallerData(t *testing.T) {
 	}
 }
 
+func TestOpenCodeStatusSpecComesFromProviderDescriptor(t *testing.T) {
+	specs, err := DefaultRegistry().Select([]string{agentprovider.OpenCode})
+	if err != nil {
+		t.Fatalf("Select(opencode) error = %v", err)
+	}
+	if len(specs) != 1 {
+		t.Fatalf("len(specs) = %d", len(specs))
+	}
+	spec := specs[0]
+	if !reflect.DeepEqual(spec.AdapterCommand, []string{"opencode", "acp"}) ||
+		!reflect.DeepEqual(spec.AuthStatusCommand, []string{"auth", "list"}) {
+		t.Fatalf("status commands = %#v %#v", spec.AdapterCommand, spec.AuthStatusCommand)
+	}
+	if spec.Install.Kind != InstallerKindOfficialScript ||
+		spec.Install.ScriptURL != "https://opencode.ai/install" ||
+		spec.Install.ScriptShell != "bash" {
+		t.Fatalf("Install = %#v", spec.Install)
+	}
+}
+
+func TestOpenCodeStatusAdapterConsumesDescriptorInstallerData(t *testing.T) {
+	descriptor, ok := providerregistry.Find(providerregistry.OpenCodeProviderID)
+	if !ok {
+		t.Fatal("opencode descriptor missing")
+	}
+	descriptor.Runtime.Command = []string{"poison-opencode", "descriptor-acp"}
+	descriptor.Status.Install.DisplayCommand = "descriptor install"
+	descriptor.Status.Install.ScriptURL = "https://example.invalid/install"
+	descriptor.Status.Install.ScriptShell = "zsh"
+
+	spec, err := providerSpecFromDescriptor(descriptor)
+	if err != nil {
+		t.Fatalf("providerSpecFromDescriptor() error = %v", err)
+	}
+	if !reflect.DeepEqual(spec.AdapterCommand, descriptor.Runtime.Command) ||
+		spec.Install.DisplayCommand != "descriptor install" ||
+		spec.Install.ScriptURL != "https://example.invalid/install" ||
+		spec.Install.ScriptShell != "zsh" {
+		t.Fatalf("status descriptor values = %#v", spec)
+	}
+}
+
+func TestOpenCodeStatusHelpersDispatchFromDescriptorStrategy(t *testing.T) {
+	descriptor, ok := providerregistry.Find(providerregistry.OpenCodeProviderID)
+	if !ok {
+		t.Fatal("opencode descriptor missing")
+	}
+	if got := providerCustomConfigEnvVars("open-code"); !reflect.DeepEqual(got, descriptor.Status.CustomConfigEnvVars) {
+		t.Fatalf("custom config env vars = %#v, want %#v", got, descriptor.Status.CustomConfigEnvVars)
+	}
+	auth, ok := parseAuthStatusCommandOutput("open-code", []byte("Not authenticated. Run opencode auth login."))
+	if !ok || auth.Status != AuthRequired {
+		t.Fatalf("parseAuthStatusCommandOutput() = %#v, %v", auth, ok)
+	}
+}
+
 func TestProviderStatusAdapterRejectsUnknownInstallerKind(t *testing.T) {
 	descriptor, ok := providerregistry.Find(providerregistry.CodexProviderID)
 	if !ok {

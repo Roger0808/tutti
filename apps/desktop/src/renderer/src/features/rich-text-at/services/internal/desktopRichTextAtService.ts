@@ -7,6 +7,7 @@ import {
   AGENT_CONTEXT_MENTION_PROVIDER_IDS,
   type AgentContextMentionProvider
 } from "@tutti-os/agent-gui/context-mention-provider";
+import { resolveAgentGUIProviderIdentity } from "@tutti-os/agent-gui/provider-identity";
 import { normalizeAgentTitleText } from "@tutti-os/agent-gui/agent-title-text";
 import { appCenterI18nResources } from "@tutti-os/workspace-app-center/i18n";
 import {
@@ -1218,24 +1219,8 @@ function resolveAgentSessionLabel(item: AgentSessionAtItem): string {
 }
 
 function resolveAgentSessionProviderLabel(provider?: string | null): string {
-  switch (provider?.trim()) {
-    case "claude-code":
-      return "Claude Code";
-    case "codex":
-      return "Codex";
-    case "cursor":
-      return "Cursor";
-    case "hermes":
-      return "Hermes Agent";
-    case "nexight":
-      return "Nexight";
-    case "openclaw":
-      return "OpenClaw";
-    case "opencode":
-      return "OpenCode";
-    default:
-      return provider?.trim() || "";
-  }
+  const normalized = provider?.trim() ?? "";
+  return resolveAgentGUIProviderIdentity(normalized)?.displayName ?? normalized;
 }
 
 function dateTimeToUnixMs(value?: string | null): number | null {

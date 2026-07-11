@@ -3,6 +3,7 @@ import type { AgentActivityComposerOptions } from "./types.ts";
 /** Mirror of packages/agent/daemon/runtime/capabilities.go. */
 export const AGENT_CAPABILITY_KEYS = [
   "imageInput",
+  "modelImageInputRequired",
   "skills",
   "compact",
   "tokenUsage",

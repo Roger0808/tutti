@@ -10,28 +10,40 @@ import {
   resolveMigratedAgentGUIProviderIdentity
 } from "./providerIdentityCatalog.ts";
 
-const legacyAgentGUIDefaultTargetProviders = [
-  "claude-code",
-  "cursor",
-  "tutti-agent",
-  "opencode",
-  "hermes",
-  "openclaw"
-] as const satisfies readonly AgentGUIProvider[];
+const legacyAgentGUIDefaultTargetOrder = [
+  { provider: "claude-code", sortOrder: 20 },
+  { provider: "cursor", sortOrder: 30 },
+  { provider: "tutti-agent", sortOrder: 40 },
+  { provider: "hermes", sortOrder: 60 },
+  { provider: "openclaw", sortOrder: 70 }
+] as const satisfies readonly {
+  provider: AgentGUIProvider;
+  sortOrder: number;
+}[];
 
-export const agentGUIDefaultTargetProviders: readonly AgentGUIProvider[] = [
-  ...uniqueAgentGUIProviders(
-    [...migratedAgentGUIProviderIdentityCatalog]
-      .sort((left, right) => left.target.sortOrder - right.target.sortOrder)
-      .map((identity) => identity.providerId as AgentGUIProvider),
-    legacyAgentGUIDefaultTargetProviders
-  )
-];
+export const agentGUIDefaultTargetProviders: readonly AgentGUIProvider[] =
+  createAgentGUIDefaultTargetProviders();
 
-function uniqueAgentGUIProviders(
-  ...providerLists: readonly (readonly AgentGUIProvider[])[]
-): AgentGUIProvider[] {
-  return [...new Set(providerLists.flat())];
+function createAgentGUIDefaultTargetProviders(): AgentGUIProvider[] {
+  const entries = [
+    ...migratedAgentGUIProviderIdentityCatalog.map((identity) => ({
+      provider: identity.providerId as AgentGUIProvider,
+      sortOrder: identity.target.sortOrder
+    })),
+    ...legacyAgentGUIDefaultTargetOrder
+  ];
+  const seen = new Set<AgentGUIProvider>();
+  for (const entry of entries) {
+    if (seen.has(entry.provider)) {
+      throw new Error(
+        `Provider ${entry.provider} is registered in both generated and legacy target catalogs`
+      );
+    }
+    seen.add(entry.provider);
+  }
+  return entries
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((entry) => entry.provider);
 }
 
 const legacyAgentGUIDisabledPlaceholderProviders = [

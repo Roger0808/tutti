@@ -39,10 +39,6 @@ const legacyAgentGUIProviderIdentityFallbacks: readonly AgentGUIProviderIdentity
     ]),
     legacyIdentity("tutti-agent", "Tutti Agent", "tutti", ["tutti agent"]),
     legacyIdentity("nexight", "Nexight", "tutti", ["tutti"], "Tutti Agent"),
-    legacyIdentity("opencode", "OpenCode", "opencode", [
-      "open-code",
-      "opencode-ai"
-    ]),
     legacyIdentity("hermes", "Hermes Agent", "hermes", [], "Hermes"),
     legacyIdentity("openclaw", "OpenClaw", "openclaw", [])
   ];

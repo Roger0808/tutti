@@ -15,7 +15,7 @@ const (
 	ProviderNexight    = "nexight"
 	ProviderHermes     = "hermes"
 	ProviderOpenClaw   = "openclaw"
-	ProviderOpenCode   = "opencode"
+	ProviderOpenCode   = providerregistry.OpenCodeProviderID
 
 	SessionStatusReady     = "ready"
 	SessionStatusWorking   = "working"
