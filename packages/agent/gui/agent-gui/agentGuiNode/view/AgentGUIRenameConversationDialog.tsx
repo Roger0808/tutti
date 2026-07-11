@@ -41,6 +41,7 @@ export const AgentGUIRenameConversationDialog = memo(
       if (!open) {
         return;
       }
+      // timing: defer focus until after the dialog's open animation mounts the input
       const timer = window.setTimeout(() => {
         inputRef.current?.focus();
         inputRef.current?.select();

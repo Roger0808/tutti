@@ -189,6 +189,7 @@ export function MarkdownPre({
       if (copyResetRef.current) {
         clearTimeout(copyResetRef.current);
       }
+      // timing: revert the "copied" affordance after the confirmation window
       copyResetRef.current = setTimeout(() => setCopied(false), 1500);
     });
   }, []);

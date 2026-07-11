@@ -54,6 +54,7 @@ export function AgentMessageLocatorRail({
       setShouldRenderPanel(true);
       return;
     }
+    // timing: keep the panel mounted through its close-fade transition
     const timeout = window.setTimeout(
       () => setShouldRenderPanel(false),
       AGENT_MESSAGE_LOCATOR_PANEL_FADE_MS
@@ -296,6 +297,7 @@ export function AgentMessageLocatorRail({
     if (closePanelTimeoutRef.current !== null) {
       window.clearTimeout(closePanelTimeoutRef.current);
     }
+    // timing: delay closing so pointer can move from trigger into panel content
     closePanelTimeoutRef.current = window.setTimeout(() => {
       closePanelTimeoutRef.current = null;
       setIsPanelOpen(false);

@@ -136,6 +136,7 @@ export const AgentGUIConversationRailItem = memo(
       }
       contextMenuRenameRequestedRef.current = true;
       setContextMenuResetKey((key) => key + 1);
+      // timing: defer past the context menu's own close/dismiss handling
       window.setTimeout(() => {
         handleRequestRename();
         contextMenuRenameRequestedRef.current = false;
@@ -147,6 +148,7 @@ export const AgentGUIConversationRailItem = memo(
       }
       contextMenuOpenConversationWindowRequestedRef.current = true;
       setContextMenuResetKey((key) => key + 1);
+      // timing: defer past the context menu's own close/dismiss handling
       window.setTimeout(() => {
         handleOpenConversationWindow();
         contextMenuOpenConversationWindowRequestedRef.current = false;
@@ -158,6 +160,7 @@ export const AgentGUIConversationRailItem = memo(
       }
       contextMenuCopySessionLinkRequestedRef.current = true;
       setContextMenuResetKey((key) => key + 1);
+      // timing: defer past the context menu's own close/dismiss handling
       window.setTimeout(() => {
         if (!agentHostApi?.clipboard?.writeText) {
           contextMenuCopySessionLinkRequestedRef.current = false;

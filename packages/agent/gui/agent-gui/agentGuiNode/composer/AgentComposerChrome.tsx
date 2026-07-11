@@ -139,6 +139,7 @@ export function AgentUsageChip({
   const openUsagePopoverAfterHoverDelay = useCallback(() => {
     clearUsagePopoverHoverTimer();
     clearUsagePopoverCloseTimer();
+    // timing: delay opening the usage popover so brief hovers don't trigger it
     usagePopoverHoverTimerRef.current = setTimeout(() => {
       usagePopoverHoverTimerRef.current = null;
       setUsagePopoverOpen(true);
@@ -152,6 +153,7 @@ export function AgentUsageChip({
   const scheduleUsagePopoverClose = useCallback(() => {
     clearUsagePopoverHoverTimer();
     clearUsagePopoverCloseTimer();
+    // timing: delay closing so pointer can move from trigger into popover content
     usagePopoverCloseTimerRef.current = setTimeout(() => {
       usagePopoverCloseTimerRef.current = null;
       setUsagePopoverOpen(false);
@@ -411,45 +413,49 @@ export function AgentComposerMaskIcon({
 
 export const HANDOFF_SELECT_IDLE_VALUE = "__agent-handoff-idle__";
 
-let handoffLottiePlayerLoadPromise: Promise<boolean> | null = null;
+function createHandoffLottiePlayerLoader(): () => Promise<boolean> {
+  let loadPromise: Promise<boolean> | null = null;
 
-function loadHandoffLottiePlayer(): Promise<boolean> {
-  if (typeof window === "undefined" || typeof document === "undefined") {
-    return Promise.resolve(false);
-  }
-  if (window.customElements?.get("dotlottie-wc")) {
-    return Promise.resolve(true);
-  }
-  if (handoffLottiePlayerLoadPromise) {
-    return handoffLottiePlayerLoadPromise;
-  }
-
-  handoffLottiePlayerLoadPromise = new Promise((resolve) => {
-    const existingScript = document.querySelector<HTMLScriptElement>(
-      'script[data-agent-gui-handoff-lottie="true"]'
-    );
-    const script = existingScript ?? document.createElement("script");
-
-    const handleLoad = () => {
-      resolve(Boolean(window.customElements?.get("dotlottie-wc")));
-    };
-    const handleError = () => {
-      resolve(false);
-    };
-
-    script.addEventListener("load", handleLoad, { once: true });
-    script.addEventListener("error", handleError, { once: true });
-
-    if (!existingScript) {
-      script.dataset.agentGuiHandoffLottie = "true";
-      script.src = HANDOFF_LOTTIE_PLAYER_SCRIPT_SRC;
-      script.type = "module";
-      document.head.append(script);
+  return function loadHandoffLottiePlayer(): Promise<boolean> {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return Promise.resolve(false);
     }
-  });
+    if (window.customElements?.get("dotlottie-wc")) {
+      return Promise.resolve(true);
+    }
+    if (loadPromise) {
+      return loadPromise;
+    }
 
-  return handoffLottiePlayerLoadPromise;
+    loadPromise = new Promise((resolve) => {
+      const existingScript = document.querySelector<HTMLScriptElement>(
+        'script[data-agent-gui-handoff-lottie="true"]'
+      );
+      const script = existingScript ?? document.createElement("script");
+
+      const handleLoad = () => {
+        resolve(Boolean(window.customElements?.get("dotlottie-wc")));
+      };
+      const handleError = () => {
+        resolve(false);
+      };
+
+      script.addEventListener("load", handleLoad, { once: true });
+      script.addEventListener("error", handleError, { once: true });
+
+      if (!existingScript) {
+        script.dataset.agentGuiHandoffLottie = "true";
+        script.src = HANDOFF_LOTTIE_PLAYER_SCRIPT_SRC;
+        script.type = "module";
+        document.head.append(script);
+      }
+    });
+
+    return loadPromise;
+  };
 }
+
+const loadHandoffLottiePlayer = createHandoffLottiePlayerLoader();
 
 export function AgentComposerHandoffIcon({
   disabled,

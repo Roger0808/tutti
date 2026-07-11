@@ -230,6 +230,7 @@ export function releaseCachedMarkdownMedia(
   if (entry.refCount > 0 || entry.revokeTimer) {
     return;
   }
+  // timing: grace period before revoking, so a quick remount can reuse the object URL
   entry.revokeTimer = setTimeout(() => {
     const current = cachedMarkdownMedia.get(path);
     if (!current || current.objectUrl !== objectUrl || current.refCount > 0) {

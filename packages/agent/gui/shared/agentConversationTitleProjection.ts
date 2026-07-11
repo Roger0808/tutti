@@ -10,6 +10,14 @@ import { normalizeAgentTitleText } from "./utils/agentTitleText.ts";
 export type AgentGUIResolvedProvider = AgentGUIProvider | "unknown";
 export type AgentGUIConversationTitleFallback = "generic-agent" | null;
 
+const AGENT_GUI_UNRESOLVED_PROVIDER: AgentGUIResolvedProvider = "unknown";
+
+export function isAgentGUIProviderUnresolved(
+  value: AgentGUIResolvedProvider
+): value is "unknown" {
+  return value === AGENT_GUI_UNRESOLVED_PROVIDER;
+}
+
 export interface AgentGUIConversationPlainTitleOptions {
   fallbackAgentLabel?: string;
   language?: UiLanguage;

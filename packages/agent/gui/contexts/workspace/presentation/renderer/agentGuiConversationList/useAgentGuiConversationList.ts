@@ -15,6 +15,7 @@ import {
 import type { AgentGUIProvider } from "../../../../../types";
 import type { AgentGUIConversationSummary } from "../../../../../agent-gui/agentGuiNode/model/agentGuiConversationModel";
 import {
+  isAgentGUIProviderUnresolved,
   resolveAgentGUIConversationTitle,
   resolveAgentGUIProviderIdentity
 } from "../../../../../shared/agentConversationTitleProjection.ts";
@@ -138,7 +139,7 @@ export function useAgentGuiConversationList(
         }
         return (
           conversation.provider === query.provider ||
-          conversation.provider === "unknown"
+          isAgentGUIProviderUnresolved(conversation.provider)
         );
       })
       .sort(

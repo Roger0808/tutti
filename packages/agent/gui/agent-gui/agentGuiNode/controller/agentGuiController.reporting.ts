@@ -126,8 +126,9 @@ export function reportAgentGUIRuntimeError(input: {
         workspaceId: input.workspaceId
       })
     ).catch(() => {});
-  } catch {
+  } catch (reportError) {
     // Diagnostic logging must never affect the Agent GUI recovery path.
+    console.error("[agent-gui] reportAgentGUIRuntimeError failed", reportError);
   }
 }
 
@@ -169,8 +170,12 @@ export function reportAgentGUIConversationFilterTargetUnresolved(input: {
         workspaceId: input.workspaceId
       })
     ).catch(() => {});
-  } catch {
+  } catch (reportError) {
     // Diagnostic logging must never affect conversation filter selection.
+    console.error(
+      "[agent-gui] reportAgentGUIConversationFilterTargetUnresolved failed",
+      reportError
+    );
   }
 }
 
@@ -210,8 +215,12 @@ export function reportAgentGUIMessagePageDiagnostic(input: {
         workspaceId: input.workspaceId
       })
     ).catch(() => {});
-  } catch {
+  } catch (reportError) {
     // Diagnostic logging must never affect message loading.
+    console.error(
+      "[agent-gui] reportAgentGUIMessagePageDiagnostic failed",
+      reportError
+    );
   }
 }
 
@@ -278,8 +287,12 @@ export function reportAgentGUIRenderStateDiagnostic(input: {
         workspaceId: input.workspaceId
       })
     ).catch(() => {});
-  } catch {
+  } catch (reportError) {
     // Diagnostic logging must never affect Agent GUI rendering.
+    console.error(
+      "[agent-gui] reportAgentGUIRenderStateDiagnostic failed",
+      reportError
+    );
   }
 }
 
@@ -308,8 +321,12 @@ export function reportAgentGUIActiveConversationCleared(input: {
         workspaceId: input.workspaceId
       })
     ).catch(() => {});
-  } catch {
+  } catch (reportError) {
     // Diagnostic logging must never affect active conversation routing.
+    console.error(
+      "[agent-gui] reportAgentGUIActiveConversationCleared failed",
+      reportError
+    );
   }
 }
 
@@ -346,8 +363,12 @@ export function reportAgentGUIConversationListProjectionSkipped(input: {
         workspaceId: input.workspaceId
       })
     ).catch(() => {});
-  } catch {
+  } catch (reportError) {
     // Diagnostic logging must never affect active conversation routing.
+    console.error(
+      "[agent-gui] reportAgentGUIConversationListProjectionSkipped failed",
+      reportError
+    );
   }
 }
 
@@ -384,8 +405,12 @@ export function reportAgentGUISubmitWithoutActiveConversation(input: {
         workspaceId: input.workspaceId
       })
     ).catch(() => {});
-  } catch {
+  } catch (reportError) {
     // Diagnostic logging must never affect active conversation routing.
+    console.error(
+      "[agent-gui] reportAgentGUISubmitWithoutActiveConversation failed",
+      reportError
+    );
   }
 }
 
@@ -420,8 +445,12 @@ export function reportAgentGUISubmitRecoveredActiveConversation(input: {
         workspaceId: input.workspaceId
       })
     ).catch(() => {});
-  } catch {
+  } catch (reportError) {
     // Diagnostic logging must never affect active conversation routing.
+    console.error(
+      "[agent-gui] reportAgentGUISubmitRecoveredActiveConversation failed",
+      reportError
+    );
   }
 }
 
@@ -459,8 +488,12 @@ export function reportAgentSubmitTraceDiagnostic(input: {
         workspaceId: input.workspaceId
       })
     ).catch(() => {});
-  } catch {
+  } catch (reportError) {
     // Diagnostic logging must never affect the Agent GUI submit path.
+    console.error(
+      "[agent-gui] reportAgentSubmitTraceDiagnostic failed",
+      reportError
+    );
   }
 }
 
@@ -479,6 +512,7 @@ export function scheduleAgentSubmitTracePaint(input: {
     });
   const requestFrame = globalThis.requestAnimationFrame;
   if (typeof requestFrame !== "function") {
+    // timing: requestAnimationFrame fallback for non-browser runtimes; defer to next tick
     setTimeout(logPaint, 0);
     return;
   }

@@ -391,7 +391,20 @@ const AgentActivityRuntimeContext = createContext<AgentActivityRuntime | null>(
   null
 );
 
-let testAgentActivityRuntime: AgentActivityRuntime | null = null;
+function createTestAgentActivityRuntimeHolder(): {
+  get: () => AgentActivityRuntime | null;
+  set: (runtime: AgentActivityRuntime | null) => void;
+} {
+  let runtime: AgentActivityRuntime | null = null;
+  return {
+    get: () => runtime,
+    set: (nextRuntime) => {
+      runtime = nextRuntime;
+    }
+  };
+}
+
+const testAgentActivityRuntimeHolder = createTestAgentActivityRuntimeHolder();
 
 export interface AgentActivityRuntimeProviderProps extends PropsWithChildren {
   runtime?: AgentActivityRuntime | null;
@@ -439,7 +452,7 @@ export function useAgentActivitySnapshot(
 
 export function resetAgentActivityRuntimeForTests(): void {
   if (process.env.NODE_ENV === "test") {
-    testAgentActivityRuntime = null;
+    testAgentActivityRuntimeHolder.set(null);
   }
 }
 
@@ -447,7 +460,7 @@ export function setAgentActivityRuntimeForTests(
   runtime: AgentActivityRuntime | null
 ): void {
   if (process.env.NODE_ENV === "test") {
-    testAgentActivityRuntime = runtime;
+    testAgentActivityRuntimeHolder.set(runtime);
   }
 }
 
@@ -462,8 +475,9 @@ function getTestAgentActivityRuntime(): AgentActivityRuntime | null {
   if (explicitRuntime) {
     return explicitRuntime;
   }
-  if (testAgentActivityRuntime) {
-    return testAgentActivityRuntime;
+  const testRuntimeOverride = testAgentActivityRuntimeHolder.get();
+  if (testRuntimeOverride) {
+    return testRuntimeOverride;
   }
   const testRuntime = (
     window as unknown as Window & {

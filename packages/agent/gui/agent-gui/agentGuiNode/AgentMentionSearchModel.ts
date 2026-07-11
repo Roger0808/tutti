@@ -171,8 +171,12 @@ export function logAgentMentionLifecycleDiagnostic(
 ): void {
   try {
     console.info(AGENT_MENTION_LIFECYCLE_LOG_PREFIX, JSON.stringify(payload));
-  } catch {
+  } catch (logError) {
     // Diagnostic logging must never affect mention search state.
+    console.error(
+      "[agent-gui] logAgentMentionLifecycleDiagnostic console.info failed",
+      logError
+    );
   }
   try {
     getOptionalAgentHostApi()?.debug?.logRuntimeDiagnostics?.({
@@ -183,8 +187,12 @@ export function logAgentMentionLifecycleDiagnostic(
       message: "Agent GUI mention search lifecycle event.",
       details: payload.details
     });
-  } catch {
+  } catch (logError) {
     // Diagnostic logging must never affect mention search state.
+    console.error(
+      "[agent-gui] logAgentMentionLifecycleDiagnostic host diagnostics failed",
+      logError
+    );
   }
 }
 

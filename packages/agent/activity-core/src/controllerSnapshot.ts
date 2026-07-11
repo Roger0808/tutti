@@ -284,31 +284,46 @@ type AgentActivityStoreDiagnosticSink = (
   details: Record<string, unknown>
 ) => void;
 
-let agentActivityStoreDiagnosticSink: AgentActivityStoreDiagnosticSink | null =
-  null;
+function createAgentActivityStoreDiagnosticSinkHolder(): {
+  report: (event: string, details: Record<string, unknown>) => void;
+  set: (sink: AgentActivityStoreDiagnosticSink | null) => void;
+} {
+  let sink: AgentActivityStoreDiagnosticSink | null = null;
+  return {
+    report(event, details) {
+      try {
+        sink?.(event, details);
+      } catch (error) {
+        console.error(
+          "[agent-activity-store-diagnostic]",
+          JSON.stringify({
+            event: "diagnostic_sink_failed",
+            diagnosticEvent: event,
+            error: error instanceof Error ? error.message : String(error)
+          })
+        );
+      }
+    },
+    set(nextSink) {
+      sink = nextSink;
+    }
+  };
+}
+
+const agentActivityStoreDiagnosticSinkHolder =
+  createAgentActivityStoreDiagnosticSinkHolder();
 
 export function setAgentActivityStoreDiagnosticSink(
   sink: AgentActivityStoreDiagnosticSink | null
 ): void {
-  agentActivityStoreDiagnosticSink = sink;
+  agentActivityStoreDiagnosticSinkHolder.set(sink);
 }
 
 export function reportAgentActivityStoreDiagnostic(
   event: string,
   details: Record<string, unknown>
 ): void {
-  try {
-    agentActivityStoreDiagnosticSink?.(event, details);
-  } catch (error) {
-    console.error(
-      "[agent-activity-store-diagnostic]",
-      JSON.stringify({
-        event: "diagnostic_sink_failed",
-        diagnosticEvent: event,
-        error: error instanceof Error ? error.message : String(error)
-      })
-    );
-  }
+  agentActivityStoreDiagnosticSinkHolder.report(event, details);
 }
 
 function sessionVersionKey(session: AgentActivitySession): number | null {

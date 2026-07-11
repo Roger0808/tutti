@@ -48,6 +48,7 @@ const AgentGUIAccountRewardToast = memo(function AgentGUIAccountRewardToast({
     if (!toast.visible) {
       return;
     }
+    // timing: auto-dismiss the reward toast after its configured display duration
     const timeout = window.setTimeout(
       toast.onDismiss,
       toast.autoDismissMs ?? accountRewardToastAutoDismissMs

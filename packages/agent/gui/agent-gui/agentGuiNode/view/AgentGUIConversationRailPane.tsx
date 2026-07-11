@@ -53,6 +53,7 @@ function useDelayedBoolean(value: boolean, delayMs: number): boolean {
       setDelayedValue(false);
       return;
     }
+    // timing: caller-provided debounce before reflecting the value as true
     const timer = window.setTimeout(() => setDelayedValue(true), delayMs);
     return () => window.clearTimeout(timer);
   }, [delayMs, value]);
@@ -198,6 +199,7 @@ export const AgentGUIConversationRailPane = memo(
     });
 
     useEffect(() => {
+      // timing: refresh relative timestamps in the rail once a minute
       const timer = window.setInterval(() => {
         setCurrentTimeMs(Date.now());
       }, 60_000);

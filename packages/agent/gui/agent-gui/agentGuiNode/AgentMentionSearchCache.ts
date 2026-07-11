@@ -70,6 +70,7 @@ export function scheduleAgentMentionIdleTask(task: () => void): () => void {
     const handle = scope.requestIdleCallback(() => task(), { timeout: 500 });
     return () => scope.cancelIdleCallback?.(handle);
   }
+  // timing: requestIdleCallback fallback for runtimes that lack it; run on next tick
   const handle = setTimeout(task, 0);
   return () => clearTimeout(handle);
 }

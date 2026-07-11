@@ -14,6 +14,7 @@ import {
   resolveAgentGUIConversationProject,
   type AgentGUIConversationSummary
 } from "../model/agentGuiConversationModel";
+import { isAgentGUIProviderUnresolved } from "../../../shared/agentConversationTitleProjection.ts";
 import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 import { composerTargetDataFromProviderTarget } from "./agentGuiController.providerHelpers";
 import { stableConversationSummaryList } from "./agentGuiController.stableHelpers";
@@ -150,7 +151,7 @@ export function useAgentGUIConversationPresentation(
       input.activeConversationId,
       input.transientConversation
     );
-    if (!summary || summary.provider === "unknown") return;
+    if (!summary || isAgentGUIProviderUnresolved(summary.provider)) return;
     const summaryAgentTargetId = normalizeOptionalText(summary.agentTargetId);
     const providerMismatch =
       input.dataRef.current.provider !== summary.provider;

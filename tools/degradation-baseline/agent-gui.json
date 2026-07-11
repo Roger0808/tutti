@@ -16,11 +16,11 @@
     "goFileLengthExemptions": 2,
     "identityProviderBranches": 2,
     "memoCount": 441,
-    "moduleMutableGlobals": 9,
+    "moduleMutableGlobals": 6,
     "overlayStores": 4,
-    "providerBranches": 3,
+    "providerBranches": 1,
     "setTimeoutCount": 43,
-    "swallowedCatch": 15,
+    "swallowedCatch": 4,
     "useSyncExternalStoreCount": 4
   }
 }

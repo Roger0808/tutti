@@ -179,6 +179,7 @@ export function useDeferredMarkdownRenderReady(
         timeout: DEFERRED_LONG_MARKDOWN_IDLE_TIMEOUT_MS
       });
     } else {
+      // timing: requestIdleCallback fallback for runtimes that lack it
       timeoutId = setTimeout(
         markReady,
         DEFERRED_LONG_MARKDOWN_FALLBACK_DELAY_MS
