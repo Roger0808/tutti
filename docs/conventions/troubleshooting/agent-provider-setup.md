@@ -427,6 +427,38 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   [codex.go](../../../packages/agent/runtimeprep/codex.go)
   [preparer_test.go](../../../packages/agent/runtimeprep/preparer_test.go)
 
+### Codex model picker collapses to the configured model
+
+- Symptom:
+  With the default OpenAI provider, the composer model picker contains only the
+  top-level `model` from `~/.codex/config.toml`, while a directly initialized
+  `codex app-server` connection returns multiple models from `model/list`.
+- Quick checks:
+  Confirm `model_provider` is empty or `openai`; a non-default provider is
+  intentionally limited to its configured model. Search daemon logs for
+  `composer model catalog lookup failed`, `Not initialized`, or a Codex
+  `model/list` timeout, then compare the request sequence with the app-server
+  initialization contract.
+- Root cause:
+  Model discovery sent `initialize` and `model/list` back to back without
+  reading the initialize response or sending the `initialized` notification.
+  An app-server that enforces the connection handshake can reject or withhold
+  `model/list`. The failed catalog then falls back to the configured model,
+  making the protocol failure look like a valid one-option picker.
+- Fix:
+  Keep one stdout scanner for the exchange: send `initialize`, read and
+  validate the matching response, send `initialized`, and only then send
+  `model/list`. Preserve the configured-model fallback for genuine discovery
+  failures.
+- Validation:
+  Use a fake app-server that rejects `model/list` until it has returned the
+  initialize response and received `initialized`. Run
+  `cd services/tuttid && go test ./service/agent -run TestCodexCLIModelLister`
+  plus `pnpm lint:go`.
+- References:
+  [codex_model_catalog.go](../../../services/tuttid/service/agent/codex_model_catalog.go)
+  [codex_model_catalog_test.go](../../../services/tuttid/service/agent/codex_model_catalog_test.go)
+
 ### Codex custom model_provider mixes models, duplicates replies, or shows metadata warnings
 
 - Symptom:
