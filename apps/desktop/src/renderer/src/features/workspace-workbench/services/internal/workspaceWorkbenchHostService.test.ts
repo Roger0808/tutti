@@ -18,6 +18,18 @@ const workspaceWorkbenchHostServiceSource = readFileSync(
   new URL("./workspaceWorkbenchHostService.ts", import.meta.url),
   "utf8"
 );
+const workspaceWorkbenchRegistrationSource = readFileSync(
+  new URL("../registerWorkspaceWorkbenchServices.ts", import.meta.url),
+  "utf8"
+);
+const workspaceWorkbenchShellHookSource = readFileSync(
+  new URL("../../ui/useWorkspaceWorkbenchShellRuntime.tsx", import.meta.url),
+  "utf8"
+);
+const workspaceWorkbenchSource = readFileSync(
+  new URL("../../ui/WorkspaceWorkbench.tsx", import.meta.url),
+  "utf8"
+);
 
 test("workspace workbench host keeps deterministic composition and close preparation wiring", () => {
   assert.match(
@@ -38,18 +50,55 @@ test("workspace workbench host keeps deterministic composition and close prepara
   );
 });
 
-test("workspace workbench host caches stable host input and isolates dynamic dock updates", () => {
+test("workspace workbench host delegates workspace lifecycle to the DI coordinator", () => {
   assert.match(
     workspaceWorkbenchHostServiceSource,
-    /private readonly cachedHostInputs = new Map<\s+string,\s+CachedWorkspaceWorkbenchHostInput\s+>\(\)/
+    /this\.hostSessionConfiguration = createWorkbenchHostSessionConfiguration\(\{[\s\S]*?new WorkbenchHostSession<[\s\S]*?>\(\{[\s\S]*?partition,/
   );
   assert.match(
     workspaceWorkbenchHostServiceSource,
-    /const cached = this\.cachedHostInputs\.get\(input\.workspaceId\)/
+    /openHostSession\([\s\S]*?configuration: this\.hostSessionConfiguration,[\s\S]*?return createWorkspaceWorkbenchHostSessionBinding\(\{[\s\S]*?bindingId: this\.hostSessionBindingSequence,[\s\S]*?lease,[\s\S]*?workspaceId/
   );
   assert.match(
     workspaceWorkbenchHostServiceSource,
-    /cached\.renderFilesNodeBodyRef\.current = input\.renderFilesNodeBody;\s+return this\.createHostInputWithDynamicDockEntries\(/
+    /\.logRendererDiagnostic\([\s\S]*?\)\s+\.catch\(\(\) => undefined\)/
+  );
+  assert.doesNotMatch(workspaceWorkbenchHostServiceSource, /cachedHostInputs/);
+  assert.doesNotMatch(workspaceWorkbenchHostServiceSource, /hostSessionLeases/);
+  assert.match(
+    workspaceWorkbenchRegistrationSource,
+    /IWorkbenchHostCoordinator,\s+new SyncDescriptor\(WorkbenchHostCoordinator\)/
+  );
+  assert.match(
+    workspaceWorkbenchShellHookSource,
+    /createHostInput: hostSession\.createHostInput/
+  );
+  assert.match(
+    workspaceWorkbenchShellHookSource,
+    /hostSession\.attachSurface\(host\)/
+  );
+  assert.match(
+    workspaceWorkbenchSource,
+    /useLayoutEffect\(\(\) => \{\s+const binding = workbenchHostService\.openHostSession\(workspaceId\);[\s\S]*?binding\.release\(\)/
+  );
+  assert.match(workspaceWorkbenchSource, /key=\{hostSession\.bindingId\}/);
+});
+
+test("workspace workbench host releases owned wallpaper URLs on disposal", () => {
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /dispose\(\): void \{\s+this\.wallpaperListeners\.clear\(\);\s+this\.clearCustomWallpaperUrls\(\);\s+\}/
+  );
+});
+
+test("workspace workbench host session resolution keeps stable refs and isolates dynamic dock updates", () => {
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /const cached = current\?\.state/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /cached\.renderFilesNodeBodyRef\.current = input\.renderFilesNodeBody;[\s\S]*?hostInput: this\.createHostInputWithDynamicDockEntries\(/
   );
   assert.match(
     workspaceWorkbenchHostServiceSource,
