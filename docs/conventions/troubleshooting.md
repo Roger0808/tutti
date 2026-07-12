@@ -408,6 +408,40 @@ Use this shape for new entries:
   [composer_live_model_discovery.go](../../services/tuttid/service/agent/composer_live_model_discovery.go)
   [composer_live_model_cache.go](../../services/tuttid/service/agent/composer_live_model_cache.go)
 
+### Agent slash palette only shows Browser
+
+- Symptom:
+  Typing `/` in a Claude Code, Codex, or OpenCode composer shows only the
+  Browser capability. Provider commands such as `compact`, `status`, `goal`,
+  `review`, or `plan` are missing.
+- Quick checks:
+  Call the provider composer-options endpoint and inspect
+  `slashCommandPolicy`. If Codex or Claude returns a policy but the UI still
+  shows only Browser, trace the new-session creation guard and the
+  target-scoped composer-options cache. If one provider returns no policy,
+  inspect its provider registry descriptor.
+- Root cause:
+  Composer-options loading can be intentionally skipped while a new session is
+  being created. A mount-time creation ref that never follows current engine
+  state leaves loading permanently disabled after creation settles. Browser
+  still appears because it is independently projected from session
+  capabilities. A provider descriptor missing its slash policy produces the
+  same symptom for that provider even when loading succeeds.
+- Fix:
+  Keep the creation guard synchronized with current engine state and reload
+  composer options on the creating-to-settled transition. Keep fallback
+  commands and local effects in the provider registry descriptor; do not add
+  provider-name branches in Agent GUI.
+- Validation:
+  Cover creation settling followed by a composer-options request, provider
+  descriptor policy projection, and slash palette composition alongside the
+  Browser capability. Run Agent GUI, provider registry, and agent service
+  tests.
+- References:
+  [agent-activity-packages.md](../architecture/agent-activity-packages.md)
+  [useAgentGUIComposerOptionsSync.ts](../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIComposerOptionsSync.ts)
+  [opencode.go](../../packages/agent/daemon/providerregistry/opencode.go)
+
 ### Claude SDK context window shows 200k for 1M models
 
 - Symptom:

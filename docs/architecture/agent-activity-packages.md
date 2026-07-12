@@ -327,6 +327,14 @@ effective settings are request-dependent, composer-options cache freshness and
 in-flight reuse include both normalized `cwd` and normalized requested settings;
 target/provider identity alone is not a complete cache key.
 
+Composer-options loading may be suppressed while a new-session activation is
+pending, but that guard follows the current engine state rather than a
+mount-time snapshot. The transition from creating to settled must trigger a
+fresh target-scoped load so model, reasoning, skill, and slash-command metadata
+cannot remain absent for the lifetime of the node. Slash command fallback and
+effect policy remain provider-descriptor-owned; every supported provider that
+exposes local fallback commands declares them in its registry descriptor.
+
 `AgentActivityCreateSessionInput.providerTargetRef` is an optional opaque
 host-owned legacy reference for selecting which target under the real provider
 should launch the session. It is not authority, a credential, or an invocation
