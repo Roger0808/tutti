@@ -4,6 +4,41 @@
 
 Turn state, loading, cancel, restore, rail projection, event updates, imports, and performance.
 
+### AgentGUI rejects a pasted image as unsupported before send
+
+- Symptom:
+  Pasting or dropping a supported PNG, JPEG, or WebP into a provider that
+  advertises `imageInput` fails with
+  `agent prompt image input is unsupported`. Desktop diagnostics may show
+  `agent.gui.composer.image_upload.resolved` with `hasPath = true`, followed by
+  a daemon failure at `service.send.prompt_validated`; no provider turn starts.
+- Quick checks:
+  Confirm the submitted image block is path-backed after the desktop host
+  archives the draft. If the block has `path` but no `data`, `url`, or
+  `attachmentId`, verify the controller is using preflight validation rather
+  than the strict runtime validator before `PersistRequestContent` runs.
+- Root cause:
+  A managed desktop path is an ingress staging source. The daemon must accept
+  it during capability preflight, then copy and hydrate it before runtime
+  execution. Applying the strict provider-content validator during preflight
+  rejects the path before the attachment store can canonicalize it.
+- Fix:
+  Keep separate preflight and runtime image validators. Preflight accepts and
+  preserves the managed path for adapter capability checks. Runtime execution
+  remains strict and receives only the hydrated image representation. Do not
+  retain base64 in the renderer or move attachment persistence before provider
+  capability checks.
+- Validation:
+  Cover the full path-backed chain: controller preflight accepts the path,
+  service execution receives hydrated data without a path, direct runtime
+  execution still rejects path-only content, and unsupported providers create
+  no attachment files. Run `go test ./packages/agent/daemon/runtime
+./services/tuttid/service/agent`.
+- References:
+  [prompt_content.go](../../../packages/agent/daemon/runtime/prompt_content.go)
+  [controller.go](../../../packages/agent/daemon/runtime/controller.go)
+  [service_send_input.go](../../../services/tuttid/service/agent/service_send_input.go)
+
 ### AgentGUI Stop reports no active turn after cancel succeeds
 
 - Symptom:
@@ -310,13 +345,15 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - Symptom:
   A conversation started with the "No project" selection appears in the Agent
   GUI rail under a parent user-project group such as the user's home directory.
-  Imported Codex or Claude Code conversations with `cwd` equal to `$HOME` can
-  show the same symptom even though the user never selected a project.
+  Imported Codex or Claude Code conversations with `cwd` equal to `$HOME`, and
+  claude.ai data-export conversations that have no cwd at all, can show the
+  same symptom even though the user never selected a project.
 - Quick checks:
   Inspect the session `cwd` from the activity snapshot. Generated no-project
   sessions should resolve as no-project before `cwd` is matched against parent
   user-project paths. For imported sessions, inspect `runtimeContext` for the
-  daemon-owned `externalImportNoProject` marker. Check both the in-memory
+  daemon-owned `externalImportNoProject` marker. Claude data-export sessions
+  should also carry `externalImportResumeSupported: false`. Check both the in-memory
   `rememberNoProjectPath` path and the restart fallback that recognizes
   `Documents/tutti/session-<uuid>`. Codex external history can also record its
   own scratch cwd under `Documents/Codex/<yyyy-mm-dd>/<conversation>`.
@@ -508,6 +545,48 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [workspaceAgentActivityService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.ts)
   [useAgentGUINodeController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
+
+### Claude export leaks hidden data, flattens branches, or resumes as Claude Code
+
+- Symptom:
+  Imported claude.ai history shows internal thinking/tool payload text, mixes
+  mutually exclusive edited/retried messages into one timeline, or the composer
+  tries to resume an imported web conversation as if its UUID were a local
+  Claude Code session id.
+- Quick checks:
+  Inspect the source message shape without logging its content. Visible text
+  must come from ordered `content[type=text]` blocks; legacy human messages
+  with no content blocks may fall back to top-level `message.text`, but
+  assistant messages never may (that field mixes in hidden thinking and tool
+  material). Inspect the persisted runtime context for
+  `externalImportResumeSupported: false`, and confirm the source path is not
+  forwarded as an external Claude Code rollout path. For a branched fixture,
+  confirm every imported message belongs to the selected latest leaf's ancestor
+  path and carries the same `sourceBranchLeafId`.
+- Root cause:
+  Claude data exports use top-level `message.text` as a convenience aggregate
+  that can include hidden thinking and tool material. Their conversation UUIDs
+  belong to claude.ai, not the local Claude Code runtime, and referenced files
+  in `conversations.json` do not imply that file payloads exist in the ZIP.
+  `chat_messages` is a parent graph rather than a guaranteed linear list, so
+  timestamp-sorting every node can combine incompatible sibling branches.
+- Fix:
+  Parse only the exact root `conversations.json` entry without extracting the
+  archive. Project visible text from text blocks, keep file-only messages as
+  unavailable references, select one deterministic latest root-to-leaf branch,
+  seed persisted message ids from source UUIDs, and include the selected sibling
+  choices in imported session identity so a future retry-branch change cannot
+  append into the old branch. Place sessions in the no-project Chats section and
+  mark them non-resumable while preserving the normal continue-in-new-chat
+  recovery action.
+- Validation:
+  Run `cd services/tuttid && go test ./service/agent ./api -run
+'ExternalImport|ClaudeExport|ExternalRollout'`, then run
+  `pnpm --filter @tutti-os/desktop test` and `pnpm check:i18n`.
+- References:
+  [external_import_claude_export.go](../../../services/tuttid/service/agent/external_import_claude_export.go)
+  [ExternalAgentSessionImportWizard.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/ExternalAgentSessionImportWizard.tsx)
+  [service_session.go](../../../services/tuttid/service/agent/service_session.go)
 
 ### Imported sessions trigger fresh-completion indicators
 
