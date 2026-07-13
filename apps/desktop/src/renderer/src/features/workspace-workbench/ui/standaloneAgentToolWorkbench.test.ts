@@ -145,13 +145,9 @@ test("standalone Agent messages reuse the OS running animation and badge only ru
     standaloneAgentToolSidebarToolbarSource,
     /reminderCount=\{reminders\.messages\}/
   );
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /useEffect\(\(\) => \{\s*void activityService\.load\(workspaceId\);\s*\}, \[activityService, workspaceId\]\);/
-  );
   assert.doesNotMatch(
     standaloneAgentToolSidebarSource,
-    /if \(open\) \{\s*void activityService\.load\(workspaceId\)/
+    /activityService\.load\(workspaceId\)/
   );
 });
 
