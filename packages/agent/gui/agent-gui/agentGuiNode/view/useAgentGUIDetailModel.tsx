@@ -185,13 +185,15 @@ export function useAgentGUIDetailModel(input: Input) {
     !emptyProviderReadinessGate &&
     !isAgentProviderReady &&
     !isCollaboratorConversation;
+  const hasNonRetryableRecoveryFailure =
+    (sessionChrome.recovery?.kind === "failed" &&
+      sessionChrome.recovery.canRetry === false) ||
+    sessionChrome.recovery?.kind === "resume-unavailable";
   const submitDisabled =
+    hasNonRetryableRecoveryFailure ||
     isCollaboratorConversation ||
     !isAgentProviderReady ||
     (!viewModel.composer.canSubmit && !canQueueWhileBusy);
-  const hasNonRetryableRecoveryFailure =
-    sessionChrome.recovery?.kind === "failed" &&
-    sessionChrome.recovery.canRetry === false;
   const composerDisabled =
     hasNonRetryableRecoveryFailure ||
     isCollaboratorConversation ||

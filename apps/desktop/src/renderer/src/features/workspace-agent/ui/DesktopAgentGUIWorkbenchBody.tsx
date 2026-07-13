@@ -93,6 +93,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   resolveDroppedFileReferences,
   onRequestGitBranches,
   referenceSourceAggregator,
+  renderSidebarFooter,
   resolveWorkspaceReferenceEntryIconUrl,
   resolveMentionReferenceTarget,
   resolveWorkspaceReferenceInitialTarget,
@@ -784,7 +785,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
               ? undefined
               : handleOpenConversationWindow
         }}
-        renderSlots={{}}
+        renderSlots={{
+          sidebarFooter: previewMode ? undefined : renderSidebarFooter
+        }}
       />
     </>
   );

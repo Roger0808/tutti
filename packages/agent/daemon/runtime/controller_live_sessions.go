@@ -298,6 +298,9 @@ func (c *Controller) ValidatePromptContent(_ context.Context, input ExecInput) e
 	if err != nil {
 		return err
 	}
+	if err := validatePromptContentImagesForPreflight(input.Content); err != nil {
+		return err
+	}
 	content := normalizeRuntimePromptContentForValidation(input.Content)
 	if len(content) == 0 {
 		return fmt.Errorf("prompt is required")

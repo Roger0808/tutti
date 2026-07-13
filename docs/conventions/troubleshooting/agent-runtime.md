@@ -30,6 +30,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Claude SDK rejects live bypassPermissions mode](./agent-provider-setup.md#claude-sdk-rejects-live-bypasspermissions-mode)
 - [Claude Code logs out after sending a message (invalid_grant, credentials wiped)](./agent-provider-setup.md#claude-code-logs-out-after-sending-a-message-invalidgrant-credentials-wiped)
 - [Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used](./agent-provider-setup.md#claude-code-sessions-fail-with-effectivesource-none-when-cc-switch-or-similar-proxy-tools-are-used)
+- [Tutti Agent retries a 402 and shows generic provider setup](./agent-provider-setup.md#tutti-agent-retries-a-402-and-shows-generic-provider-setup)
 
 ## [Agent Sessions And Lifecycle](./agent-session-lifecycle.md)
 
@@ -37,6 +38,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 
 - [AgentGUI Stop reports no active turn after cancel succeeds](./agent-session-lifecycle.md#agentgui-stop-reports-no-active-turn-after-cancel-succeeds)
 - [AgentGUI send blocked by active_turn after settled snapshot](./agent-session-lifecycle.md#agentgui-send-blocked-by-activeturn-after-settled-snapshot)
+- [AgentGUI rejects a pasted image as unsupported before send](./agent-session-lifecycle.md#agentgui-rejects-a-pasted-image-as-unsupported-before-send)
 - [AgentGUI loading disappears before active turn settles](./agent-session-lifecycle.md#agentgui-loading-disappears-before-active-turn-settles)
 - [Agent session stays loading after a completed turn](./agent-session-lifecycle.md#agent-session-stays-loading-after-a-completed-turn)
 - [AgentGUI model switch changes defaults but not the active session](./agent-session-lifecycle.md#agentgui-model-switch-changes-defaults-but-not-the-active-session)

@@ -3,7 +3,7 @@ import * as THREE from "three";
 const TEXTURE_SIZE = 256;
 const RECORD_RADIUS_RATIO = 0.47;
 const RECORD_LABEL_RADIUS_RATIO = 0.41;
-const RECORD_SPINDLE_RADIUS_RATIO = 0.035;
+const UNSELECTED_COVER_SCALE = 0.86;
 
 // Composites each host-provided agent icon into the paper label of a shared
 // vinyl-record treatment. The monochrome groove/rim palette is intentionally
@@ -19,12 +19,13 @@ export function vinylRecordTexture(
   if (context) {
     const center = TEXTURE_SIZE / 2;
     const recordRadius = TEXTURE_SIZE * RECORD_RADIUS_RATIO;
+    const recordMaskRadius = recordRadius - 2;
     const labelRadius = recordRadius * RECORD_LABEL_RADIUS_RATIO;
 
     context.clearRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
     context.save();
     context.beginPath();
-    context.arc(center, center, recordRadius, 0, Math.PI * 2);
+    context.arc(center, center, recordMaskRadius, 0, Math.PI * 2);
     context.clip();
 
     const recordFill = context.createRadialGradient(
@@ -82,6 +83,15 @@ export function vinylRecordTexture(
     context.restore();
     context.restore();
 
+    context.beginPath();
+    context.arc(center, center, recordMaskRadius - 0.5, 0, Math.PI * 2);
+    context.strokeStyle =
+      getComputedStyle(document.body)
+        .getPropertyValue("--background-session-flow")
+        .trim() || "transparent";
+    context.lineWidth = 2;
+    context.stroke();
+
     context.save();
     context.beginPath();
     context.arc(center, center, labelRadius, 0, Math.PI * 2);
@@ -106,30 +116,44 @@ export function vinylRecordTexture(
     context.strokeStyle = "rgb(255 255 255 / 0.2)";
     context.lineWidth = 1;
     context.stroke();
-
-    context.beginPath();
-    context.arc(
-      center,
-      center,
-      recordRadius * RECORD_SPINDLE_RADIUS_RATIO,
-      0,
-      Math.PI * 2
-    );
-    context.fillStyle = "rgb(5 5 6)";
-    context.fill();
-    context.strokeStyle = "rgb(255 255 255 / 0.18)";
-    context.lineWidth = 0.75;
-    context.stroke();
-
-    context.beginPath();
-    context.arc(center, center, recordRadius - 0.75, 0, Math.PI * 2);
-    context.strokeStyle = "rgb(255 255 255 / 0.32)";
-    context.lineWidth = 1.25;
-    context.stroke();
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
+  onReadyRender();
+  return texture;
+}
+
+export function coverImageTexture(
+  image: HTMLImageElement,
+  onReadyRender: () => void
+): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = TEXTURE_SIZE;
+  canvas.height = TEXTURE_SIZE;
+  const context = canvas.getContext("2d");
+  if (context) {
+    const radius = 12;
+    const scale = Math.max(
+      TEXTURE_SIZE / image.width,
+      TEXTURE_SIZE / image.height
+    );
+    const width = image.width * scale * UNSELECTED_COVER_SCALE;
+    const height = image.height * scale * UNSELECTED_COVER_SCALE;
+    const x = (TEXTURE_SIZE - width) / 2;
+    const y = (TEXTURE_SIZE - height) / 2;
+    context.clearRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
+    context.save();
+    context.beginPath();
+    context.roundRect(x, y, width, height, radius);
+    context.clip();
+    context.drawImage(image, x, y, width, height);
+    context.restore();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  texture.needsUpdate = true;
   onReadyRender();
   return texture;
 }

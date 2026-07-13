@@ -75,6 +75,7 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
     AgentGUIProps["workspace"]["onRequestGitBranches"]
   >;
   referenceSourceAggregator?: AgentGUIProps["workspace"]["referenceSourceAggregator"];
+  renderSidebarFooter?: AgentGUIProps["renderSlots"]["sidebarFooter"];
   resolveWorkspaceReferenceEntryIconUrl?: AgentGUIProps["workspace"]["resolveReferenceEntryIconUrl"];
   resolveMentionReferenceTarget?: AgentGUIProps["workspace"]["resolveMentionReferenceTarget"];
   resolveWorkspaceReferenceInitialTarget?: AgentGUIProps["workspace"]["resolveReferenceInitialTarget"];
@@ -155,6 +156,7 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
       next.resolveDroppedFileReferences &&
     previous.onRequestGitBranches === next.onRequestGitBranches &&
     previous.referenceSourceAggregator === next.referenceSourceAggregator &&
+    previous.renderSidebarFooter === next.renderSidebarFooter &&
     previous.resolveWorkspaceReferenceEntryIconUrl ===
       next.resolveWorkspaceReferenceEntryIconUrl &&
     previous.resolveMentionReferenceTarget ===

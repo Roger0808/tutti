@@ -175,11 +175,13 @@ export function AgentMessageBlock({
             <AgentVisibleErrorMessage
               message={message}
               onAuthLogin={onAuthLogin}
+              onExternalLink={handleLinkClick}
             />
           ) : recoveredError ? (
             <AgentVisibleErrorMessage
               message={recoveredError}
               onAuthLogin={onAuthLogin}
+              onExternalLink={handleLinkClick}
             />
           ) : message.systemNotice ? (
             <AgentSystemNoticeMessage message={message} />
@@ -627,10 +629,12 @@ function recoverVisibleErrorFromFailedMessage(
 }
 
 function AgentVisibleErrorMessage({
-  message
+  message,
+  onExternalLink
 }: {
   message: AgentMessageContentVM;
   onAuthLogin?: (provider?: string | null) => void;
+  onExternalLink?: (href: string) => void;
 }): JSX.Element {
   "use memo";
   const error = message.visibleError;
@@ -650,6 +654,7 @@ function AgentVisibleErrorMessage({
     : visibleErrorTitle(message);
   const focus = presentation?.focus ?? null;
   const actionKey = presentation?.actionKey ?? null;
+  const externalUrl = presentation?.externalUrl ?? null;
   const hint = visibleErrorHint(message);
   return (
     <section
@@ -674,18 +679,24 @@ function AgentVisibleErrorMessage({
             />
           ) : null}
         </div>
-        {focus && actionKey ? (
+        {actionKey && (focus || (externalUrl && onExternalLink)) ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="mt-0.5 shrink-0"
-            onClick={() =>
-              openAgentEnvPanel({
-                provider: error?.provider ?? null,
-                focus
-              })
-            }
+            onClick={() => {
+              if (externalUrl) {
+                onExternalLink?.(externalUrl);
+                return;
+              }
+              if (focus) {
+                openAgentEnvPanel({
+                  provider: error?.provider ?? null,
+                  focus
+                });
+              }
+            }}
           >
             {translate(actionKey)}
           </Button>

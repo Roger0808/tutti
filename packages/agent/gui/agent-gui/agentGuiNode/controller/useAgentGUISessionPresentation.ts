@@ -181,11 +181,15 @@ export function useAgentGUISessionPresentation(
           /auth|sign in|log in|login|unauthorized|authenticated/i.test(
             normalizedError
           )));
-    const recoveryMessage =
-      normalizedError ||
-      (activeConversationResumeUnavailable
-        ? translate("messages.agentResumeSessionNotLocal")
-        : "");
+    const isResumeNotLocalRecovery =
+      providerSessionMissing || activeConversationResumeUnavailable;
+    const recoveryMessage = isResumeNotLocalRecovery
+      ? translate(
+          input.activeConversation?.isImported === true
+            ? "messages.agentImportedSessionResumeUnavailable"
+            : "messages.agentResumeSessionNotLocal"
+        )
+      : normalizedError;
     return {
       auth: providerSessionMissing
         ? null
@@ -204,24 +208,23 @@ export function useAgentGUISessionPresentation(
               message: translate("messages.agentSessionReconnecting")
             }
           : !isAuthError && recoveryMessage
-            ? {
-                kind: "failed",
-                message: recoveryMessage,
-                canRetry:
-                  !providerSessionMissing &&
-                  !activeConversationResumeUnavailable,
-                ...(providerSessionMissing ||
-                activeConversationResumeUnavailable
-                  ? {
-                      followupAction: "continue-in-new-conversation" as const
-                    }
-                  : {})
-              }
+            ? isResumeNotLocalRecovery
+              ? {
+                  kind: "resume-unavailable",
+                  message: recoveryMessage,
+                  followupAction: "continue-in-new-conversation" as const
+                }
+              : {
+                  kind: "failed",
+                  message: recoveryMessage,
+                  canRetry: !providerSessionMissing
+                }
             : null,
       rawState: input.activeEngineSession
     };
   }, [
     activeConversationResumeUnavailable,
+    input.activeConversation,
     input.activationError,
     input.activationErrorCode,
     input.activeConversationId,

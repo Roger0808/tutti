@@ -408,6 +408,100 @@ test("WorkspaceAgentActivityService model catalog invalidation drops composer ca
   assert.equal(composerOptionCalls, 2);
 });
 
+test("WorkspaceAgentActivityService starts session-event streams and preserves uncached outcome patches", async () => {
+  const subscriptions: Array<{
+    scope: unknown;
+    topic: string;
+  }> = [];
+  const listenersByTopic = new Map<string, (event: unknown) => void>();
+  let connectCalls = 0;
+  const service = new WorkspaceAgentActivityService({
+    eventStreamClient: {
+      connect: async () => {
+        connectCalls += 1;
+      },
+      dispose: () => {},
+      publishIntent: async () => {},
+      subscribe: (
+        topic: string,
+        listener: (event: unknown) => void,
+        options?: unknown
+      ) => {
+        listenersByTopic.set(topic, listener);
+        subscriptions.push({
+          scope:
+            options && typeof options === "object" && "scope" in options
+              ? options.scope
+              : null,
+          topic
+        });
+        return () => {};
+      },
+      subscribeConnectionState: () => () => {}
+    } as never,
+    tuttidClient: {
+      getWorkspaceAgentSession: async () =>
+        workspaceAgentSession({
+          currentPhase: "idle",
+          status: "completed",
+          turnLifecycle: {
+            activeTurnId: null,
+            outcome: "completed",
+            phase: "settled"
+          }
+        })
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  const receivedEvent = new Promise<unknown>((resolve) => {
+    service.onSessionEvent(" ws-1 ", resolve);
+  });
+
+  assert.deepEqual(subscriptions, [
+    {
+      scope: { workspaceId: "ws-1" },
+      topic: "agent.activity.updated"
+    },
+    {
+      scope: null,
+      topic: "agent.model.catalog.invalidated"
+    }
+  ]);
+  assert.equal(connectCalls, 1);
+  const activityUpdatedListener = listenersByTopic.get(
+    "agent.activity.updated"
+  );
+  assert.ok(activityUpdatedListener);
+
+  const sourceEvent = {
+    data: {
+      agentSessionId: "session-1",
+      provider: "codex",
+      title: "Finish the task",
+      turn: {
+        outcome: "completed",
+        phase: "settled",
+        turnId: "turn-1"
+      },
+      workspaceId: "ws-1"
+    },
+    eventType: "state_patch"
+  };
+  activityUpdatedListener({
+    payload: {
+      agentSessionId: "session-1",
+      data: sourceEvent.data,
+      eventType: sourceEvent.eventType,
+      workspaceId: "ws-1"
+    }
+  });
+
+  assert.deepEqual(await receivedEvent, sourceEvent);
+});
+
 test("WorkspaceAgentActivityService.importExternalSessions refreshes sessions and projects", async () => {
   const importCalls: unknown[] = [];
   let listCalls = 0;
@@ -445,15 +539,106 @@ test("WorkspaceAgentActivityService.importExternalSessions refreshes sessions an
   });
 
   const result = await service.importExternalSessions("ws-1", {
+    archivePath: "/tmp/claude-export.zip",
     projects: [{ path: "/repo" }]
   });
 
   assert.deepEqual(importCalls, [
-    { workspaceId: "ws-1", request: { projects: [{ path: "/repo" }] } }
+    {
+      workspaceId: "ws-1",
+      request: {
+        archivePath: "/tmp/claude-export.zip",
+        projects: [{ path: "/repo" }]
+      }
+    }
   ]);
   assert.equal(result.importedMessages, 2);
   assert.equal(listCalls, 1);
   assert.equal(projectRefreshCalls, 1);
+});
+
+test("WorkspaceAgentActivityService selects, scans, and imports the same Claude export archive", async () => {
+  const scanCalls: unknown[] = [];
+  const importCalls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    hostFilesApi: {
+      async createUserDocumentsProjectDirectory() {
+        return { path: "/tmp/project" };
+      },
+      async selectAppArchive() {
+        return "/tmp/claude-export.zip";
+      }
+    } as never,
+    tuttidClient: {
+      scanWorkspaceExternalAgentSessionImports: async (
+        workspaceId: string,
+        request: Parameters<
+          TuttidClient["scanWorkspaceExternalAgentSessionImports"]
+        >[1]
+      ) => {
+        scanCalls.push({ workspaceId, request });
+        return {
+          errors: [],
+          projects: [],
+          providers: [],
+          scannedMessages: 0,
+          scannedSessions: 0,
+          sessions: [],
+          skippedSessions: 0
+        };
+      },
+      importWorkspaceExternalAgentSessions: async (
+        workspaceId: string,
+        request: Parameters<
+          TuttidClient["importWorkspaceExternalAgentSessions"]
+        >[1]
+      ) => {
+        importCalls.push({ workspaceId, request });
+        return {
+          errors: [],
+          importedMessages: 0,
+          importedProjects: 0,
+          importedSessions: 0,
+          skippedSessions: 0
+        };
+      },
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  const archivePath = await service.selectExternalSessionImportArchive();
+  assert.equal(archivePath, "/tmp/claude-export.zip");
+  assert.ok(archivePath);
+  await service.scanExternalSessionImports("ws-1", {
+    archivePath,
+    days: -1
+  });
+  await service.importExternalSessions("ws-1", {
+    archivePath,
+    projects: [{ path: "/Users/demo", sessionIds: ["session-1"] }]
+  });
+  assert.deepEqual(scanCalls, [
+    {
+      workspaceId: "ws-1",
+      request: { archivePath: "/tmp/claude-export.zip", days: -1 }
+    }
+  ]);
+  assert.deepEqual(importCalls, [
+    {
+      workspaceId: "ws-1",
+      request: {
+        archivePath: "/tmp/claude-export.zip",
+        projects: [{ path: "/Users/demo", sessionIds: ["session-1"] }]
+      }
+    }
+  ]);
 });
 
 test("WorkspaceAgentActivityService fetches combined reconcile state after messages", async () => {

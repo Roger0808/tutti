@@ -134,7 +134,8 @@ func createSessionInputFromPersisted(session PersistedSession) CreateSessionInpu
 		input.Speed = &normalizedSpeed
 	}
 	input.ConversationDetailMode = preferencesbiz.NormalizeDesktopAgentConversationDetailMode(settings.ConversationDetailMode)
-	if sourcePath, ok := session.InternalRuntimeContext["externalSourcePath"].(string); ok {
+	if sourcePath, ok := session.InternalRuntimeContext["externalSourcePath"].(string); ok &&
+		externalImportResumeSupported(session.InternalRuntimeContext) {
 		input.ExternalRolloutSourcePath = strings.TrimSpace(sourcePath)
 	}
 	return input

@@ -379,6 +379,8 @@ jobs:
     needs: [resolve, build-macos]
     if: ${{ github.event_name == 'push' || needs.resolve.outputs.release_dry_run != 'true' }}
     runs-on: ubuntu-latest
+    outputs:
+      release_url: ${{ steps.stage-release.outputs.url }}
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       TUTTI_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
@@ -449,7 +451,8 @@ jobs:
             echo "TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL=https://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}.s3-accelerate.amazonaws.com/${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}" >> "$GITHUB_ENV"
           fi
 
-      - name: Stage GitHub release assets
+      - id: stage-release
+        name: Stage GitHub release assets
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -605,7 +608,8 @@ jobs:
             updated-release-body.md
           gh release edit "${TUTTI_DESKTOP_RELEASE_TAG}" --notes-file updated-release-body.md
 
-      - name: Publish GitHub release
+      - name: Publish stable GitHub release
+        if: ${{ needs.resolve.outputs.release_prerelease != 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TUTTI_DESKTOP_RELEASE_MAKE_LATEST: ${{ needs.resolve.outputs.release_make_latest }}
@@ -615,6 +619,22 @@ jobs:
             args+=(--latest)
           fi
           "${args[@]}"
+
+      - name: Archive public GitHub prereleases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate \
+            --jq '.[] | select(.prerelease and (.draft | not)) | .id' |
+            while IFS= read -r release_id; do
+              if [[ -z "${release_id}" ]]; then
+                continue
+              fi
+
+              echo "Archiving published prerelease ${release_id} as a draft."
+              gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+                -F draft=true >/dev/null
+            done
 
       - name: Refresh stable release alias
         env:
@@ -701,7 +721,7 @@ jobs:
       RELEASE_BRANCH: ${{ github.ref_type == 'branch' && github.ref_name || '' }}
       RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
       RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
-      RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.resolve.outputs.release_tag }}
+      RELEASE_URL: ${{ needs.publish.outputs.release_url }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
     steps:

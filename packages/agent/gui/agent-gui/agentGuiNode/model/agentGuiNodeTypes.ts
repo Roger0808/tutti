@@ -33,12 +33,20 @@ export interface AgentGUISessionChrome {
     message: string;
   } | null;
   approval: AgentGUIApprovalRequest | null;
-  recovery: {
-    kind: "activating" | "failed" | "warning";
-    message: string;
-    canRetry?: boolean;
-    followupAction?: "continue-in-new-conversation";
-  } | null;
+  recovery:
+    | {
+        kind: "activating" | "failed" | "warning";
+        message: string;
+        canRetry?: boolean;
+        followupAction?: never;
+      }
+    | {
+        kind: "resume-unavailable";
+        message: string;
+        followupAction: "continue-in-new-conversation";
+        canRetry?: never;
+      }
+    | null;
   rawState: CanonicalAgentSession | null;
 }
 

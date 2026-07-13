@@ -851,7 +851,7 @@ func TestOpenCodeAdapterAllowsImagePromptWithoutInitializeCapability(t *testing.
 	}, {
 		Type:     "image",
 		MimeType: "image/png",
-		Data:     "aW1hZ2U=",
+		Path:     "/managed/agent-prompt-assets/screen.png",
 	}}
 	if err := adapter.ValidatePromptContent(session, content); err != nil {
 		t.Fatalf("ValidatePromptContent error = %v, want nil", err)
@@ -906,7 +906,7 @@ func TestStandardACPAdapterRejectsImagePromptWithoutCapability(t *testing.T) {
 	content := []PromptContentBlock{{
 		Type:     "image",
 		MimeType: "image/png",
-		Data:     "aW1hZ2U=",
+		Path:     "/managed/agent-prompt-assets/screen.png",
 	}}
 	if err := adapter.ValidatePromptContent(session, content); !errors.Is(err, ErrPromptImageUnsupported) {
 		t.Fatalf("ValidatePromptContent error = %v, want ErrPromptImageUnsupported", err)

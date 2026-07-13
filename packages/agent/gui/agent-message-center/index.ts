@@ -34,7 +34,10 @@ export {
   PLAN_IMPLEMENTATION_PROMPT
 } from "../shared/agentConversation/planImplementationPresentation";
 export type { PromptToolDetail } from "../shared/agentConversation/promptToolDetails";
-export type { WorkspaceAgentMessageCenterPanelProps } from "./WorkspaceAgentMessageCenterPanel";
+export type {
+  WorkspaceAgentMessageCenterPanelProps,
+  WorkspaceAgentMessageCenterPanelPresentation
+} from "./WorkspaceAgentMessageCenterPanel";
 export type {
   MessageCenterStatusTone,
   WorkspaceAgentMessageCenterCardProps

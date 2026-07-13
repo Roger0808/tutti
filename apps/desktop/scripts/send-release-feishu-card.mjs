@@ -58,10 +58,10 @@ function resolveReleaseKind(tag) {
 
 function resolveIntroText(tag) {
   if (/-rc\.(0|[1-9]\d*)$/i.test(tag)) {
-    return `**${tag}** 已构建并发布为 GitHub RC Pre-release，可从下方入口下载安装包。`;
+    return `**${tag}** 已构建并同步到 RC 预览通道，可从下方入口下载安装包。`;
   }
   if (/-beta\.(0|[1-9]\d*)$/i.test(tag)) {
-    return `**${tag}** 已构建并发布为 GitHub Beta Pre-release，可从下方入口下载安装包。`;
+    return `**${tag}** 已构建并同步到 Beta 预览通道，可从下方入口下载安装包。`;
   }
   return `**${tag}** 已构建并发布为 GitHub Release，可从下方入口下载安装包。`;
 }
@@ -389,8 +389,16 @@ async function main() {
       "TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX"
     )
   });
-  const release = await loadRelease(repository, tag, resolveGithubToken());
   const mirroredAssetNames = await listAssetNames(releaseAssetDirectory);
+  const mirroredMacUrl = resolveMirroredAssetUrl(
+    mirroredAssetNames,
+    /\.dmg$/i,
+    releaseAssetBaseUrl,
+    tag
+  );
+  const release = mirroredMacUrl
+    ? null
+    : await loadRelease(repository, tag, resolveGithubToken());
   const summary = await loadReleaseSummary(
     readOption(args, "summary", "RELEASE_SUMMARY_PATH")
   );
@@ -398,12 +406,7 @@ async function main() {
     actor,
     branch,
     macUrl:
-      resolveMirroredAssetUrl(
-        mirroredAssetNames,
-        /\.dmg$/i,
-        releaseAssetBaseUrl,
-        tag
-      ) || findAssetUrl(release, /\.dmg$/i, releaseAssetBaseUrl),
+      mirroredMacUrl || findAssetUrl(release, /\.dmg$/i, releaseAssetBaseUrl),
     releaseUrl,
     runUrl,
     summary,

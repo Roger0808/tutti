@@ -42,7 +42,7 @@ export interface WorkspaceAgentActivityServiceDependencies {
   eventStreamClient?: TuttidEventStreamClient;
   hostFilesApi?: Pick<
     DesktopHostFilesApi,
-    "createUserDocumentsProjectDirectory"
+    "createUserDocumentsProjectDirectory" | "selectAppArchive"
   >;
   tuttidClient: TuttidClient;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
@@ -403,6 +403,10 @@ export class WorkspaceAgentActivityService
       this.dependencies.workspaceUserProjectService?.refresh()
     ]);
     return result;
+  }
+
+  async selectExternalSessionImportArchive(): Promise<string | null> {
+    return (await this.dependencies.hostFilesApi?.selectAppArchive()) ?? null;
   }
 
   async setSessionPinned(input: {

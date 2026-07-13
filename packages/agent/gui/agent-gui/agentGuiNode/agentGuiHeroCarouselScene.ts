@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { AgentGUIAgentAvatarPresentation } from "./model/agentGuiAgentAvatarPresentation";
 import {
+  coverImageTexture,
   roundedIconTexture,
   vinylRecordTexture
 } from "./agentGuiHeroCarouselTextures";
@@ -22,7 +23,7 @@ const WHEEL_TARGET_SLOTS = 40;
 // Center-to-center distance between neighbouring tiles along the rim; tiles
 // are 1 unit wide, so the remainder is the visible gap. The wheel radius is
 // derived from this, so wider spacing also grows the wheel itself.
-const TILE_SPACING = 1.55;
+const TILE_SPACING = 1.85;
 // Compress the visible portion of the wheel into a shallow arc. Horizontal
 // spacing still follows the circular loop, while vertical drop and tangent
 // tilt are reduced so the records read as a row rather than a ring.
@@ -48,10 +49,10 @@ const BADGE_CORNER_RADIUS = 0.5;
 const BADGE_DIAMETER = 0.36;
 const BADGE_OFFSET = 0.4;
 const MAX_PIXEL_RATIO = 2;
-const RECORD_SPIN_SECONDS = 7;
+const RECORD_SPIN_SECONDS = 10;
 const RECORD_MODEL_SCALE = 1.3;
-const RECORD_MODEL_RADIUS = 0.475;
-const RECORD_MODEL_THICKNESS = 0.065;
+const RECORD_MODEL_RADIUS = 0.45;
+const RECORD_MODEL_THICKNESS = 0.03;
 const RECORD_MODEL_TILT_X = -0.11;
 const RECORD_MODEL_SIDE_TILT_FACTOR = 0.18;
 const RECORD_MODEL_MAX_SIDE_TILT = 0.16;
@@ -78,18 +79,21 @@ interface AgentGuiHeroCarouselTile {
   badgeMesh: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>;
   edgeMaterial: THREE.MeshStandardMaterial;
   edgeMesh: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshStandardMaterial>;
+  coverTexture: THREE.Texture | null;
   faceMaterial: THREE.MeshBasicMaterial;
   faceMesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   poseGroup: THREE.Group;
   ready: boolean;
   recordGroup: THREE.Group;
   rotation: number;
+  vinylTexture: THREE.Texture | null;
 }
 
 export interface AgentGuiHeroCarouselSceneOptions {
   canvas: HTMLCanvasElement;
   items: readonly AgentGUIAgentAvatarPresentation[];
   loadedImages?: readonly (HTMLImageElement | null)[];
+  loadedCoverImages?: readonly (HTMLImageElement | null)[];
   // Fired once the wheel settles on an integer slot after an animated move.
   onSettle: (index: number) => void;
 }
@@ -120,6 +124,7 @@ export class AgentGuiHeroCarouselScene {
   private readonly agentCount: number;
   private readonly tileCount: number;
   private readonly wheelRadius: number;
+  private readonly coverAssetsReady: boolean;
   private readonly onSettle: (index: number) => void;
   private readonly images: HTMLImageElement[] = [];
   private readonly ownedImages = new Set<HTMLImageElement>();
@@ -143,6 +148,7 @@ export class AgentGuiHeroCarouselScene {
     this.tileCount = this.agentCount * repeats;
     // Rim spacing fixes the wheel size: radius = arc spacing / slot angle.
     this.wheelRadius = (TILE_SPACING * this.tileCount) / (Math.PI * 2);
+    this.coverAssetsReady = options.loadedCoverImages != null;
     this.onSettle = options.onSettle;
     this.renderer = new THREE.WebGLRenderer({
       canvas: options.canvas,
@@ -232,12 +238,14 @@ export class AgentGuiHeroCarouselScene {
         badgeMesh,
         edgeMaterial,
         edgeMesh,
+        coverTexture: null,
         faceMaterial,
         faceMesh,
         poseGroup,
         ready: false,
         recordGroup,
-        rotation: 0
+        rotation: 0,
+        vinylTexture: null
       });
     }
     options.items.forEach((item, agentIndex) => {
@@ -260,6 +268,13 @@ export class AgentGuiHeroCarouselScene {
         this.applyImageTexture(image, agentIndex);
       } else if (!loadedImage) {
         image.src = item.iconUrl;
+      }
+      const coverImage = options.loadedCoverImages?.[agentIndex] ?? null;
+      if (coverImage) {
+        this.images.push(coverImage);
+        if (coverImage.complete && coverImage.naturalWidth > 0) {
+          this.applyCoverImageTexture(coverImage, agentIndex);
+        }
       }
       if (item.badge?.iconUrl) {
         this.loadBadgeImage(item.badge.iconUrl, agentIndex);
@@ -530,7 +545,7 @@ export class AgentGuiHeroCarouselScene {
 
   private readonly recordSpinFrame = (now: number): void => {
     this.recordSpinFrameHandle = null;
-    const spinningTile = this.hoveredTile ?? this.centerTile();
+    const spinningTile = this.centerTile();
     if (this.disposed || !spinningTile || this.prefersReducedMotion()) {
       return;
     }
@@ -590,18 +605,43 @@ export class AgentGuiHeroCarouselScene {
     if (this.disposed) {
       return;
     }
-    const texture = vinylRecordTexture(image, () => this.requestRender());
-    this.textures.add(texture);
+    const vinylTexture = vinylRecordTexture(image, () => this.requestRender());
+    this.textures.add(vinylTexture);
+    const fallbackCoverTexture = this.coverAssetsReady
+      ? coverImageTexture(image, () => this.requestRender())
+      : null;
+    if (fallbackCoverTexture) {
+      this.textures.add(fallbackCoverTexture);
+    }
     for (const tile of this.tiles) {
       if (tile.poseGroup.userData.agentIndex === agentIndex) {
-        tile.faceMaterial.map = texture;
+        tile.faceMaterial.map = vinylTexture;
         tile.faceMaterial.visible = true;
         tile.faceMaterial.needsUpdate = true;
+        tile.coverTexture = fallbackCoverTexture;
+        tile.vinylTexture = vinylTexture;
         tile.ready = true;
       }
     }
     this.applyPoses();
     this.startRecordSpin();
+  }
+
+  private applyCoverImageTexture(
+    image: HTMLImageElement,
+    agentIndex: number
+  ): void {
+    if (this.disposed) {
+      return;
+    }
+    const texture = coverImageTexture(image, () => this.requestRender());
+    this.textures.add(texture);
+    for (const tile of this.tiles) {
+      if (tile.poseGroup.userData.agentIndex === agentIndex) {
+        tile.coverTexture = texture;
+      }
+    }
+    this.applyPoses();
   }
 
   private loadBadgeImage(badgeUrl: string, agentIndex: number): void {
@@ -698,6 +738,12 @@ export class AgentGuiHeroCarouselScene {
         return;
       }
       const angle = offset * step;
+      const isCenterTile = Math.abs(offset) < 0.5;
+      const faceTexture = isCenterTile ? tile.vinylTexture : tile.coverTexture;
+      if (tile.faceMaterial.map !== faceTexture) {
+        tile.faceMaterial.map = faceTexture;
+        tile.faceMaterial.needsUpdate = true;
+      }
       const x = this.wheelRadius * Math.sin(angle);
       const y =
         this.wheelRadius * (Math.cos(angle) - 1) * VISIBLE_ARC_CURVATURE;
@@ -727,11 +773,11 @@ export class AgentGuiHeroCarouselScene {
         ),
         -angle * VISIBLE_ARC_CURVATURE
       );
-      tile.recordGroup.rotation.z = -tile.rotation;
+      tile.recordGroup.rotation.z = isCenterTile ? -tile.rotation : 0;
       const opacity =
         MIN_RECORD_OPACITY + (1 - MIN_RECORD_OPACITY) * rangeOpacity;
       tile.faceMaterial.opacity = opacity;
-      tile.edgeMaterial.opacity = opacity;
+      tile.edgeMaterial.opacity = isCenterTile ? opacity : 0;
       tile.badgeMesh.material.opacity = opacity;
     });
   }

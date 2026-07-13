@@ -9,7 +9,8 @@ export const en = {
     selectFolder: "Select folder",
     unknownError: "Unknown error",
     unreachable: "unreachable",
-    workspace: "workspace"
+    workspace: "workspace",
+    zipArchive: "ZIP Archive"
   },
   dashboard: {
     chooseWorkspaceTitle: "Choose a workspace",
@@ -51,11 +52,11 @@ export const en = {
     availableTitle: "Update to New Version",
     badge: "update",
     checkingTitle: "Checking for updates",
-    downloadAction: "Update",
+    downloadAction: "Download update",
     downloadedTitle: "Ready to install",
     downloadingTitle: "Downloading {{percent}}",
     errorTitle: "Unable to check for updates",
-    restartAction: "Install",
+    restartAction: "Restart & install",
     retryAction: "Retry"
   },
   desktop: {
@@ -145,7 +146,20 @@ export const en = {
       openDetachedWindow: "Open in detached window",
       openSessionUnavailableDescription:
         "This agent session no longer exists or cannot be opened.",
-      openSessionUnavailableTitle: "Session unavailable"
+      openSessionUnavailableTitle: "Session unavailable",
+      toolSidebar: {
+        apps: "Apps",
+        browser: "Browser",
+        close: "Close",
+        expandPanel: "Expand panel",
+        files: "Files",
+        messages: "Messages",
+        resizeSidebar: "Resize tool sidebar",
+        shrinkPanel: "Shrink panel",
+        terminal: "Terminal",
+        tool: "Tool",
+        unavailable: "{{tool}} is not available in the Agent window yet."
+      }
     },
     accountMenu: {
       title: "Tutti Agent",
@@ -297,8 +311,27 @@ export const en = {
       triggerAria: "Join feedback group"
     },
     externalImport: {
+      archiveEmpty:
+        "No supported conversations were found in this Claude export",
+      archiveGroupLabel: "Claude chats",
+      archiveOptionDescription:
+        "Choose the ZIP file downloaded from Claude's data export",
+      archiveOptionTitle: "Import Claude export data",
+      archivePickFailed: "We couldn't open the Claude export file picker.",
+      archiveResult:
+        "Imported {{sessions}} conversations and {{messages}} messages from the Claude export",
+      archiveScanFailed:
+        "This ZIP could not be read as a supported Claude data export.",
+      archiveScanning: "Reading Claude export conversations...",
+      archiveSearchPlaceholder: "Search Claude conversations",
+      archiveSelectionReady:
+        "Claude export scan complete. {{count}} conversations are ready to review.",
+      archiveSelectDescription:
+        "Search and check the Claude conversations to import",
       back: "Back",
-      description: "Import local Codex and Claude Code conversation history",
+      chooseArchive: "Choose ZIP",
+      description:
+        "Import local Codex and Claude Code history or a Claude data export",
       done: "Done",
       empty: "No local Codex or Claude Code project history was found",
       errors: "Skipped items",
@@ -334,6 +367,8 @@ export const en = {
       promptTitle: "Import existing AI chats",
       result:
         "Imported {{sessions}} sessions and {{messages}} messages from {{projects}} projects",
+      resultSkipped:
+        "Skipped {{count}} conversations that were empty or unsupported",
       scan: "Scan",
       scanFailed: "We couldn't scan external agent history right now.",
       scanning: "Scanning local agent history...",
@@ -341,7 +376,7 @@ export const en = {
       selectImportOption: "Select {{label}}",
       settingsAction: "Import",
       settingsDescription:
-        "Bring recent local Codex and Claude Code conversation history into this workspace",
+        "Bring local Codex and Claude Code history or Claude export conversations into Tutti",
       settingsLabel: "Import AI chats",
       title: "Import from AI apps"
     },
@@ -355,7 +390,8 @@ export const en = {
       title: "Analytics events"
     },
     appCenter: {
-      dockLabel: "App Center"
+      backToApps: "Back to apps",
+      dockLabel: "Apps"
     },
     info: {
       idDescription: "Stable identifier for preload and daemon coordination.",
@@ -466,6 +502,19 @@ export const en = {
         wallpaperUploading: "Uploading..."
       },
       general: {
+        workspaceUiModeLabel: "Startup interface",
+        workspaceUiModeDescription:
+          "Choose which native window Tutti creates when it starts or opens a workspace.",
+        workspaceUiModeOptions: {
+          agentTitle: "Agent mode",
+          agentDescription:
+            "Start in a focused standalone Agent window with tools in the right sidebar.",
+          osTitle: "OS mode",
+          osDescription:
+            "The original workspace with windows, desktop, dock, and launchpad."
+        },
+        workspaceUiModeSaveFailed:
+          "We couldn't update the startup interface right now.",
         defaultAgentProviderDescription:
           "Used for new app factory jobs, issue tasks, and workspace apps that ask for the host default",
         defaultAgentProviderLabel: "Default provider",
@@ -856,7 +905,7 @@ export const en = {
       },
       nodes: {
         agent: "Agent",
-        appCenter: "App Center",
+        appCenter: "Apps",
         appWebview: "Workspace app",
         browser: "Browser",
         files: "Files",

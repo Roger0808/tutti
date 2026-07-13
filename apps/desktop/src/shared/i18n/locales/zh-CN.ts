@@ -11,7 +11,8 @@ export const zhCN = {
     selectFolder: "选择文件夹",
     unknownError: "未知错误",
     unreachable: "不可达",
-    workspace: "工作区"
+    workspace: "工作区",
+    zipArchive: "ZIP 压缩包"
   },
   dashboard: {
     chooseWorkspaceTitle: "选择一个工作区",
@@ -51,11 +52,11 @@ export const zhCN = {
     availableTitle: "发现可用新版本",
     badge: "更新",
     checkingTitle: "正在检查更新",
-    downloadAction: "更新",
+    downloadAction: "下载更新",
     downloadedTitle: "更新完成，立即安装",
     downloadingTitle: "正在下载 {{percent}}",
     errorTitle: "无法检查更新",
-    restartAction: "安装",
+    restartAction: "重启安装",
     retryAction: "重试"
   },
   desktop: {
@@ -142,7 +143,20 @@ export const zhCN = {
       newConversation: "新建会话",
       openDetachedWindow: "在独立窗口打开",
       openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
-      openSessionUnavailableTitle: "会话不可用"
+      openSessionUnavailableTitle: "会话不可用",
+      toolSidebar: {
+        apps: "应用",
+        browser: "浏览器",
+        close: "关闭",
+        expandPanel: "扩大面板",
+        files: "文件",
+        messages: "消息",
+        resizeSidebar: "调整工具侧栏宽度",
+        shrinkPanel: "缩小面板",
+        terminal: "终端",
+        tool: "工具",
+        unavailable: "Agent 独立窗口暂未接入{{tool}}。"
+      }
     },
     accountMenu: {
       title: "Tutti Agent",
@@ -290,8 +304,22 @@ export const zhCN = {
       triggerAria: "加入反馈群"
     },
     externalImport: {
+      archiveEmpty: "这个 Claude 导出中没有找到受支持的对话",
+      archiveGroupLabel: "Claude 对话",
+      archiveOptionDescription: "选择从 Claude 数据导出中下载的 ZIP 文件",
+      archiveOptionTitle: "Claude 导出数据导入",
+      archivePickFailed: "无法打开 Claude 导出文件选择器。",
+      archiveResult:
+        "已从 Claude 导出中导入 {{sessions}} 个对话和 {{messages}} 条消息",
+      archiveScanFailed: "无法将这个 ZIP 读取为支持的 Claude 数据导出。",
+      archiveScanning: "正在读取 Claude 导出对话...",
+      archiveSearchPlaceholder: "搜索 Claude 对话",
+      archiveSelectionReady:
+        "Claude 导出扫描完成，有 {{count}} 个对话可供检查。",
+      archiveSelectDescription: "搜索并勾选要导入的 Claude 对话",
       back: "返回",
-      description: "导入本机 Codex 和 Claude Code 的会话历史",
+      chooseArchive: "选择 ZIP",
+      description: "导入本机 Codex、Claude Code 历史或 Claude 数据导出",
       done: "完成",
       empty: "未找到本机 Codex 或 Claude Code 的项目历史",
       errors: "跳过的项目",
@@ -325,6 +353,7 @@ export const zhCN = {
       promptTitle: "导入已有 AI 聊天",
       result:
         "已从 {{projects}} 个项目导入 {{sessions}} 个会话和 {{messages}} 条消息",
+      resultSkipped: "已跳过 {{count}} 个空的或不支持的对话",
       scan: "扫描",
       scanFailed: "暂时无法扫描外部 Agent 历史。",
       scanning: "正在扫描本机 Agent 历史...",
@@ -332,7 +361,7 @@ export const zhCN = {
       selectImportOption: "选择 {{label}}",
       settingsAction: "导入",
       settingsDescription:
-        "将本机 Codex 和 Claude Code 最近的会话历史导入这个工作区",
+        "将本机 Codex、Claude Code 历史或 Claude 导出对话导入 Tutti",
       settingsLabel: "导入 AI 聊天",
       title: "从 AI 应用导入"
     },
@@ -346,7 +375,8 @@ export const zhCN = {
       title: "埋点事件"
     },
     appCenter: {
-      dockLabel: "应用中心"
+      backToApps: "返回应用",
+      dockLabel: "应用"
     },
     info: {
       idDescription: "用于 preload 和 daemon 协调的稳定标识。",
@@ -447,6 +477,16 @@ export const zhCN = {
         wallpaperUploading: "上传中..."
       },
       general: {
+        workspaceUiModeLabel: "启动界面",
+        workspaceUiModeDescription:
+          "选择 Tutti 启动或打开工作区时创建哪一种原生窗口。",
+        workspaceUiModeOptions: {
+          agentTitle: "Agent 模式",
+          agentDescription: "直接启动独立 Agent 窗口，工具从右侧栏展开。",
+          osTitle: "OS 模式",
+          osDescription: "保留原来的窗口、桌面、Dock 和启动台。"
+        },
+        workspaceUiModeSaveFailed: "暂时无法更新启动界面。",
         defaultAgentProviderDescription:
           "用于新的 App Factory 任务、Issue 任务，以及读取宿主默认值的工作区应用",
         defaultAgentProviderLabel: "默认 Provider",
@@ -813,7 +853,7 @@ export const zhCN = {
       },
       nodes: {
         agent: "Agent",
-        appCenter: "应用中心",
+        appCenter: "应用",
         appWebview: "工作区应用",
         browser: "浏览器",
         files: "文件",

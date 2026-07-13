@@ -136,6 +136,10 @@ in-session provider switch: AgentGUI serializes the active session as a single
 `agent-session` mention in a draft prompt, passes the selected provider target
 through the host launch callback, and the desktop workbench opens a new empty
 composer for that target via the existing draft prefill activation path. The
+mention's visible label must use the source conversation title without
+prefixing the source agent or provider name, because the submitted draft also
+becomes the new conversation's initial title. Source agent identity stays in
+the mention metadata instead of being duplicated into title text. The
 prefill activation provider is authoritative for the new workbench panel's
 initial provider chrome, so choosing Codex from a Claude Code session must open
 a Codex panel before the draft prefill effect runs. The prefilled handoff panel
@@ -197,14 +201,15 @@ when the rail filter is `All`, they should stay hidden because there is no
 single provider target to inspect.
 AgentGuiNode may also receive a neutral `renderSidebarFooter` slot for host or
 product affordances that belong at the bottom of the far-left provider/sidebar
-rail, not below the conversation-list configuration footer. This slot must stay
-outside the provider tile scroll area so the footer keeps a fixed bottom
-placeholder while overflowing provider tiles scroll above it with a bottom
-fade. It must also stay outside the controller view model and conversation rail
-valtio store: pass it as a direct function prop and give it only existing
-neutral context such as `currentUserId` and `activeConversation`. Product
-concepts such as sharing, ownership, availability, quota, or authorization live
-entirely inside the React node supplied by the host.
+rail, below the system-settings control and not below the conversation-list
+configuration footer. This slot must stay outside the provider tile scroll area
+so the footer keeps a fixed bottom placeholder while overflowing provider tiles
+scroll above it with a bottom fade. It must also stay outside the controller
+view model and conversation rail valtio store: pass it as a direct function
+prop and give it only existing neutral context such as `currentUserId` and
+`activeConversation`. Product concepts such as sharing, ownership,
+availability, quota, or authorization live entirely inside the React node
+supplied by the host.
 Unified empty-home readiness is a host-projected, agent-scoped gate,
 not a durable session rule. Desktop may subscribe to its
 `agentProviderStatusService`, merge runtime status into `/agents` availability,
@@ -265,6 +270,140 @@ Standalone Agent window state may keep a minimal UI-local workbench node
 context, but durable conversations, session activation, login, provider
 readiness, and file/project data must still flow through the shared desktop
 AgentGUI host input and activity runtime.
+Standalone-window tools are desktop host chrome, not AgentGUI state.
+The desktop host owns tool identity, toolbar buttons and reminder badges,
+Browser/Terminal grouping, panel placement, lazy mounting, and tool content
+adapters. Browser, Files, Apps, and Message Center use the right sidebar; the
+Terminal opens as a bottom tray below the conversation, matching the Codex
+layout and preserving enough height for a usable shell. File panels start wide
+enough for their embedded location, list, and detail columns. Browser and Apps
+share the same roomy default width so switching between them does not move the
+panel boundary. Message Center aligns its default host width with its standard
+embedded content width so it neither clips card content nor leaves unused
+right-side space. Browser and Terminal share one dropdown trigger in the header:
+the entire tool control opens the menu, and choosing an item opens that tool.
+Do not split the control into a primary action and a separate menu-arrow action.
+The standalone
+right-sidebar tools form one exclusive selection: opening any one of Browser,
+Files, Apps, or Message Center hides the previously active right-sidebar tool,
+including any embedded Electron webview. Terminal visibility is orthogonal to
+that selection and may coexist with any right-sidebar tool because its tray is
+in the separate bottom region. The standalone
+Agent renderer route uses `view=agent`, so the desktop preload must expose the
+same browser and workspace-app APIs for both `view=workspace` and `view=agent`;
+gating those APIs to only the workspace route leaves direct BrowserNode and app
+webview panels with no host bridge. The standalone
+host owns its outer resize handle and minimum Agent content width, while the
+reusable file manager owns its two internal draggable column boundaries; all
+resize state remains local to the visible window. It composes that chrome around the existing
+`AgentGuiWorkbenchHeader` and `DesktopAgentGUIWorkbenchBody`; it must not add
+tool commands, visibility state, or product-specific panel contracts to
+AgentGUI runtime, controller, node state, or composer state. Panel state may be
+kept mounted while hidden so switching tools does not discard local UI state,
+but durable data continues to come from the existing desktop services.
+Opening a right-sidebar tool captures the current Agent content width, then
+uses the typed host-window width capability to append the panel beside that
+content. Main grows the native content bounds toward the right edge of the
+active display and shifts the window left only when the right-side work area is
+insufficient. The renderer assigns native width added beyond the captured
+baseline to the sidebar, so dragging the native right window edge grows the
+whole app and the sidebar without reflowing the message flow. The sidebar's
+full resolved width must always participate in the flex layout. When the
+display cannot provide the preferred native growth, the Agent content narrows
+and the sidebar remains adjacent; it must not become an absolutely positioned
+overlay above the transcript. Width added from the panel's left separator is
+also reserved by layout and does not change the native window bounds. Closing
+the panel restores the captured baseline width.
+Opening must be renderer-first: update the active panel immediately, let the
+clipped width transition begin, and defer the host-window resize request until
+the next animation frame. Do not await native IPC before showing the panel.
+Files, Browser, Apps, and other expensive first-use bodies mount after the
+outer width transition, then remain mounted while hidden for instant later
+switches. macOS may use Electron's native bounds animation in parallel; other
+platforms apply the same resolved bounds without requesting unsupported native
+animation. Respect `prefers-reduced-motion` by removing the CSS transition and
+the content-mount delay.
+Header tool actions must use the workbench header's secondary accessory slot so
+the session title and controls share one layout row. Do not absolutely position
+those actions over the title; narrow windows must truncate the title before any
+control can overlap it.
+Right-sidebar panel chrome starts below the standalone workbench header. Keep
+the panel title, expand action, and close action out of the global header row so
+they cannot collide with Files, Tools, Apps, or Message Center launch buttons.
+The outer right-sidebar container owns the shared panel stacking level for its
+separator and panel-local popovers, while the panel body remains a normal
+sibling of the message flow rather than relying on stacking to cover it.
+The Files panel uses the same roomy adjacent default width as Browser and Apps,
+then keeps its wider resize range for the embedded location, list, and detail
+columns. On the minimum native window width, preserving the standalone
+header's combined provider/conversation rail boundary takes precedence over the
+Files panel's nominal minimum width so host-owned rail controls are never
+covered by tool-panel chrome. The panel may narrow below its nominal minimum
+on a constrained display, but it remains in the same side-by-side layout.
+Every right-side panel exposes a title-bar expand control that temporarily uses
+the full width available beside the minimum Agent rail boundary without
+changing the native window size. While expanded, the control switches to the
+restore glyph and its next activation restores the panel's previous width.
+Application updates remain desktop-global `AppUpdateService` state. In the
+standalone Agent header, present that state as a compact non-drag control: an
+available update downloads, downloading shows progress, and a downloaded update
+offers restart-and-install. Do not keep an update-check failure permanently in
+the focused Agent header.
+File activation in the standalone Agent window must use the host-owned right
+Files sidebar. Conversation links and workspace-reference preview requests open
+that panel and pass a reveal intent so the reusable file manager selects and
+previews the requested path. The standalone route registers this panel command
+as its Canvas preview launcher; it must not create a workspace floating preview
+above the conversation or send the primary open action directly to the
+operating system. Do not show the workspace preview-unsupported notification
+for this handled route.
+The standalone Message Center must reuse
+`WorkspaceAgentMessageCenterPanel` and build its model from that window's
+`WorkspaceAgentActivityService` snapshot. Opening it may load bounded session
+summaries for its cards; submitting a prompt must use the existing
+`submitPlanDecision` service path, and opening a card must activate that
+session in the current standalone Agent window rather than creating another
+native window. It must use the panel's embedded presentation so the host-owned
+title, expand, and close chrome remains visible; the default fixed drawer
+presentation remains reserved for workspace overlays.
+Its header trigger must reuse the OS Message Center status-pet asset while
+`model.counts.working` is positive and show that working count in the top-right
+badge; zero working sessions restore the static Message icon and omit the badge.
+The standalone tool chrome must load the workspace activity snapshot when it
+mounts, not only after Message Center opens, so a separately created Agent
+window immediately reconciles already-running sessions. Outcome notification
+subscriptions must also start that workspace's activity event stream. When an
+event arrives before the session is cached and requires HTTP reconciliation,
+preserve the original `state_patch` for session-event consumers; rebuilding it
+from session state can discard `turn.outcome` or `turnId` and suppress the
+completed/failed foreground toast.
+Browser and Terminal tool bodies must mount the existing OS node UI directly:
+`BrowserNode` in the right panel and `TerminalNode` in the bottom tray. Do not
+nest another `WorkbenchHost` inside the standalone shell; the nested canvas can
+collapse during panel animation and report a near-zero terminal viewport even
+while its PTY is healthy. The desktop terminal contribution exposes the same
+feature and adapter runtime used by the OS workbench, so direct mounting still
+retains the normal PTY, output hydration, link handling, close guard, and
+termination paths. Agent mode must not create another browser lifecycle,
+terminal implementation, or PTY adapter. A lightweight synthetic host record
+exposes the directly mounted terminal session to native-window close-effect and
+cleanup coordination without owning layout or snapshots. Both surfaces remain
+mounted after first use so hiding and reopening a tool preserves its UI-local
+session state. The standalone Browser must render `BrowserNode`'s shared header
+so back, forward, reload, address entry, external-open, and overflow actions use
+the same controller and runtime state as the webview. The Terminal tray's close
+control only collapses the tray; it
+must not terminate or unmount the active terminal session.
+Electron main may create one of two native workspace shells. `OS` mode keeps
+the existing workspace window and its `ReadyWorkspaceWorkbench`
+desktop/window/dock surface, while `Agent` mode creates the frameless Agent
+window and loads the explicit `view=agent` route. This is a main-process window
+creation decision only: the preference must not enter AgentGUI state, and an
+existing native window must not be made to impersonate the other window kind
+by swapping renderer content. Desktop persists the selection through the
+generic preference flag `workspace.standaloneAgentMode`; absence of that flag
+means Agent mode, while an explicit `false` value retains the OS workspace as
+the user's selected fallback.
 Opening an existing session is session-authoritative. If the launch payload has
 no `agentTargetId`, workbench node state must clear any previous target
 constraint instead of inheriting it from the reused node. When a
@@ -636,6 +775,59 @@ is not durable state and should not become the source of truth.
 Use these flows when debugging AgentGUI behavior. They are intentionally written
 from the user's action back to the authoritative data source.
 
+### External History Import
+
+```text
+desktop ZIP picker or local-history source selection
+  -> ExternalAgentSessionImportWizard
+  -> WorkspaceAgentActivityService scanExternalSessionImports
+  -> tuttid external-import scan endpoint
+  -> local JSONL scanner or Claude data-export ZIP parser
+  -> selectable import session summaries
+  -> WorkspaceAgentActivityService importExternalSessions
+  -> tuttid external-import import endpoint
+  -> ActivityProjection persisted sessions/messages
+  -> desktop activity load + user-project refresh
+  -> AgentActivityRuntime snapshot
+  -> AgentGUI rail and transcript
+```
+
+The daemon owns archive validation and conversation parsing. Desktop passes the
+absolute path selected through the native picker, and both scan and import must
+carry the same `archivePath`; import reopens and revalidates the archive rather
+than trusting scan-time state. The wizard must bind a completed scan to its
+normalized local/archive source identity and invalidate it before a source
+change or failed rescan, so sessions from one scan cannot be submitted with a
+different archive path. Claude exports are read directly from the exact root
+`conversations.json` ZIP entry. Preflight the ZIP central directory and bound
+conversation JSON depth, container counts, token counts, and retained messages
+before expanding untrusted data. Do not extract the archive, execute tool
+payloads, fetch citation URLs, or treat referenced files as locally available.
+
+Claude export `message.text` is not a safe visible-body source: rich messages
+can include hidden thinking and tool material there. Import ordered
+`content[type=text]` blocks into visible transcript text; only legacy user
+messages with no structured content may fall back to `message.text`, and
+assistant messages never may. Ignore control blocks,
+and retain file-only messages as unavailable references without claiming that
+the ZIP contains their payloads. Stable source message UUIDs make repeat imports
+idempotent even when a later export inserts earlier messages. Claude exports may
+contain mutually exclusive edit/retry branches. Build the parent-message graph
+and import the deterministic latest leaf's root-to-leaf path; never flatten
+sibling branches into one transcript. Namespace the imported session with a
+fingerprint of the selected sibling choices: ordinary appends stay in the same
+session, while a later export that selects a different retry branch lands in a
+separate session instead of accumulating incompatible messages. Preserve the
+branch fingerprint and chosen leaf UUID in message payloads so that branch
+selection remains auditable.
+
+claude.ai exports do not carry a coding-project cwd or a Claude Code runtime
+session id. Persist them in the no-project Chats section with
+`runtimeContext.imported`, `externalImportNoProject`, and a false
+`externalImportResumeSupported` marker. They may use the Claude Code target for
+presentation, but AgentGUI must keep the imported history read-only and route
+continued work through the existing "continue in a new conversation" flow.
+
 ### Conversation List Loading
 
 ```text
@@ -939,6 +1131,15 @@ persists the normalized `attachmentId`. The managed source path must live under
 the daemon state root's `agent-prompt-assets` directory, and the daemon must
 re-check the resolved source path, symlink target, file type, and size before
 copying it into the session attachment store.
+Image validation is intentionally two-phase. The preflight that runs before
+attachment persistence may accept a managed `path` as an ingress source so it
+can check provider image capability without writing files. That does not make
+the path valid provider content. After the daemon copies and hydrates the
+source, `Controller.Exec` applies the strict runtime validator to the resulting
+`data`, `url`, or `attachmentId` representation. Keep runtime execution strict,
+and do not move attachment persistence ahead of capability preflight merely to
+make path-backed drafts pass validation; unsupported providers must still fail
+without creating session attachment files.
 Shared callers may instead supply a URL-backed image block when they already
 uploaded the image. That source must be an absolute HTTPS URL without embedded
 userinfo and must retain a supported PNG, JPEG, or WebP MIME type. `data` and

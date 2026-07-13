@@ -2,25 +2,12 @@ package agentruntime
 
 import (
 	"context"
-	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func (*ClaudeCodeSDKAdapter) ValidatePromptContent(_ Session, content []PromptContentBlock) error {
-	if !promptContentHasImage(content) {
-		return nil
-	}
-	for _, block := range content {
-		if strings.TrimSpace(block.Type) != "image" {
-			continue
-		}
-		if !runtimePromptImageMimeTypeSupported(strings.TrimSpace(block.MimeType)) ||
-			(strings.TrimSpace(block.Data) == "" && strings.TrimSpace(block.AttachmentID) == "") {
-			return ErrPromptImageUnsupported
-		}
-	}
-	return nil
+	return validatePromptContentImagesForPreflight(content)
 }
 
 func (a *ClaudeCodeSDKAdapter) Exec(

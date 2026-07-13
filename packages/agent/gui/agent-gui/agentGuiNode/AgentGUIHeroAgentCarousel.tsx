@@ -6,8 +6,16 @@ import {
   type PointerEvent as ReactPointerEvent
 } from "react";
 import type { AgentGUIProvider } from "../../types";
+import claudeVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/claude-vinyl.png";
+import codexVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/codex-vinyl.png";
+import cursorVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/cursor-vinyl.png";
+import hermesVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/hermes-vinyl.png";
+import openclawVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/openclaw-vinyl.png";
+import opencodeVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/opencode-vinyl.png";
+import tuttiVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/tutti-vinyl.png";
 import type { AgentGUIAgentAvatarPresentation } from "./model/agentGuiAgentAvatarPresentation";
 import { AgentGuiHeroCarouselScene } from "./agentGuiHeroCarouselScene";
+import { AgentGUIVinylPlayer } from "./AgentGUIVinylPlayer";
 import styles from "./AgentGUINode.styles";
 
 export interface AgentGUIHeroCarouselSelectInput {
@@ -24,6 +32,7 @@ interface AgentGUIHeroAgentCarouselProps {
 
 interface AgentGUIHeroAgentCarouselState {
   centerIndex: number;
+  coverImages: readonly (HTMLImageElement | null)[];
   iconKey: string;
   images: readonly (HTMLImageElement | null)[];
   imagesReady: boolean;
@@ -32,6 +41,16 @@ interface AgentGUIHeroAgentCarouselState {
 const CAROUSEL_WHEEL_STEP_THRESHOLD = 42;
 const CAROUSEL_WHEEL_STEP_COOLDOWN_MS = 110;
 const CAROUSEL_DRAG_STEP_PX = 52;
+
+const AGENT_VINYL_COVER_BY_PROVIDER: Readonly<Record<string, string>> = {
+  "claude-code": claudeVinylAssetUrl,
+  codex: codexVinylAssetUrl,
+  cursor: cursorVinylAssetUrl,
+  hermes: hermesVinylAssetUrl,
+  openclaw: openclawVinylAssetUrl,
+  opencode: opencodeVinylAssetUrl,
+  "tutti-agent": tuttiVinylAssetUrl
+};
 
 function activeAgentIndex(props: AgentGUIHeroAgentCarouselProps): number {
   if (!props.activeAgentTargetId) {
@@ -59,9 +78,10 @@ function emptyPreloadedCarouselImages(
   return Array.from({ length }).map((): HTMLImageElement | null => null);
 }
 
-function preloadCarouselImage(
-  item: AgentGUIAgentAvatarPresentation
-): Promise<HTMLImageElement | null> {
+function preloadImage(url: string | null): Promise<HTMLImageElement | null> {
+  if (!url) {
+    return Promise.resolve(null);
+  }
   return new Promise((resolve) => {
     const image = new Image();
     let settled = false;
@@ -85,7 +105,7 @@ function preloadCarouselImage(
     image.setAttribute("fetchpriority", "high");
     image.onload = resolveDecoded;
     image.onerror = () => settle(null);
-    image.src = item.iconUrl;
+    image.src = url;
     if (image.complete) {
       if (image.naturalWidth > 0) {
         resolveDecoded();
@@ -94,6 +114,19 @@ function preloadCarouselImage(
       }
     }
   });
+}
+
+async function preloadCarouselImages(
+  item: AgentGUIAgentAvatarPresentation
+): Promise<{
+  cover: HTMLImageElement | null;
+  icon: HTMLImageElement | null;
+}> {
+  const [icon, cover] = await Promise.all([
+    preloadImage(item.iconUrl),
+    preloadImage(AGENT_VINYL_COVER_BY_PROVIDER[item.provider] ?? null)
+  ]);
+  return { cover, icon };
 }
 
 // Three.js, ResizeObserver, image decoding, and a non-passive wheel listener
@@ -117,6 +150,7 @@ export class AgentGUIHeroAgentCarousel extends Component<
 
   state: AgentGUIHeroAgentCarouselState = {
     centerIndex: Math.max(activeAgentIndex(this.props), 0),
+    coverImages: [],
     iconKey: carouselIconKey(this.props.items),
     images: [],
     imagesReady: this.props.items.length === 0
@@ -134,6 +168,7 @@ export class AgentGUIHeroAgentCarousel extends Component<
       this.setState(
         {
           centerIndex: Math.max(activeAgentIndex(this.props), 0),
+          coverImages: [],
           iconKey,
           images: [],
           imagesReady: this.props.items.length === 0
@@ -170,12 +205,13 @@ export class AgentGUIHeroAgentCarousel extends Component<
     const generation = ++this.imagePreloadGeneration;
     const items = this.props.items;
     if (items.length === 0) {
-      this.setState({ images: [], imagesReady: true });
+      this.setState({ coverImages: [], images: [], imagesReady: true });
       return;
     }
     if (typeof Image !== "function") {
       this.setState(
         {
+          coverImages: emptyPreloadedCarouselImages(items.length),
           images: emptyPreloadedCarouselImages(items.length),
           imagesReady: true
         },
@@ -185,17 +221,25 @@ export class AgentGUIHeroAgentCarousel extends Component<
     }
 
     this.setState({
+      coverImages: emptyPreloadedCarouselImages(items.length),
       images: emptyPreloadedCarouselImages(items.length),
       imagesReady: false
     });
-    void Promise.all(items.map(preloadCarouselImage)).then((images) => {
+    void Promise.all(items.map(preloadCarouselImages)).then((preloaded) => {
       if (
         generation !== this.imagePreloadGeneration ||
         carouselIconKey(this.props.items) !== this.state.iconKey
       ) {
         return;
       }
-      this.setState({ images, imagesReady: true }, () => this.mountScene());
+      this.setState(
+        {
+          coverImages: preloaded.map((entry) => entry.cover),
+          images: preloaded.map((entry) => entry.icon),
+          imagesReady: true
+        },
+        () => this.mountScene()
+      );
     });
   }
 
@@ -214,6 +258,7 @@ export class AgentGUIHeroAgentCarousel extends Component<
     const scene = AgentGuiHeroCarouselScene.create({
       canvas,
       items: this.props.items,
+      loadedCoverImages: this.state.coverImages,
       loadedImages: this.state.images,
       onSettle: this.handleSceneSettle
     });
@@ -467,6 +512,14 @@ export class AgentGUIHeroAgentCarousel extends Component<
         onPointerCancel={interactive ? this.handlePointerEnd : undefined}
         onClickCapture={interactive ? this.handleClickCapture : undefined}
       >
+        <AgentGUIVinylPlayer
+          selectedAgent={
+            this.props.items[this.state.centerIndex] ??
+            this.props.items[0] ??
+            null
+          }
+          isPlaying
+        />
         <canvas
           ref={this.canvasRef}
           aria-hidden="true"

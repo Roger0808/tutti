@@ -61,7 +61,7 @@ import { requestWorkspaceFilesLaunch } from "../services/workspaceFilesLaunchCoo
 import { requestWorkspaceIssueManagerLaunch } from "../services/workspaceIssueManagerLaunchCoordinator";
 import { requestGroupChatLaunch } from "../services/groupChatLaunchCoordinator";
 import { resolveWorkspaceAgentStatusPetMood } from "../services/workspaceAgentStatusPetMood";
-import { AgentStatusPetIcon } from "./WorkspaceAgentStatusPet";
+import { WorkspaceAgentStatusPetIcon } from "./WorkspaceAgentStatusPetIcon";
 
 const MESSAGE_CENTER_SUMMARY_MESSAGE_LIMIT = 20;
 const MESSAGE_CENTER_SUMMARY_PREFETCH_ITEM_LIMIT = 12;
@@ -599,7 +599,7 @@ export function WorkspaceAgentMessageCenterAction({
                 })
               }
             >
-              <AgentStatusPetIcon mood={triggerPetMood} />
+              <WorkspaceAgentStatusPetIcon mood={triggerPetMood} />
               <span className="text-[13px] font-semibold">{triggerLabel}</span>
             </Button>
           </span>

@@ -130,6 +130,9 @@ func (a *standardACPAdapter) ValidatePromptContent(session Session, content []Pr
 	if !promptContentHasImage(content) {
 		return nil
 	}
+	if err := validatePromptContentImagesForPreflight(content); err != nil {
+		return err
+	}
 	acpSession := a.getSession(session.AgentSessionID)
 	if acpSession != nil && acpSession.promptImage {
 		return nil

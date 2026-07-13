@@ -2668,7 +2668,13 @@ func TestServiceGetsComposerOptionsFromCodexModelCatalog(t *testing.T) {
 			Provider: "codex",
 			Source:   "codex-cli",
 			Models: []AgentModelOption{
-				{ID: "gpt-5", DisplayName: "GPT-5"},
+				{
+					ID:                         "gpt-5",
+					DisplayName:                "GPT-5",
+					DefaultReasoningEffort:     "minimal",
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts:  []AgentModelReasoningEffortOption{{Value: "minimal"}},
+				},
 				{ID: "gpt-5.1", DisplayName: "GPT-5.1"},
 			},
 		},

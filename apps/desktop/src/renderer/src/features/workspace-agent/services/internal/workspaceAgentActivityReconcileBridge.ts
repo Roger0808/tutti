@@ -29,18 +29,32 @@ interface WorkspaceAgentActivityReconcileDependencies {
   tuttidClient: TuttidClient;
 }
 
+type WorkspaceAgentActivityBridgeEvent =
+  | AgentActivityUpdatedEvent
+  | {
+      agentSessionId: string;
+      data: unknown;
+      eventType: "state_patch";
+      workspaceId: string;
+    };
+
 export abstract class WorkspaceAgentActivityReconcileBridge {
   private readonly reconcileDependencies: WorkspaceAgentActivityReconcileDependencies;
   private readonly controllerEntries = new Map<
     string,
     WorkspaceAgentSessionEngineHost
   >();
+  private readonly controllerEntryCreationInProgress = new Set<string>();
   private readonly sessionEventListenersByWorkspaceId = new Map<
     string,
     Set<(event: unknown) => void>
   >();
   private readonly modelCatalogInvalidatedListeners = new Set<
     (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
+  >();
+  private readonly latestStateEventBySessionKey = new Map<
+    string,
+    { data: unknown; eventType: "state_patch" }
   >();
   private eventStreamStarted = false;
 
@@ -60,15 +74,20 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
     const existing = this.controllerEntries.get(normalizedWorkspaceId);
     if (existing) return existing;
-    const entry = this.createControllerEntry(normalizedWorkspaceId);
-    this.controllerEntries.set(normalizedWorkspaceId, entry);
-    this.subscribeWorkspaceEventStream(normalizedWorkspaceId);
-    this.startEventStreamConnection();
-    entry.engine.dispatch({
-      type: "workspace/reconcileRequested",
-      workspaceId: normalizedWorkspaceId
-    });
-    return entry;
+    this.controllerEntryCreationInProgress.add(normalizedWorkspaceId);
+    try {
+      const entry = this.createControllerEntry(normalizedWorkspaceId);
+      this.controllerEntries.set(normalizedWorkspaceId, entry);
+      this.subscribeWorkspaceEventStream(normalizedWorkspaceId);
+      this.startEventStreamConnection();
+      entry.engine.dispatch({
+        type: "workspace/reconcileRequested",
+        workspaceId: normalizedWorkspaceId
+      });
+      return entry;
+    } finally {
+      this.controllerEntryCreationInProgress.delete(normalizedWorkspaceId);
+    }
   }
 
   ensureSessionSynchronized(
@@ -104,6 +123,12 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       );
     }
     listeners.add(listener);
+    if (
+      !this.controllerEntries.has(normalizedWorkspaceId) &&
+      !this.controllerEntryCreationInProgress.has(normalizedWorkspaceId)
+    ) {
+      this.controllerEntry(normalizedWorkspaceId);
+    }
     return () => listeners?.delete(listener);
   }
 
@@ -340,7 +365,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
   }
 
   private async reconcileAgentActivityUpdate(
-    input: AgentActivityUpdatedEvent
+    input: WorkspaceAgentActivityBridgeEvent
   ): Promise<void> {
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const agentSessionId = input.agentSessionId.trim();
@@ -370,6 +395,20 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       });
       return;
     }
+    if (input.eventType === "state_patch") {
+      this.latestStateEventBySessionKey.set(
+        this.stateEventKey(workspaceId, agentSessionId),
+        { data: input.data, eventType: "state_patch" }
+      );
+      this.controllerEntry(workspaceId).engine.dispatch({
+        agentSessionId,
+        needsMessages: false,
+        needsState: true,
+        type: "session/reconcileRequested",
+        workspaceId
+      });
+      return;
+    }
     const hasCachedSession = this.hasCachedSession(workspaceId, agentSessionId);
     const inlineApplied =
       hasCachedSession && this.applyInlineActivityUpdatedEvent(input);
@@ -384,7 +423,9 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     });
   }
 
-  private scheduleAgentActivityUpdate(input: AgentActivityUpdatedEvent): void {
+  private scheduleAgentActivityUpdate(
+    input: WorkspaceAgentActivityBridgeEvent
+  ): void {
     const agentSessionId = input.agentSessionId.trim();
     if (!agentSessionId) return;
     void this.reconcileAgentActivityUpdate(input);
@@ -450,6 +491,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       source: "reconcile.combined.state_upsert",
       workspaceId
     });
+    this.emitLatestStateEvent(workspaceId, agentSessionId);
   }
 
   private async executeSessionReconcileCommandSafely(command: {
@@ -562,6 +604,22 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       source: "reconcile.state_upsert",
       workspaceId
     });
+    this.emitLatestStateEvent(workspaceId, agentSessionId);
+  }
+
+  private stateEventKey(workspaceId: string, agentSessionId: string): string {
+    return `${normalizeWorkspaceId(workspaceId)}:${agentSessionId.trim()}`;
+  }
+
+  private emitLatestStateEvent(
+    workspaceId: string,
+    agentSessionId: string
+  ): void {
+    const key = this.stateEventKey(workspaceId, agentSessionId);
+    const event = this.latestStateEventBySessionKey.get(key);
+    if (!event) return;
+    this.latestStateEventBySessionKey.delete(key);
+    this.emitSessionEvent(normalizeWorkspaceId(workspaceId), event);
   }
 
   private applyInlineActivityUpdatedEvent(

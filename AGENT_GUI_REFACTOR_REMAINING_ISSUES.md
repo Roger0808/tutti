@@ -66,6 +66,27 @@ Required fix:
   `IAgentsService` source in the detached window.
 - Remove focus-owned reload state after the service owns refresh policy.
 
+### Latest main adds oversized Agent desktop orchestration files
+
+After the current main merge,
+`StandaloneAgentToolSidebar.tsx` is above 900 lines and
+`workspaceAgentActivityService.ts` remains above the repository's 800-line
+business-code limit. The former combines tool layout, Message Center engine
+projection/commands, message prefetch, and browser/terminal panel composition;
+the latter still combines the public activity facade with several import and
+runtime operations.
+
+Required fix:
+
+- Extract the standalone Message Center vertical and the individual tool-panel
+  composition without moving canonical session/turn state out of the shared
+  `AgentSessionEngine`.
+- Continue decomposing the desktop activity facade by capability while keeping
+  reconciliation and engine ownership centralized in the existing bridge/host
+  modules.
+- Add behavioral tests at the extracted boundaries; do not replace the files
+  with source-text-only checks.
+
 ### Agent directory loading has no explicit lifecycle
 
 `AgentsSnapshot.capturedAtUnixMs === null` currently represents idle, loading,
