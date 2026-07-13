@@ -1114,7 +1114,16 @@ provider name:
 
 - `activeTurnGuidance = true`: send the queued prompt with `guidance = true`.
   Codex app-server maps this to `turn/steer`; Claude SDK maps it to the sidecar
-  `guide` request. The current turn remains active.
+  `guide` request. The current turn remains active. The accepted submit claim,
+  returned turn identity, and durable user-message event all reference that
+  exact active turn; native guidance must not allocate a second synthetic turn.
+  The authoritative message keeps the guidance submit's `clientSubmitId` so the
+  engine can reconcile and remove its optimistic prompt without losing the
+  visible user message after the turn settles or the transcript reloads. A
+  guidance message is a mid-turn transcript event, not another opening prompt:
+  the conversation projection must interleave it with assistant, thinking, and
+  tool rows by authoritative sequence (falling back to occurrence time) while
+  keeping the same canonical `turnId`.
 - otherwise, `interrupt = true`: keep the prompt in the frontend queue, cancel
   the exact active turn, and send the prompt as a normal prompt only after a
   validated cancel result or an authoritative settled-turn update.
