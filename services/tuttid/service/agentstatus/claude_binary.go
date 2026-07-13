@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 
@@ -139,7 +140,16 @@ func (s Service) EnsureClaudeCodeBinary(ctx context.Context) (ClaudeCodeBinarySt
 		return ClaudeCodeBinaryStatus{Path: finalPath, Version: descriptor.ClaudeVersion, Source: "installed"}, nil
 	}
 
-	releaseLock, err := newInstallCommandLock(claudeCodeBinaryLockCommand).Acquire(ctx)
+	lock := newInstallCommandLock(claudeCodeBinaryLockCommand)
+	// Self-heal an orphaned lock (daemon crash mid-provisioning) before
+	// acquiring: Acquire polls indefinitely on an existing lock file and the
+	// startup recovery in main.go only sweeps the npm-global lock. Recover
+	// removes the file only when its owning PID is dead, so it cannot break a
+	// live concurrent provisioning run.
+	if _, err := lock.Recover(); err != nil {
+		return ClaudeCodeBinaryStatus{}, fmt.Errorf("recover claude binary install lock: %w", err)
+	}
+	releaseLock, err := lock.Acquire(ctx)
 	if err != nil {
 		return ClaudeCodeBinaryStatus{}, err
 	}
@@ -162,12 +172,20 @@ func (s Service) EnsureClaudeCodeBinary(ctx context.Context) (ClaudeCodeBinarySt
 	return ClaudeCodeBinaryStatus{Path: finalPath, Version: descriptor.ClaudeVersion, Source: source}, nil
 }
 
+// Per-source download budgets: a stalled primary source must not consume the
+// caller's whole deadline and starve the fallback of a live context. The
+// caller's context still bounds the overall attempt.
+const claudeCDNDownloadTimeout = 10 * time.Minute
+const claudeNPMDownloadTimeoutPerRegistry = 10 * time.Minute
+
 func (s Service) downloadClaudeCodeBinary(
 	ctx context.Context,
 	descriptor claudeSDKRuntimeDescriptor,
 	finalPath string,
 ) (string, error) {
-	cdnErr := s.installClaudeCodeBinaryFromCDN(ctx, descriptor, finalPath)
+	cdnCtx, cancelCDN := context.WithTimeout(ctx, claudeCDNDownloadTimeout)
+	cdnErr := s.installClaudeCodeBinaryFromCDN(cdnCtx, descriptor, finalPath)
+	cancelCDN()
 	if cdnErr == nil {
 		return "cdn", nil
 	}
@@ -234,8 +252,13 @@ func (s Service) installClaudeCodeBinaryFromNPM(
 		if sourceURL == "" {
 			continue
 		}
-		if err := s.downloadFile(ctx, sourceURL, archivePath); err != nil {
-			lastErr = err
+		// A registry that stalls mid-transfer must fail over to the next one
+		// instead of consuming the caller's whole deadline.
+		registryCtx, cancelRegistry := context.WithTimeout(ctx, claudeNPMDownloadTimeoutPerRegistry)
+		downloadErr := s.downloadFile(registryCtx, sourceURL, archivePath)
+		cancelRegistry()
+		if downloadErr != nil {
+			lastErr = downloadErr
 			continue
 		}
 		stagingPath := claudeBinaryStagingPath(finalPath)

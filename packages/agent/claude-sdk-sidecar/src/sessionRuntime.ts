@@ -480,19 +480,23 @@ export class SessionRuntime {
     const querySettings = querySettingsFromSessionSettings(
       this.configuration.settings
     );
+    // One settings snapshot feeds both the executable resolution and the SDK
+    // env, so the two can never disagree (and the settings hierarchy is read
+    // once per query creation).
+    const settingsEnv = claudeSettingsEnv(this.cwd || process.cwd());
     // Same merge (and precedence) as queryOptions.env below, so an override
     // set in Claude settings files is honored exactly like one from the
     // process or session environment.
     const claudeExecutablePath = resolveClaudeCodeExecutablePath({
       ...process.env,
-      ...claudeSettingsEnv(this.cwd || process.cwd()),
+      ...settingsEnv,
       ...this.env
     });
     const queryOptions: ClaudeQueryOptions = {
       cwd: this.cwd || process.cwd(),
       env: {
         ...process.env,
-        ...claudeSettingsEnv(this.cwd || process.cwd()),
+        ...settingsEnv,
         ...this.env,
         CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1"
       },
