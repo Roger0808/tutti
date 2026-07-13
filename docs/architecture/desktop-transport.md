@@ -60,6 +60,17 @@ Current default strategy:
 - `main` reads that listener info and exposes the resolved backend config to renderer windows
 - renderer and `main` both use a desktop-issued bearer token for daemon requests
 
+Renderer constructs one canonical `@tutti-os/client-tuttid-ts` client and keeps
+that object stable. Its custom restart-aware fetch resolves backend config
+immediately before every HTTP request, replaces only the request origin, and
+overrides `Authorization` with the current per-run bearer token. Request path,
+query, method, body, other headers, and cancellation signal remain intact.
+
+Do not copy the `TuttidClient` method table into desktop wrappers, use `Proxy`,
+or maintain a second compatibility client. Daemon restart handling belongs in
+the request transport so new canonical client methods are available to desktop
+without manual forwarding changes.
+
 This keeps the daemon under desktop supervision while giving renderer and CLI
 clients a stable local backend contract.
 
