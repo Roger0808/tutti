@@ -72,6 +72,7 @@ export function WorkspaceWindow() {
             tuttidClient={tuttidClient}
             workspaceAgentActivityService={workspaceAgentActivityService}
             workspaceAppCenterService={workspaceAppCenterService}
+            workspaceAppExternalApi={workspaceAppExternalApi}
             workspaceID={workspaceID}
             workspaceUserProjectService={workspaceUserProjectService}
           />

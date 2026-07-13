@@ -151,6 +151,23 @@ Manager task execution and task breakdown, must request a new AgentGUI window
 and must not reuse an existing dock-entry node. Reusing the dock entry can focus
 or restore the previous active conversation before the new draft composer is
 visible.
+Every renderer shell that exposes one of those launchers must register the
+workspace-scoped AgentGUI launch coordinator locally. The OS workspace handler
+launches a workbench node. The standalone Agent handler opens draft-prefill and
+explicit new-window requests in another native Agent window, carrying the
+target, provider, draft, auto-submit flag, and user-project path through the
+typed window intent. The standalone route injects that immutable launch draft
+as the AgentGUI body's first-render prefill bootstrap request; it must not depend
+on a mount effect to copy and clear a synthetic workbench activation. An
+existing-session request without a new-window flag activates that session in the
+current standalone window. That activation clears the previous
+`agentTargetId` when the request omits a target, so session-authoritative
+navigation cannot inherit an unrelated managed-agent rail constraint.
+Workspace App external bridges and App Center actions use the same coordinator
+instead of maintaining a second Agent launch path. When the standalone shell
+also embeds Issue Manager, it registers the workspace-scoped Issue Manager
+launch coordinator locally and translates issue links into the standard
+`open-workspace-issue` activation for its Tasks sidebar.
 The handoff menu is a launch surface, so its options must come from ready entries
 in the host-provided `agents` array. It must not synthesize a provider catalog
 or infer runnable agents from provider metadata.
@@ -428,8 +445,12 @@ creation decision only: the preference must not enter AgentGUI state, and an
 existing native window must not be made to impersonate the other window kind
 by swapping renderer content. Desktop persists the selection through the
 generic preference flag `workspace.standaloneAgentMode`; absence of that flag
-means Agent mode, while an explicit `false` value retains the OS workspace as
-the user's selected fallback.
+means OS mode, while an explicit `true` value selects the standalone Agent
+window.
+Settings destinations remain host-local presentation behavior. The standalone
+Agent settings control opens the global panel on General, the Agent settings
+control embedded in OS mode opens the Agent section, and the OS workspace's
+top-right global settings control opens General.
 Opening an existing session is session-authoritative. If the launch payload has
 no `agentTargetId`, workbench node state must clear any previous target
 constraint instead of inheriting it from the reused node. When a

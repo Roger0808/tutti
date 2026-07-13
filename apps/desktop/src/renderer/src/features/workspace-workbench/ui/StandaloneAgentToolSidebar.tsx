@@ -41,6 +41,7 @@ import type { WorkspaceAgentActivityService } from "@renderer/features/workspace
 import type { DesktopBrowserApi } from "@preload/types";
 import { useTranslation } from "@renderer/i18n";
 import { getWorkspaceTerminalSurfaceRuntime } from "../services/workspaceTerminalSurfaceRuntime.ts";
+import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
 import {
   createStandaloneAgentToolSidebarState,
   reduceStandaloneAgentToolSidebarState,
@@ -61,6 +62,7 @@ import {
 } from "./standaloneAgentToolWorkbench.ts";
 import { standaloneAgentBrowserDefaultUrl } from "./standaloneAgentToolWorkbench.ts";
 import { StandaloneAgentAppCenterToolPanel } from "./StandaloneAgentAppCenterToolPanel.tsx";
+import { StandaloneAgentIssueManagerToolPanel } from "./StandaloneAgentIssueManagerToolPanel.tsx";
 import { useExternalStoreValue } from "./useExternalStoreValue.ts";
 
 const browserNodeLoadFailedI18nKey: BrowserNodeI18nKey = "loadFailed";
@@ -76,6 +78,7 @@ interface StandaloneAgentToolSidebarProps {
   children: ReactNode;
   contributions: readonly WorkbenchContribution[] | undefined;
   fileOpenRequest?: StandaloneAgentFileOpenRequest | null;
+  issueManagerOpenRequest?: StandaloneAgentIssueManagerOpenRequest | null;
   mainContentMinWidthPx?: number;
   renderHeader: (toolActions: ReactNode) => ReactNode;
   onOpenMessageCenterChat: (input: {
@@ -100,6 +103,7 @@ export function StandaloneAgentToolSidebar({
   children,
   contributions,
   fileOpenRequest = null,
+  issueManagerOpenRequest = null,
   mainContentMinWidthPx,
   renderHeader,
   onOpenMessageCenterChat,
@@ -171,6 +175,7 @@ export function StandaloneAgentToolSidebar({
       files: i18n.t("workspace.agentGui.toolSidebar.files"),
       messages: i18n.t("workspace.agentGui.toolSidebar.messages"),
       shrink: i18n.t("workspace.agentGui.toolSidebar.shrinkPanel"),
+      tasks: i18n.t("workspace.agentGui.toolSidebar.tasks"),
       terminal: i18n.t("workspace.agentGui.toolSidebar.terminal"),
       tool: i18n.t("workspace.agentGui.toolSidebar.tool"),
       unavailable: i18n.t("workspace.agentGui.toolSidebar.unavailable")
@@ -228,6 +233,7 @@ export function StandaloneAgentToolSidebar({
   }, [activePanel, contentReadyPanels]);
   const lastHandledAppOpenIdRef = useRef<string | null>(null);
   const lastHandledFileOpenRequestRef = useRef<string | null>(null);
+  const lastHandledIssueManagerOpenRequestRef = useRef<string | null>(null);
   useEffect(() => {
     const normalizedAppOpenId = appOpenId?.trim() || null;
     if (!normalizedAppOpenId) {
@@ -252,6 +258,19 @@ export function StandaloneAgentToolSidebar({
     dispatch({ panel: "files", type: "open-panel" });
     void resizeForPanel("files");
   }, [fileOpenRequest, resizeForPanel]);
+  useEffect(() => {
+    if (
+      !issueManagerOpenRequest ||
+      lastHandledIssueManagerOpenRequestRef.current ===
+        issueManagerOpenRequest.requestID
+    ) {
+      return;
+    }
+    lastHandledIssueManagerOpenRequestRef.current =
+      issueManagerOpenRequest.requestID;
+    dispatch({ panel: "tasks", type: "open-panel" });
+    void resizeForPanel("tasks");
+  }, [issueManagerOpenRequest, resizeForPanel]);
   const closePanel = useCallback(() => {
     dispatch({ type: "close" });
     void resizeForPanel(null);
@@ -391,6 +410,7 @@ export function StandaloneAgentToolSidebar({
                           browserApi={browserApi}
                           contributions={contributions}
                           fileOpenRequest={fileOpenRequest}
+                          issueManagerOpenRequest={issueManagerOpenRequest}
                           i18n={i18n}
                           locale={locale}
                           messageCenterModel={messageCenterModel}
@@ -432,6 +452,7 @@ function ToolSidebarPanel({
   browserApi,
   contributions,
   fileOpenRequest,
+  issueManagerOpenRequest,
   i18n,
   locale,
   messageCenterModel,
@@ -449,6 +470,7 @@ function ToolSidebarPanel({
   browserApi?: DesktopBrowserApi;
   contributions: readonly WorkbenchContribution[] | undefined;
   fileOpenRequest: StandaloneAgentFileOpenRequest | null;
+  issueManagerOpenRequest: StandaloneAgentIssueManagerOpenRequest | null;
   i18n: I18nRuntime<string>;
   locale: ReturnType<typeof useTranslation>["locale"];
   messageCenterModel: WorkspaceAgentMessageCenterModel;
@@ -478,6 +500,19 @@ function ToolSidebarPanel({
         backLabel={i18n.t("workspace.appCenter.backToApps")}
         contributions={contributions}
         unavailableLabel={i18n.t("workspace.agentGui.toolSidebar.unavailable")}
+        workspaceId={workspaceId}
+      />
+    );
+  }
+  if (panel === "tasks") {
+    return (
+      <StandaloneAgentIssueManagerToolPanel
+        active={active}
+        activation={issueManagerOpenRequest?.activation ?? null}
+        contributions={contributions}
+        unavailableLabel={i18n.t("workspace.agentGui.toolSidebar.unavailable", {
+          tool: i18n.t("workspace.agentGui.toolSidebar.tasks")
+        })}
         workspaceId={workspaceId}
       />
     );

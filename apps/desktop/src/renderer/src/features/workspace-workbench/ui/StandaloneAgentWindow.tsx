@@ -46,6 +46,7 @@ import type {
 import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import { resolveDesktopAgentGUIProviderForAgentTarget } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchStateHelpers.ts";
 import type { DesktopAgentGUIWorkbenchBodyProps } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchModel.ts";
+import type { DesktopAgentGUIPrefillPromptRequest } from "@renderer/features/workspace-agent/services/desktopAgentGUIPrefillPromptActivation.ts";
 import { isDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import {
   desktopAgentGUIOpenSessionActivationType,
@@ -53,11 +54,21 @@ import {
   type DesktopAgentGUIProvider,
   type DesktopAgentGUIWorkbenchState
 } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
+import {
+  registerWorkspaceAgentGuiLaunchHandler,
+  requestWorkspaceAgentGuiLaunch
+} from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
+import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import { useService } from "@tutti-os/infra/di";
 import { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
-import type { DesktopApi, DesktopHostWindowApi } from "@preload/types";
+import type {
+  DesktopApi,
+  DesktopHostWindowApi,
+  DesktopWorkspaceAppExternalHostApi
+} from "@preload/types";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type { TuttiExternalFileOpenInput } from "@tutti-os/workspace-external-core/contracts";
 import type { IReporterService } from "@renderer/features/analytics";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
@@ -69,8 +80,18 @@ import { WorkspaceAccountMenu } from "./WorkspaceAccountMenu";
 import { WorkspaceSettingsPanel } from "./WorkspaceSettingsPanel";
 import { StandaloneAgentToolSidebar } from "./StandaloneAgentToolSidebar";
 import type { StandaloneAgentFileOpenRequest } from "./StandaloneAgentToolSidebar";
+import { WorkspaceAppExternalBridge } from "./WorkspaceAppExternalBridge";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
+import { handleStandaloneAgentGuiLaunch } from "../services/standaloneAgentGuiLaunchHandler.ts";
+import {
+  createStandaloneAgentIssueManagerOpenRequest,
+  type StandaloneAgentIssueManagerOpenRequest
+} from "../services/standaloneAgentIssueManagerLaunch.ts";
+import {
+  registerWorkspaceIssueManagerLaunchHandler,
+  requestWorkspaceIssueManagerLaunch
+} from "../services/workspaceIssueManagerLaunchCoordinator.ts";
 import type { WorkspaceSettingsSectionID } from "../services/workspaceSettingsService.interface";
 
 import type { WorkspaceWorkbenchCapabilitySettingsTarget } from "../services/workspaceWorkbenchHostService.interface";
@@ -110,6 +131,7 @@ export interface StandaloneAgentWindowProps {
   tuttidClient: TuttidClient;
   workspaceAgentActivityService: WorkspaceAgentActivityService;
   workspaceAppCenterService: IWorkspaceAppCenterService;
+  workspaceAppExternalApi?: DesktopWorkspaceAppExternalHostApi;
   toolWorkbench: {
     appI18n: I18nRuntime<string>;
     contributions: readonly WorkbenchContribution[] | undefined;
@@ -129,6 +151,7 @@ export function StandaloneAgentWindow({
   tuttidClient,
   workspaceAgentActivityService,
   workspaceAppCenterService,
+  workspaceAppExternalApi,
   toolWorkbench,
   workspace,
   workspaceUserProjectService
@@ -146,8 +169,34 @@ export function StandaloneAgentWindow({
   const launchProvider = normalizeDesktopAgentGUIProvider(
     params.get("provider")
   );
+  const launchDraftPrompt = params.get("draftPrompt")?.trim() || null;
+  const launchAutoSubmit = params.get("autoSubmit") === "1";
   const launchAgentSessionId = params.get("agentSessionId")?.trim() || null;
   const launchAgentTargetId = params.get("agentTargetId")?.trim() || null;
+  const launchUserProjectPath = params.get("userProjectPath")?.trim() || null;
+  const prefillPromptBootstrapRequest =
+    useMemo<DesktopAgentGUIPrefillPromptRequest | null>(
+      () =>
+        launchDraftPrompt
+          ? {
+              agentTargetId: launchAgentTargetId,
+              autoSubmit: launchAutoSubmit,
+              draftPrompt: launchDraftPrompt,
+              provider: launchProvider,
+              sequence: 1,
+              ...(launchUserProjectPath
+                ? { userProjectPath: launchUserProjectPath }
+                : {})
+            }
+          : null,
+      [
+        launchAgentTargetId,
+        launchAutoSubmit,
+        launchDraftPrompt,
+        launchProvider,
+        launchUserProjectPath
+      ]
+    );
   const bootstrapAgents = useMemo(() => readBootstrapAgents(params), [params]);
   const providerStatusBootstrapSnapshot = useMemo(
     () => readProviderStatusBootstrapSnapshot(params),
@@ -196,7 +245,10 @@ export function StandaloneAgentWindow({
   );
   const [fileOpenRequest, setFileOpenRequest] =
     useState<StandaloneAgentFileOpenRequest | null>(null);
+  const [issueManagerOpenRequest, setIssueManagerOpenRequest] =
+    useState<StandaloneAgentIssueManagerOpenRequest | null>(null);
   const fileOpenRequestSequenceRef = useRef(0);
+  const issueManagerOpenRequestSequenceRef = useRef(0);
   const activationSequenceRef = useRef(1);
   const openFileInSidebar = useCallback((path: string): boolean => {
     const normalizedPath = path.trim();
@@ -209,6 +261,14 @@ export function StandaloneAgentWindow({
     });
     return true;
   }, []);
+  const openWorkspaceAppExternalFile = useCallback(
+    async (input: TuttiExternalFileOpenInput) => {
+      if (!openFileInSidebar(input.path)) {
+        throw new Error("Workspace files could not be opened.");
+      }
+    },
+    [openFileInSidebar]
+  );
   useEffect(() => {
     workspaceFileManagerService.setCanvasFilePreviewLauncher(
       workspaceId,
@@ -468,10 +528,15 @@ export function StandaloneAgentWindow({
       )
     );
   }, [instanceId]);
-  const handleOpenMessageCenterChat = useCallback(
-    (input: { agentSessionId: string; provider: string }) => {
+  const handleActivateAgentSession = useCallback(
+    (input: {
+      agentSessionId: string;
+      agentTargetId: string | null;
+      provider: string;
+    }) => {
       setNodeState((current) => ({
         ...current,
+        agentTargetId: input.agentTargetId,
         lastActiveAgentSessionId: input.agentSessionId,
         provider: normalizeDesktopAgentGUIProvider(input.provider)
       }));
@@ -483,6 +548,46 @@ export function StandaloneAgentWindow({
     },
     []
   );
+  const handleOpenMessageCenterChat = useCallback(
+    (input: { agentSessionId: string; provider: string }) => {
+      handleActivateAgentSession({ ...input, agentTargetId: null });
+    },
+    [handleActivateAgentSession]
+  );
+  useEffect(
+    () =>
+      registerWorkspaceAgentGuiLaunchHandler(workspaceId, (request) =>
+        handleStandaloneAgentGuiLaunch(request, {
+          activateAgentSession: handleActivateAgentSession,
+          agents: agents ?? undefined,
+          headerProvider,
+          openAgentWindow: (input) => hostWindowApi.openAgentWindow(input),
+          providerStatusSnapshot: agentProviderStatusService.getSnapshot(),
+          workspaceId
+        })
+      ),
+    [
+      agentProviderStatusService,
+      agents,
+      handleActivateAgentSession,
+      headerProvider,
+      hostWindowApi,
+      workspaceId
+    ]
+  );
+  useEffect(
+    () =>
+      registerWorkspaceIssueManagerLaunchHandler(workspaceId, (request) => {
+        setIssueManagerOpenRequest(
+          createStandaloneAgentIssueManagerOpenRequest(
+            request,
+            ++issueManagerOpenRequestSequenceRef.current
+          )
+        );
+        return true;
+      }),
+    [workspaceId]
+  );
   const resizeStandaloneAgentWindowContentWidth = useCallback(
     (width: number) => hostWindowApi.resizeContentWidth({ width }),
     [hostWindowApi]
@@ -493,15 +598,32 @@ export function StandaloneAgentWindow({
         NonNullable<DesktopAgentGUIWorkbenchBodyProps["onLinkAction"]>
       >[0]
     ) => {
-      if (
-        action.type !== "open-local-asset-preview" &&
-        action.type !== "open-workspace-file"
-      ) {
-        return;
-      }
-      openFileInSidebar(action.path);
+      void runDesktopAgentGUILinkAction(action, {
+        homeDirectory: desktopApi.platform.homeDirectory,
+        launchAgentGui: requestWorkspaceAgentGuiLaunch,
+        launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
+        launchWorkspaceFiles: ({ path }) => openFileInSidebar(path),
+        launchWorkspaceApp: async ({
+          appId,
+          workspaceId: targetWorkspaceId
+        }) => {
+          await workspaceAppCenterService.openApp({
+            appId,
+            workspaceId: targetWorkspaceId
+          });
+          return true;
+        },
+        launchGroupChat: () => false,
+        openBrowserUrl: () => false,
+        workspaceId
+      });
     },
-    [openFileInSidebar]
+    [
+      desktopApi.platform.homeDirectory,
+      openFileInSidebar,
+      workspaceAppCenterService,
+      workspaceId
+    ]
   );
   const handleCapabilitySettingsRequest = useCallback(
     (target: WorkspaceWorkbenchCapabilitySettingsTarget) => {
@@ -559,6 +681,7 @@ export function StandaloneAgentWindow({
         browserApi={desktopApi.browser}
         contributions={toolWorkbench.contributions}
         fileOpenRequest={fileOpenRequest}
+        issueManagerOpenRequest={issueManagerOpenRequest}
         mainContentMinWidthPx={
           headerConversationRailWidthPx + agentGuiWorkbenchProviderRailWidthPx
         }
@@ -642,6 +765,7 @@ export function StandaloneAgentWindow({
               });
             }}
             onStateChange={setNodeState}
+            prefillPromptBootstrapRequest={prefillPromptBootstrapRequest}
             providerStatusBootstrapSnapshot={providerStatusBootstrapSnapshot}
             agents={agents ?? []}
             agentsLoading={agents === null}
@@ -681,6 +805,11 @@ export function StandaloneAgentWindow({
         agentProviderStatusService={agentProviderStatusService}
         host={host}
         workspace={workspace}
+      />
+      <WorkspaceAppExternalBridge
+        api={workspaceAppExternalApi}
+        openFile={openWorkspaceAppExternalFile}
+        workspaceId={workspaceId}
       />
     </main>
   );
@@ -764,11 +893,13 @@ function StandaloneAgentWindowPanelHosts({
       settingsPanelRequest.requestSequence;
     workspaceSettingsService.openPanel(
       { id: workspace.id },
-      settingsPanelRequest.section
-        ? {
-            section: settingsPanelRequest.section as WorkspaceSettingsSectionID
-          }
-        : undefined
+      {
+        section:
+          settingsPanelRequest.section === "agent"
+            ? "general"
+            : ((settingsPanelRequest.section ??
+                "general") as WorkspaceSettingsSectionID)
+      }
     );
   }, [settingsPanelRequest, workspace.id, workspaceSettingsService]);
 

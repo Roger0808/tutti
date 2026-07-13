@@ -64,6 +64,8 @@ It is responsible for:
   window
 - hosting AgentGUI-triggered settings, external import, and environment
   detection panels without mounting the full workspace chrome
+- exposing shared workspace tools such as task management from compact header
+  actions and rendering them in the Agent window's resizable right sidebar
 - opening an existing session when launched with an `agentSessionId`
 
 It is not responsible for:
@@ -160,6 +162,15 @@ and the panel exposes a back action that clears that selection. An app open
 request activates the Apps sidebar automatically. Both shells
 must start the shared App Center polling lifecycle, so app runtime events update
 the selected Browser Node from `starting` to `running` with its launch URL.
+Both shells also mount the Workspace App external bridge and local
+workspace-scoped launch handlers for the surfaces they expose. This keeps App
+Center Agent actions and in-app Agent/session/issue reference links functional
+in the Agent-only renderer, where module-local coordinator registrations from
+an OS renderer are not visible. Draft launches open a second native Agent-only
+window with the draft bootstrap intent, while existing-session navigation
+reuses the current Agent-only window unless the caller explicitly requests a
+new one. Issue Manager launches open the Tasks sidebar and forward the standard
+issue activation so the embedded surface selects the requested issue and task.
 The OS Files floating window opens wide by default so its location, list, and
 detail columns begin at approximately 26%, 55%, and 19% of the content width;
 each splitter remains user-resizable within its minimum-content constraints.

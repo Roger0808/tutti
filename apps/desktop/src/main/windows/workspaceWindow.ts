@@ -254,11 +254,14 @@ export function loadAgentWindowContent(
   > & {
     agentSessionID?: string | null;
     agentTargetID?: string | null;
+    autoSubmit?: boolean;
     dockPlacement: DesktopDockPlacement;
+    draftPrompt?: string | null;
     providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
     agents?: readonly AgentGUIAgent[];
     provider?: string | null;
     theme: DesktopThemeState;
+    userProjectPath?: string | null;
   }
 ): void {
   const windowIntentSearchOptions = {
@@ -272,9 +275,12 @@ export function loadAgentWindowContent(
   const intent = createAgentWindowIntent({
     agentSessionID: options.agentSessionID,
     agentTargetID: options.agentTargetID,
+    autoSubmit: options.autoSubmit,
+    draftPrompt: options.draftPrompt,
     providerStatusSnapshot: options.providerStatusSnapshot,
     agents: options.agents,
     provider: options.provider,
+    userProjectPath: options.userProjectPath,
     workspaceID: options.workspaceID
   });
   if (options.rendererUrl) {

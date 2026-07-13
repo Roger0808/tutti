@@ -270,10 +270,13 @@ export interface DesktopHostWindowCloseRequestPayload {
 export interface DesktopHostOpenAgentWindowInput {
   agentSessionId?: string | null;
   agentTargetId?: string | null;
+  autoSubmit?: boolean;
+  draftPrompt?: string | null;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
   agents?: readonly AgentGUIAgent[];
   minimizeSourceWindow?: boolean;
   provider?: string | null;
+  userProjectPath?: string | null;
   workspaceId: string;
 }
 

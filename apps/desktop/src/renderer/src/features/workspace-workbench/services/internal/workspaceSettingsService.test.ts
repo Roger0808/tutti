@@ -951,7 +951,10 @@ test("WorkspaceSettingsService changes workspace UI mode without replacing other
         return flags;
       },
       state: createPreferencesState({
-        featureFlags: { "lab.enabled": true }
+        featureFlags: {
+          "lab.enabled": true,
+          "workspace.standaloneAgentMode": true
+        }
       })
     })
   );
@@ -961,8 +964,7 @@ test("WorkspaceSettingsService changes workspace UI mode without replacing other
 
   assert.deepEqual(writes, [
     {
-      "lab.enabled": true,
-      "workspace.standaloneAgentMode": false
+      "lab.enabled": true
     }
   ]);
   assert.deepEqual(replacements, [{ mode: "os", workspaceId: "workspace-1" }]);

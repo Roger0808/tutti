@@ -222,9 +222,12 @@ function normalizeAgentWindowInput(input: DesktopHostOpenAgentWindowInput) {
   return {
     agentSessionID: input.agentSessionId?.trim() || null,
     agentTargetID: input.agentTargetId?.trim() || null,
+    autoSubmit: input.autoSubmit === true,
+    draftPrompt: input.draftPrompt?.trim() || null,
     providerStatusSnapshot: input.providerStatusSnapshot ?? null,
     agents: input.agents,
     provider: input.provider?.trim() || null,
+    userProjectPath: input.userProjectPath?.trim() || null,
     workspaceID
   };
 }

@@ -15,10 +15,13 @@ export type DesktopWindowIntent =
   | {
       agentSessionID?: string | null;
       agentTargetID?: string | null;
+      autoSubmit?: boolean;
+      draftPrompt?: string | null;
       providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot;
       agents?: readonly AgentGUIAgent[];
       kind: "agent";
       provider?: string | null;
+      userProjectPath?: string | null;
       workspaceID: string;
     }
   | {
@@ -45,9 +48,12 @@ export function createWorkspaceWindowIntent(
 export function createAgentWindowIntent(input: {
   agentSessionID?: string | null;
   agentTargetID?: string | null;
+  autoSubmit?: boolean;
+  draftPrompt?: string | null;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
   agents?: readonly AgentGUIAgent[];
   provider?: string | null;
+  userProjectPath?: string | null;
   workspaceID: string;
 }): DesktopWindowIntent {
   const agents = normalizeAgentWindowAgents(input.agents);
@@ -57,10 +63,17 @@ export function createAgentWindowIntent(input: {
   return {
     agentSessionID: input.agentSessionID?.trim() || null,
     agentTargetID: input.agentTargetID?.trim() || null,
+    ...(input.autoSubmit === true ? { autoSubmit: true } : {}),
+    ...(input.draftPrompt?.trim()
+      ? { draftPrompt: input.draftPrompt.trim() }
+      : {}),
     ...(providerStatusSnapshot ? { providerStatusSnapshot } : {}),
     ...(agents !== undefined ? { agents } : {}),
     kind: "agent",
     provider: input.provider?.trim() || null,
+    ...(input.userProjectPath?.trim()
+      ? { userProjectPath: input.userProjectPath.trim() }
+      : {}),
     workspaceID: input.workspaceID
   };
 }
@@ -99,8 +112,17 @@ export function encodeDesktopWindowIntent(
     if (intent.agentTargetID) {
       params.set("agentTargetId", intent.agentTargetID);
     }
+    if (intent.draftPrompt) {
+      params.set("draftPrompt", intent.draftPrompt);
+    }
+    if (intent.autoSubmit) {
+      params.set("autoSubmit", "1");
+    }
     if (intent.provider) {
       params.set("provider", intent.provider);
+    }
+    if (intent.userProjectPath) {
+      params.set("userProjectPath", intent.userProjectPath);
     }
     if (intent.agents !== undefined) {
       params.set("agents", JSON.stringify(intent.agents));
@@ -154,11 +176,14 @@ export function resolveDesktopWindowIntent(
     return createAgentWindowIntent({
       agentSessionID: params.get("agentSessionId"),
       agentTargetID: params.get("agentTargetId"),
+      autoSubmit: params.get("autoSubmit") === "1",
+      draftPrompt: params.get("draftPrompt"),
       providerStatusSnapshot: parseAgentProviderStatusSnapshot(
         params.get("agentProviderStatusSnapshot")
       ),
       agents: parseAgentWindowAgents(params.get("agents")),
       provider: params.get("provider"),
+      userProjectPath: params.get("userProjectPath"),
       workspaceID
     });
   }

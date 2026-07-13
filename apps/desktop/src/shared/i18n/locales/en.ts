@@ -156,6 +156,7 @@ export const en = {
         messages: "Messages",
         resizeSidebar: "Resize tool sidebar",
         shrinkPanel: "Shrink panel",
+        tasks: "Tasks",
         terminal: "Terminal",
         tool: "Tool",
         unavailable: "{{tool}} is not available in the Agent window yet."

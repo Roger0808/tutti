@@ -24,6 +24,10 @@ const standaloneAgentToolSidebarToolbarSource = readFileSync(
   new URL("./StandaloneAgentToolSidebarToolbar.tsx", import.meta.url),
   "utf8"
 );
+const standaloneAgentIssueManagerToolPanelSource = readFileSync(
+  new URL("./StandaloneAgentIssueManagerToolPanel.tsx", import.meta.url),
+  "utf8"
+);
 const workspaceAgentStatusPetIconSource = readFileSync(
   new URL("./WorkspaceAgentStatusPetIcon.tsx", import.meta.url),
   "utf8"
@@ -119,6 +123,37 @@ test("standalone Agent browser and terminal share one dropdown trigger", () => {
   assert.doesNotMatch(
     standaloneAgentToolSidebarToolbarSource,
     /rounded-r-none|rounded-l-none|onToggleTool/
+  );
+});
+
+test("standalone Agent toolbar exposes task management as a direct header action", () => {
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /active=\{activePanel === "tasks"\}[\s\S]*?<TaskIcon[\s\S]*?onTogglePanel\("tasks"\)/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /<StandaloneAgentIssueManagerToolPanel/
+  );
+  assert.match(
+    standaloneAgentIssueManagerToolPanelSource,
+    /candidate\.id === "workspace-issue-manager"/
+  );
+  assert.match(
+    standaloneAgentIssueManagerToolPanelSource,
+    /<IssueManagerEmbeddedToolbar[\s\S]*?resolved\.definition\.renderBody\(context\)/
+  );
+  assert.match(
+    standaloneAgentIssueManagerToolPanelSource,
+    /const context: WorkbenchHostNodeBodyContext = \{\s*activation,/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /dispatch\(\{ panel: "tasks", type: "open-panel" \}\)/
+  );
+  assert.match(
+    standaloneAgentIssueManagerToolPanelSource,
+    /source\.subscribe\?\.\(updateState\)/
   );
 });
 

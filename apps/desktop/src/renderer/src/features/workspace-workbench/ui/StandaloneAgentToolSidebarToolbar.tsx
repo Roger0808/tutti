@@ -10,6 +10,7 @@ import {
   FileCodeIcon,
   FolderIcon,
   NavApplicationsLinedIcon,
+  TaskIcon,
   ToolsIcon,
   Tooltip,
   TooltipContent,
@@ -118,6 +119,13 @@ export function StandaloneAgentToolSidebarToolbar({
           </DropdownMenuContent>
         </DropdownMenu>
         <span aria-hidden className="mx-1 h-4 w-px bg-[var(--border-1)]" />
+        <ToolSidebarButton
+          active={activePanel === "tasks"}
+          icon={<TaskIcon aria-hidden className="size-4" />}
+          label={copy.tasks}
+          reminderCount={reminders.tasks}
+          onClick={() => onTogglePanel("tasks")}
+        />
         <ToolSidebarButton
           active={activePanel === "apps"}
           icon={<NavApplicationsLinedIcon aria-hidden className="size-4" />}

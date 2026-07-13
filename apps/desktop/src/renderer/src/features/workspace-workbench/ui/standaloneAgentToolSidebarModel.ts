@@ -2,6 +2,7 @@ export type StandaloneAgentToolPanelId =
   | "files"
   | "browser"
   | "apps"
+  | "tasks"
   | "messages";
 
 export type StandaloneAgentSharedToolPanelId = "terminal";
@@ -18,6 +19,7 @@ export const standaloneAgentToolPanelDefaultWidthById: Record<
   apps: standaloneAgentBrowserAndAppsDefaultWidth,
   browser: standaloneAgentBrowserAndAppsDefaultWidth,
   files: standaloneAgentBrowserAndAppsDefaultWidth,
+  tasks: 860,
   messages: 440
 };
 
@@ -28,6 +30,7 @@ export const standaloneAgentToolPanelMinWidthById: Record<
   apps: 420,
   browser: 420,
   files: 480,
+  tasks: 420,
   messages: 320
 };
 
@@ -38,6 +41,7 @@ export const standaloneAgentToolPanelMaxWidthById: Record<
   apps: 1_200,
   browser: 1_200,
   files: Number.MAX_SAFE_INTEGER,
+  tasks: 1_200,
   messages: 1_200
 };
 export const standaloneAgentMainMinWidth = 280;

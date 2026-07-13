@@ -23,9 +23,12 @@ export interface WorkspaceLaunchWorkspaceWindowOptions {
 export interface WorkspaceLaunchAgentWindowInput {
   agentSessionID?: string | null;
   agentTargetID?: string | null;
+  autoSubmit?: boolean;
+  draftPrompt?: string | null;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
   agents?: readonly AgentGUIAgent[];
   provider?: string | null;
+  userProjectPath?: string | null;
   workspaceID: string;
 }
 
