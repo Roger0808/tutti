@@ -180,6 +180,11 @@ When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
 loading/missing state until the target options arrive.
+When a model catalog advertises model-specific reasoning profiles, the composer
+must derive the reasoning options from the currently presented model and
+re-resolve an unsupported prior effort to that model's advertised default.
+Do not render the provider-level reasoning list when a profile exists for the
+selected model.
 If restored node data has a stale `provider` that disagrees with a resolvable
 `agentTargetId`, the target's provider wins for empty-composer settings and
 launch preparation.
