@@ -274,16 +274,34 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 		method, params := appServerGoalSlashRequest(args, appSession.threadID)
 		goalObjective := strings.TrimSpace(asString(params["objective"]))
 		goalDrivesTurn := method == appServerMethodThreadGoalSet && goalObjective != ""
+		var previousGoal map[string]any
 		if goalDrivesTurn {
 			// Mark before the RPC: the server may start (and even settle) the
 			// goal's first turn while thread/goal/set is still in flight, and
-			// the settle path only emits terminal events for marked turns.
+			// the settle path only emits terminal events for marked turns. The
+			// same ordering requires the local goal to be active before the RPC:
+			// finalizeSettledTurn schedules continuation from that state.
+			previousGoal = a.sessionGoal(session.AgentSessionID)
+			pendingGoal := clonePayload(previousGoal)
+			if pendingGoal == nil {
+				pendingGoal = map[string]any{}
+			}
+			pendingGoal["objective"] = goalObjective
+			pendingGoal["status"] = "active"
+			a.applyGoalUpdate(session.AgentSessionID, pendingGoal)
 			a.markTurnSettleEmits(appTurn)
 			go a.watchTurnExternalTermination(appSession, appTurn)
 		}
 		result, err := appSession.callGoal(ctx, method, params,
 			a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands))
 		if err != nil {
+			if goalDrivesTurn {
+				if len(previousGoal) > 0 {
+					a.applyGoalUpdate(session.AgentSessionID, previousGoal)
+				} else {
+					a.applyGoalClear(session.AgentSessionID)
+				}
+			}
 			emitTerminal([]activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err))})
 			return true, nil
 		}

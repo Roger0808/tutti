@@ -90,33 +90,31 @@ interface AgentGUIEmptyHeroCarouselStageProps {
 
 // Keep the carousel outside the ready/readiness-gate branch. Runtime
 // readiness changes must not replace the WebGL canvas or reset its position.
-export const AgentGUIEmptyHeroCarouselStage = memo(
-  function AgentGUIEmptyHeroCarouselStage({
-    activeAgentTargetId,
-    children,
-    items,
-    onProviderSelect,
-    providerSelectLabel
-  }: AgentGUIEmptyHeroCarouselStageProps): React.JSX.Element {
-    "use memo";
+export function AgentGUIEmptyHeroCarouselStage({
+  activeAgentTargetId,
+  children,
+  items,
+  onProviderSelect,
+  providerSelectLabel
+}: AgentGUIEmptyHeroCarouselStageProps): React.JSX.Element {
+  "use memo";
 
-    return (
-      <div className={styles.emptyHeroCarouselStage}>
-        {items.length > 1 ? (
-          <div className={styles.emptyHeroCarouselLayer}>
-            <AgentGUIHeroAgentCarousel
-              activeAgentTargetId={activeAgentTargetId}
-              items={items}
-              onProviderSelect={onProviderSelect}
-              providerSelectLabel={providerSelectLabel}
-            />
-          </div>
-        ) : null}
-        {children}
-      </div>
-    );
-  }
-);
+  return (
+    <div className={styles.emptyHeroCarouselStage}>
+      {items.length > 1 ? (
+        <div className={styles.emptyHeroCarouselLayer}>
+          <AgentGUIHeroAgentCarousel
+            activeAgentTargetId={activeAgentTargetId}
+            items={items}
+            onProviderSelect={onProviderSelect}
+            providerSelectLabel={providerSelectLabel}
+          />
+        </div>
+      ) : null}
+      {children}
+    </div>
+  );
+}
 
 interface AgentGUIEmptyHomePaneProps {
   provider: AgentGUINodeViewModel["shell"]["data"]["provider"];

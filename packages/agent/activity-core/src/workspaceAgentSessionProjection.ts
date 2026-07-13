@@ -1,4 +1,10 @@
-import type { WorkspaceAgentSession } from "@tutti-os/client-tuttid-ts";
+import type { AgentActivityInteraction, AgentActivityTurn } from "./types.ts";
+
+interface WorkspaceAgentSessionProjectionInput {
+  activeTurn: AgentActivityTurn | null;
+  latestTurn: AgentActivityTurn | null;
+  pendingInteractions: readonly AgentActivityInteraction[];
+}
 
 export type WorkspaceAgentSessionDerivedStatus =
   | "working"
@@ -10,7 +16,7 @@ export type WorkspaceAgentSessionDerivedStatus =
 
 export function workspaceAgentSessionStatus(
   session: Pick<
-    WorkspaceAgentSession,
+    WorkspaceAgentSessionProjectionInput,
     "activeTurn" | "latestTurn" | "pendingInteractions"
   >
 ): WorkspaceAgentSessionDerivedStatus {
@@ -32,7 +38,10 @@ export function workspaceAgentSessionStatus(
 }
 
 export function workspaceAgentSessionLastError(
-  session: Pick<WorkspaceAgentSession, "activeTurn" | "latestTurn">
+  session: Pick<
+    WorkspaceAgentSessionProjectionInput,
+    "activeTurn" | "latestTurn"
+  >
 ): string | null {
   return (
     session.activeTurn?.error?.message?.trim() ||

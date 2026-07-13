@@ -276,17 +276,107 @@ export interface AgentActivitySnapshot {
   >;
 }
 
-export type AgentActivityUpdatedEvent = Extract<
-  AgentActivityUpdatedPayloadV1,
-  {
-    eventType:
-      | "interaction_update"
-      | "message_update"
-      | "session_deleted"
-      | "session_reconcile_required"
-      | "turn_update";
-  }
->;
+export type AgentActivityUpdatedEvent =
+  | AgentActivitySessionReconcileRequiredEvent
+  | AgentActivitySessionDeletedEvent
+  | AgentActivityMessageUpdatedEvent
+  | AgentActivityTurnUpdatedEvent
+  | AgentActivityInteractionUpdatedEvent;
+
+export interface AgentActivitySessionReconcileRequiredEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: "session_reconcile_required";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    agentTargetId?: string;
+    eventType: "session_reconcile_required";
+    lastEventUnixMs: number;
+  };
+}
+
+export interface AgentActivitySessionDeletedEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: "session_deleted";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    eventType: "session_deleted";
+    deletedAtUnixMs: number;
+  };
+}
+
+export interface AgentActivityMessageUpdatedEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: "message_update";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    eventType: "message_update";
+    latestVersion: number;
+    acceptedCount: number;
+    messages: readonly AgentActivityEventMessage[];
+  };
+}
+
+export interface AgentActivityEventMessage {
+  agentSessionId: string;
+  kind: string;
+  messageId: string;
+  payload: Record<string, unknown>;
+  role: string;
+  version: number;
+  turnId: string | null;
+  status?: string;
+  occurredAtUnixMs: number;
+  startedAtUnixMs?: number;
+  completedAtUnixMs?: number;
+  createdAtUnixMs?: number;
+  updatedAtUnixMs?: number;
+}
+
+export interface AgentActivityTurnUpdatedEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: "turn_update";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    eventType: "turn_update";
+    occurredAtUnixMs: number;
+    activeTurnId: string | null;
+    turn: AgentActivityEventTurn;
+  };
+}
+
+export interface AgentActivityEventTurn {
+  turnId: string;
+  agentSessionId: string;
+  phase: AgentActivityTurnPhase;
+  outcome: AgentActivityTurnOutcome;
+  error: Record<string, unknown> | null;
+  fileChanges: unknown;
+  completedCommand: Record<string, unknown> | null;
+  startedAtUnixMs: number;
+  settledAtUnixMs: number | null;
+  updatedAtUnixMs: number;
+}
+
+export interface AgentActivityInteractionUpdatedEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: "interaction_update";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    eventType: "interaction_update";
+    occurredAtUnixMs: number;
+    interaction: AgentActivityInteraction;
+  };
+}
 
 export type AgentActivitySessionEventEnvelope = Extract<
   AgentActivityUpdatedEvent,
@@ -432,28 +522,31 @@ export interface AgentActivityNeedsAttentionItem {
   summary: string;
   occurredAtUnixMs: number;
 }
-import type {
-  AgentSessionComposerSettings,
-  PermissionConfig,
-  WorkspaceAgentBackgroundAgents,
-  WorkspaceAgentCapabilities,
-  WorkspaceAgentCompletedCommand,
-  WorkspaceAgentInteractionKind,
-  WorkspaceAgentInteractionStatus,
-  WorkspaceAgentSessionGoal,
-  WorkspaceAgentUsage,
-  WorkspaceAgentTurnCancelResponse,
-  WorkspaceAgentTurnOutcome,
-  WorkspaceAgentTurnPhase
-} from "@tutti-os/client-tuttid-ts";
+export type AgentActivityTurnPhase =
+  | "submitted"
+  | "running"
+  | "waiting"
+  | "settling"
+  | "settled";
+
+export type AgentActivityTurnOutcome =
+  | "completed"
+  | "failed"
+  | "canceled"
+  | "interrupted";
+
+export interface AgentActivityCompletedCommand {
+  kind: "compact" | "review" | "undo" | "goal";
+  status: "completed" | "failed" | "canceled";
+}
 
 export interface AgentActivityTurn {
   agentSessionId: string;
-  completedCommand?: WorkspaceAgentCompletedCommand | null;
+  completedCommand?: AgentActivityCompletedCommand | null;
   error?: { code?: string; message: string } | null;
   fileChanges?: Record<string, unknown> | null;
-  outcome?: WorkspaceAgentTurnOutcome | null;
-  phase: WorkspaceAgentTurnPhase;
+  outcome?: AgentActivityTurnOutcome | null;
+  phase: AgentActivityTurnPhase;
   settledAtUnixMs?: number | null;
   startedAtUnixMs: number;
   turnId: string;
@@ -463,27 +556,119 @@ export interface AgentActivityInteraction {
   agentSessionId: string;
   createdAtUnixMs: number;
   input?: Record<string, unknown> | null;
-  kind: WorkspaceAgentInteractionKind;
+  kind: "approval" | "question" | "plan";
   metadata?: Record<string, unknown> | null;
   output?: Record<string, unknown> | null;
   requestId: string;
-  status: WorkspaceAgentInteractionStatus;
+  status: "pending" | "answered" | "superseded";
   toolName?: string | null;
   turnId: string;
   updatedAtUnixMs: number;
 }
-export type AgentActivitySessionSettings = AgentSessionComposerSettings;
-export type AgentActivitySessionPermissionConfig = PermissionConfig;
-export type AgentActivitySessionCapabilities = WorkspaceAgentCapabilities;
-export type AgentActivitySessionBackgroundAgents =
-  WorkspaceAgentBackgroundAgents;
-export type AgentActivitySessionGoal = WorkspaceAgentSessionGoal;
-export type AgentActivitySessionUsage = WorkspaceAgentUsage;
-export type AgentActivityTurnCancelResponse = WorkspaceAgentTurnCancelResponse;
+
+export type AgentActivitySessionSettings = {
+  model?: string | null;
+  permissionModeId?: string | null;
+  planMode?: boolean | null;
+  browserUse?: boolean | null;
+  reasoningEffort?: string | null;
+  speed?: string | null;
+};
+
+export type AgentActivityPermissionModeSemantic =
+  | "ask-before-write"
+  | "accept-edits"
+  | "locked-down"
+  | "auto"
+  | "full-access"
+  | "unconfigurable";
+
+export interface AgentActivitySessionPermissionModeOption {
+  id: string;
+  label: string;
+  description?: string;
+  semantic: AgentActivityPermissionModeSemantic;
+}
+
+export interface AgentActivitySessionPermissionConfig {
+  configurable: boolean;
+  defaultValue?: string;
+  modes: AgentActivitySessionPermissionModeOption[];
+}
+
+export interface AgentActivitySessionCapabilities {
+  imageInput: boolean;
+  modelImageInputRequired: boolean;
+  skills: boolean;
+  compact: boolean;
+  tokenUsage: boolean;
+  rateLimits: boolean;
+  planMode: boolean;
+  interrupt: boolean;
+  browserUse: boolean;
+  computerUse: boolean;
+  goalPause: boolean;
+  planImplementation: boolean;
+  permissionModeChangeDuringTurn: boolean;
+  permissionModeChangeDeferred: boolean;
+  review: boolean;
+  resumeRunningTurn: boolean;
+}
+
+export interface AgentActivitySessionBackgroundAgentItem {
+  taskId: string;
+  description: string;
+  status: "running" | "completed" | "failed" | "canceled";
+  summary?: string;
+  lastToolName?: string;
+  taskType?: string;
+  startedAtUnixMs?: number;
+  updatedAtUnixMs?: number;
+  completedAtUnixMs?: number;
+}
+
+export interface AgentActivitySessionBackgroundAgents {
+  count: number;
+  items: AgentActivitySessionBackgroundAgentItem[];
+}
+
+export interface AgentActivitySessionGoal {
+  objective: string;
+  status:
+    | "active"
+    | "paused"
+    | "blocked"
+    | "usageLimited"
+    | "budgetLimited"
+    | "complete";
+  reason?: string;
+  iterations?: number;
+  durationMs?: number;
+  tokens?: number;
+}
+
+export interface AgentActivitySessionUsage {
+  contextWindow: {
+    usedTokens: number;
+    totalTokens: number;
+  } | null;
+  quotas: {
+    quotaType: string;
+    percentRemaining: number;
+    resetsAtUnixMs: number | null;
+  }[];
+}
+
+export interface AgentActivityTurnCancelResponse {
+  cancel: {
+    canceled: boolean;
+    reason: "turn_canceled" | "already_settled" | "not_found";
+  };
+  turn?: AgentActivityTurn;
+}
 
 export interface AgentActivityCancelTurnInput {
   agentSessionId: string;
   turnId: string;
   workspaceId: string;
 }
-import type { AgentActivityUpdatedPayloadV1 } from "@tutti-os/client-tuttid-ts";

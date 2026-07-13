@@ -71,41 +71,42 @@ type scriptedAppServerConnection struct {
 	sent [][]byte
 	recv chan ProcessFrame
 
-	requiresAuth                 bool
-	collaborationModeUnsupported bool
-	emitPlanItem                 bool
-	accountReadError             bool
-	turnStatus                   string // completed (default) | failed | interrupted
-	turnError                    map[string]any
-	holdTurn                     bool              // do not finish the turn until released
-	steeredTurnStart             bool              // turn/start returns a queued stub turn (input steered into the running turn): no turn/started, no auto-completion
-	ignoreInterrupt              bool              // ack turn/interrupt but never complete the turn (wedged codex)
-	hangInterrupt                bool              // never even acknowledge the turn/interrupt RPC (fully wedged codex)
-	interruptTurnIDMismatch      string            // reject the first turn/interrupt with "expected active turn id X but found <this>"; a retry against the reported id succeeds
-	interruptAttempts            []string          // turnId requested on every turn/interrupt call, in order
-	childNicknames               map[string]string // thread/read agentNickname responses by threadId
-	turnStartEntered             chan struct{}
-	turnStartRelease             chan struct{}
-	threadName                   string
-	commandApproval              bool
-	userInputRequest             bool
-	compactSilent                bool          // stream turn/started+turn/completed for /compact but no contextCompaction item notifications
-	reviewInline                 bool          // stream review output as inline reasoning/command items
-	reviewInlineSummaryDelta     bool          // stream review reasoning via summaryTextDelta with empty completed summary
-	reviewHang                   bool          // respond to review/start but never complete the turn
-	foreignThreadNoise           bool          // emit subagent/foreign thread notifications during a parent turn
-	reviewStartEntered           chan struct{} // closed once review/start has responded
-	approvalResponse             map[string]any
-	goal                         map[string]any
-	goalStartsTurn               bool
-	goalTurnsStarted             int
-	goalCompletionAfterTurns     int
-	goalTurnFailAtTurn           int // goal-driven turn number (1-based) that settles as "failed" instead of "completed"
-	goalCleared                  bool
-	replayTokenUsageOnResume     bool // mirror real codex: emit token usage during thread/resume
-	threadResumeError            bool // fail thread/resume with an RPC error
-	closeOnce                    sync.Once
-	closeCount                   int
+	requiresAuth                    bool
+	collaborationModeUnsupported    bool
+	emitPlanItem                    bool
+	accountReadError                bool
+	turnStatus                      string // completed (default) | failed | interrupted
+	turnError                       map[string]any
+	holdTurn                        bool              // do not finish the turn until released
+	steeredTurnStart                bool              // turn/start returns a queued stub turn (input steered into the running turn): no turn/started, no auto-completion
+	ignoreInterrupt                 bool              // ack turn/interrupt but never complete the turn (wedged codex)
+	hangInterrupt                   bool              // never even acknowledge the turn/interrupt RPC (fully wedged codex)
+	interruptTurnIDMismatch         string            // reject the first turn/interrupt with "expected active turn id X but found <this>"; a retry against the reported id succeeds
+	interruptAttempts               []string          // turnId requested on every turn/interrupt call, in order
+	childNicknames                  map[string]string // thread/read agentNickname responses by threadId
+	turnStartEntered                chan struct{}
+	turnStartRelease                chan struct{}
+	threadName                      string
+	commandApproval                 bool
+	userInputRequest                bool
+	compactSilent                   bool          // stream turn/started+turn/completed for /compact but no contextCompaction item notifications
+	reviewInline                    bool          // stream review output as inline reasoning/command items
+	reviewInlineSummaryDelta        bool          // stream review reasoning via summaryTextDelta with empty completed summary
+	reviewHang                      bool          // respond to review/start but never complete the turn
+	foreignThreadNoise              bool          // emit subagent/foreign thread notifications during a parent turn
+	reviewStartEntered              chan struct{} // closed once review/start has responded
+	approvalResponse                map[string]any
+	goal                            map[string]any
+	goalStartsTurn                  bool
+	goalNotificationsBeforeResponse bool
+	goalTurnsStarted                int
+	goalCompletionAfterTurns        int
+	goalTurnFailAtTurn              int // goal-driven turn number (1-based) that settles as "failed" instead of "completed"
+	goalCleared                     bool
+	replayTokenUsageOnResume        bool // mirror real codex: emit token usage during thread/resume
+	threadResumeError               bool // fail thread/resume with an RPC error
+	closeOnce                       sync.Once
+	closeCount                      int
 }
 
 func (c *scriptedAppServerConnection) sendJSON(value map[string]any) {
@@ -596,12 +597,18 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				goal["tokenBudget"] = tokenBudget
 			}
 			c.goal = clonePayload(goal)
+			notificationsBeforeResponse := c.goalNotificationsBeforeResponse
 			c.mu.Unlock()
-			c.sendJSON(map[string]any{
-				"id":     message.ID,
-				"result": map[string]any{"goal": goal},
-			})
-			if goalStartsTurn && goalTurnNumber > 0 {
+			sendResponse := func() {
+				c.sendJSON(map[string]any{
+					"id":     message.ID,
+					"result": map[string]any{"goal": goal},
+				})
+			}
+			sendTurnNotifications := func() {
+				if !goalStartsTurn || goalTurnNumber <= 0 {
+					return
+				}
 				turnID := fmt.Sprintf("turn-goal-%d", goalTurnNumber)
 				itemID := fmt.Sprintf("item-goal-%d", goalTurnNumber)
 				c.mu.Lock()
@@ -629,7 +636,7 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 							"error":  map[string]any{"message": "transient tool failure"},
 						},
 					})
-					continue
+					return
 				}
 				c.notify(appServerNotifyAgentMessageDelta, map[string]any{
 					"threadId": "codex-thread-1", "turnId": turnID, "itemId": itemID, "delta": messageText,
@@ -644,6 +651,13 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 						},
 					},
 				})
+			}
+			if notificationsBeforeResponse {
+				sendTurnNotifications()
+				sendResponse()
+			} else {
+				sendResponse()
+				sendTurnNotifications()
 			}
 		case appServerMethodThreadGoalGet:
 			c.mu.Lock()
@@ -2966,6 +2980,7 @@ func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) 
 	adapter, transport, session := startedAppServerAdapter(t)
 	adapter.goalContinuationGraceWindow = 50 * time.Millisecond
 	transport.conn.goalStartsTurn = true
+	transport.conn.goalNotificationsBeforeResponse = true
 	transport.conn.goalCompletionAfterTurns = 2
 
 	var sinkMu sync.Mutex
@@ -3048,6 +3063,7 @@ func TestCodexAppServerAdapterGoalContinuesAfterMidGoalTurnFailure(t *testing.T)
 	adapter, transport, session := startedAppServerAdapter(t)
 	adapter.goalContinuationGraceWindow = 50 * time.Millisecond
 	transport.conn.goalStartsTurn = true
+	transport.conn.goalNotificationsBeforeResponse = true
 	transport.conn.goalTurnFailAtTurn = 2
 	transport.conn.goalCompletionAfterTurns = 3
 

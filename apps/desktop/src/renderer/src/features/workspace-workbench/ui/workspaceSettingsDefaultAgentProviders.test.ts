@@ -21,8 +21,16 @@ test("derives workspace settings default providers in registry priority order", 
 });
 
 test("normalizes an ineligible provider to the highest-priority default", () => {
+  const ineligibleProvider = migratedAgentGUIProviderIdentityCatalog.find(
+    (entry) => !entry.desktop.defaultProviderEligible
+  );
+  assert.ok(ineligibleProvider, "registry must include an ineligible provider");
   assert.equal(
-    normalizeWorkspaceSettingsDefaultAgentProvider("cursor"),
+    normalizeWorkspaceSettingsDefaultAgentProvider(
+      ineligibleProvider.providerId as Parameters<
+        typeof normalizeWorkspaceSettingsDefaultAgentProvider
+      >[0]
+    ),
     workspaceSettingsDefaultAgentProviders[0]
   );
 });

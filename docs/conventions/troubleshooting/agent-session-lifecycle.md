@@ -181,17 +181,20 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   settle the first goal turn while `thread/goal/set` is still in flight, so
   local goal state can still be empty when the settle path schedules its nudge.
 - Fix:
-  Always create the continuation grace timer for a settled goal-driven turn.
-  After the grace window, re-read both the active turn and goal state; send the
-  nudge only when no turn has continued and the goal is then `active`. Do not
-  gate timer creation on the immediate local goal snapshot.
+  Before sending a goal-setting RPC that can start a turn, record a local
+  `active` goal snapshot with the requested objective. This makes goal
+  activation causally visible to terminal notifications that overtake the RPC
+  response. Restore the previous local goal if the RPC fails; on success,
+  replace the provisional snapshot with the authoritative response. The
+  continuation timer must still re-read both active-turn and goal state after
+  its grace window before sending a nudge.
 - Validation:
   Keep a scripted protocol test that deliberately delivers goal turn
   notifications before the `thread/goal/set` result, then verify the next turn
   is adopted. Cover both a clean first turn and a failed mid-goal turn with
   repeated focused runs; use event channels rather than polling shared slices.
 - References:
-  [codex_appserver_adapter.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
+  [codex_appserver_goal.go](../../../packages/agent/daemon/runtime/codex_appserver_goal.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
 
 ### Codex goal reappears after pause, edit, or clear
