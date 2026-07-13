@@ -36,6 +36,7 @@ import {
 import { ToolActivityProjector } from "./toolActivity.ts";
 import { SidecarTestDriver } from "./testDriver.ts";
 import { SessionConfiguration } from "./sessionConfiguration.ts";
+import { resolveClaudeCodeExecutablePath } from "./executablePath.ts";
 import { claudeSettingsEnv } from "./settingsEnv.ts";
 import { CompactionTracker } from "./compaction.ts";
 import { MessageProjection } from "./messageProjection.ts";
@@ -479,6 +480,10 @@ export class SessionRuntime {
     const querySettings = querySettingsFromSessionSettings(
       this.configuration.settings
     );
+    const claudeExecutablePath = resolveClaudeCodeExecutablePath({
+      ...process.env,
+      ...this.env
+    });
     const queryOptions: ClaudeQueryOptions = {
       cwd: this.cwd || process.cwd(),
       env: {
@@ -487,6 +492,9 @@ export class SessionRuntime {
         ...this.env,
         CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1"
       },
+      ...(claudeExecutablePath
+        ? { pathToClaudeCodeExecutable: claudeExecutablePath }
+        : {}),
       includePartialMessages: true,
       canUseTool: (toolName, toolInput, callbackOptions) =>
         this.interactions.handleToolPermission(
@@ -546,6 +554,7 @@ export class SessionRuntime {
       initialize: startOptions.initialize === true,
       restore: this.restore,
       permissionMode,
+      hasExecutablePathOverride: Boolean(claudeExecutablePath),
       hasModel: Boolean(modelOptionValue(this.configuration.settings.model)),
       hasResumeCursor: Boolean(this.resumeCursor),
       querySettingsKeys: Object.keys(querySettings),

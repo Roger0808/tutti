@@ -15,13 +15,31 @@ const claudePluginDirEnv = "TUTTI_CLAUDE_PLUGIN_DIR"
 const claudeSkillListingBudgetEnv = "SLASH_COMMAND_TOOL_CHAR_BUDGET"
 const claudeSkillListingBudgetChars = "20000"
 
-type ClaudeCodePreparer struct{}
+// claudeCodeExecutableEnvName always wins inside the sidecar, even over a
+// bundled native SDK binary — it is the operator escape hatch.
+const claudeCodeExecutableEnvName = "CLAUDE_CODE_EXECUTABLE"
+
+// claudeCodeFallbackExecutableEnvName is consumed by the sidecar only when the
+// SDK cannot resolve a native binary next to itself (the packaged bundle no
+// longer vendors one). See packages/agent/claude-sdk-sidecar/src/executablePath.ts.
+const claudeCodeFallbackExecutableEnvName = "TUTTI_CLAUDE_CODE_FALLBACK_EXECUTABLE"
+
+// claudeCodeManagedPointerRelPath locates the pointer written by tuttid's
+// claude binary provisioner. Contract with
+// services/tuttid/service/agentstatus/claude_binary.go — keep in sync.
+const claudeCodeManagedPointerRelPath = "agent-providers/claude-code/current.json"
+
+type ClaudeCodePreparer struct {
+	// StateDir is the tutti state root that hosts the managed claude binary
+	// pointer; empty disables the managed-binary fallback.
+	StateDir string
+}
 
 func (ClaudeCodePreparer) Provider() string {
 	return "claude-code"
 }
 
-func (ClaudeCodePreparer) Prepare(_ context.Context, input ProviderPrepareInput) (ProviderPrepareResult, error) {
+func (p ClaudeCodePreparer) Prepare(_ context.Context, input ProviderPrepareInput) (ProviderPrepareResult, error) {
 	systemPromptPath := filepath.Join(input.RuntimeRoot, "claude-system-prompt.md")
 	if err := os.MkdirAll(filepath.Dir(systemPromptPath), 0o700); err != nil {
 		return ProviderPrepareResult{}, fmt.Errorf("create claude system prompt directory: %w", err)
@@ -46,9 +64,7 @@ func (ClaudeCodePreparer) Prepare(_ context.Context, input ProviderPrepareInput)
 		claudePluginDirEnv + "=" + pluginDir,
 		claudeSkillListingBudgetEnv + "=" + claudeSkillListingBudgetChars,
 	}
-	if claudeExecutableEnv := claudeCodeExecutableEnv(); claudeExecutableEnv != "" {
-		env = append(env, claudeExecutableEnv)
-	}
+	env = append(env, p.claudeCodeExecutableEnv()...)
 	// Plan mode is enabled through the SDK permission mode selected by the
 	// daemon runtime. We intentionally do NOT set
 	// CLAUDE_CONFIG_DIR to seed `permissions.defaultMode=plan`: pointing the CLI
@@ -89,13 +105,51 @@ func installClaudeTuttiPlugin(pluginDir string, input PrepareInput) error {
 	return nil
 }
 
-func claudeCodeExecutableEnv() string {
-	if configured := strings.TrimSpace(os.Getenv("CLAUDE_CODE_EXECUTABLE")); configured != "" {
-		return "CLAUDE_CODE_EXECUTABLE=" + configured
+// claudeCodeExecutableEnv selects which claude binary the sidecar should
+// spawn. An explicit CLAUDE_CODE_EXECUTABLE override is forwarded as-is and
+// beats everything. Otherwise a fallback executable is offered — preferred:
+// the tuttid-provisioned binary pinned to the vendored SDK version; last
+// resort: a PATH-installed claude (version unpinned, but session launch
+// already requires one, so it is always present on working setups). The
+// sidecar only uses the fallback when the SDK cannot self-resolve a native
+// binary next to itself.
+func (p ClaudeCodePreparer) claudeCodeExecutableEnv() []string {
+	if configured := strings.TrimSpace(os.Getenv(claudeCodeExecutableEnvName)); configured != "" {
+		return []string{claudeCodeExecutableEnvName + "=" + configured}
+	}
+	if managed := p.managedClaudeCodeExecutable(); managed != "" {
+		return []string{claudeCodeFallbackExecutableEnvName + "=" + managed}
 	}
 	claudePath, err := exec.LookPath("claude")
 	if err != nil {
+		return nil
+	}
+	return []string{claudeCodeFallbackExecutableEnvName + "=" + claudePath}
+}
+
+func (p ClaudeCodePreparer) managedClaudeCodeExecutable() string {
+	stateDir := strings.TrimSpace(p.StateDir)
+	if stateDir == "" {
 		return ""
 	}
-	return "CLAUDE_CODE_EXECUTABLE=" + claudePath
+	pointerPath := filepath.Join(stateDir, filepath.FromSlash(claudeCodeManagedPointerRelPath))
+	content, err := os.ReadFile(pointerPath)
+	if err != nil {
+		return ""
+	}
+	var pointer struct {
+		Executable string `json:"executable"`
+	}
+	if err := json.Unmarshal(content, &pointer); err != nil {
+		return ""
+	}
+	executable := strings.TrimSpace(pointer.Executable)
+	if executable == "" {
+		return ""
+	}
+	info, err := os.Stat(executable)
+	if err != nil || info.IsDir() || info.Mode().Perm()&0o111 == 0 {
+		return ""
+	}
+	return executable
 }
