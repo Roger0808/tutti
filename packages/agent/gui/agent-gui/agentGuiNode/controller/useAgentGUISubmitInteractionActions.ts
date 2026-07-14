@@ -97,7 +97,6 @@ interface UseAgentGUISubmitInteractionActionsInput {
   }>;
   previewMode: boolean;
   promptImagesSupported: boolean;
-  selectedProjectPathRef: RefObject<string | null>;
   sessionEngine: AgentSessionEngine;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   setDetailError: Dispatch<SetStateAction<string | null>>;
@@ -139,7 +138,6 @@ export function useAgentGUISubmitInteractionActions(
     planActionsRef,
     previewMode,
     promptImagesSupported,
-    selectedProjectPathRef,
     sessionEngine,
     setActiveConversationId,
     setDetailError,
@@ -510,9 +508,7 @@ export function useAgentGUISubmitInteractionActions(
               normalizedContent,
               displayPromptText,
               {
-                sourceScopeKey: resolveAgentComposerDraftScopeKey({
-                  projectPath: selectedProjectPathRef.current
-                }),
+                sourceScopeKey: resolveAgentComposerDraftScopeKey({}),
                 trackDraft: true
               }
             );
@@ -693,8 +689,7 @@ export function useAgentGUISubmitInteractionActions(
       const draftKey =
         sourceScopeKey ??
         resolveAgentComposerDraftScopeKey({
-          agentSessionId,
-          projectPath: selectedProjectPathRef.current
+          agentSessionId
         });
       draftByScopeKeyRef.current = {
         ...draftByScopeKeyRef.current,

@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type HTMLAttributes } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type HTMLAttributes
+} from "react";
 import type {
   AgentComposerDraft,
   AgentComposerDraftFile,
@@ -198,6 +204,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const selectedProjectPath =
     composerSettings.selectedProjectPath?.trim() ?? "";
   const previousSelectedProjectPathRef = useRef(selectedProjectPath);
+  const previousProjectPathForFocusRef = useRef(selectedProjectPath);
   const [mentionSearchState, setMentionSearchState] =
     useState<AgentMentionSearchState>({
       status: "idle",
@@ -353,7 +360,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     if (isExternalDraftReplacement && draftPrompt) {
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
-          editorHandleRef.current?.focusAtStart();
+          // Prefer end so continued typing (and shared home drafts after a
+          // project switch) keep the caret after the text, not at the start.
+          editorHandleRef.current?.focusAtEnd();
         });
       });
     }
@@ -505,6 +514,35 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     defaultHandoffMenuLabel: labels.handoffConversationMenu
   });
   const { inputDisabled, isHeroLayout } = providerState;
+  const restoreComposerCaretAfterProjectMenu = useCallback(
+    (event?: Event) => {
+      event?.preventDefault();
+      if (inputDisabled) {
+        return;
+      }
+      editorHandleRef.current?.focusAtEnd();
+    },
+    [inputDisabled]
+  );
+  useEffect(() => {
+    if (previousProjectPathForFocusRef.current === selectedProjectPath) {
+      return;
+    }
+    previousProjectPathForFocusRef.current = selectedProjectPath;
+    // Backup for flows that leave the Radix menu without onCloseAutoFocus
+    // (for example the native directory picker). Select/dialog dismiss uses
+    // onDismissAutoFocus first so it can beat trigger focus restoration.
+    if (inputDisabled) {
+      return;
+    }
+    // timing: wait for native directory-picker focus churn before restoring caret
+    const timer = window.setTimeout(() => {
+      editorHandleRef.current?.focusAtEnd();
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [inputDisabled, selectedProjectPath]);
   const focusAndDrop = useComposerFocusAndDrop({
     composerControlsHardDisabled,
     inputDisabled,
@@ -601,6 +639,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       mentionControllerRef={mentionControllerRef}
       getReferenceForFile={getReferenceForFile}
       promptFilesSupported={promptFilesSupported}
+      onDismissProjectMenuAutoFocus={restoreComposerCaretAfterProjectMenu}
       paletteDraftPrompt={paletteDraftPrompt}
       showFileMentionPalette={showFileMentionPalette}
       showSlashPalette={showSlashPalette}

@@ -281,7 +281,7 @@ export function useAgentGUIConversationHome({
         return nextData;
       });
     }
-    const sourceScopeKey = resolveAgentComposerDraftScopeKey({ projectPath });
+    const sourceScopeKey = resolveAgentComposerDraftScopeKey({});
     const prefilledDraft = buildAgentComposerDraft({ prompt: draftPrompt });
     draftByScopeKeyRef.current = {
       ...draftByScopeKeyRef.current,
