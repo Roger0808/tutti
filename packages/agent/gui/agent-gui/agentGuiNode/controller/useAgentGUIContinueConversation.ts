@@ -35,7 +35,6 @@ interface UseAgentGUIContinueConversationInput {
   isComposerHomeRef: CurrentValue<boolean>;
   loadDraftComposerOptions(): void;
   persistActiveConversation(agentSessionId: string | null): void;
-  selectedProjectPathRef: CurrentValue<string | null>;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   setDetailError: Dispatch<SetStateAction<string | null>>;
   setDraftByScopeKey: Dispatch<
@@ -109,12 +108,11 @@ export function useAgentGUIContinueConversation(
     current.setDetailError(null);
     current.setDraftByScopeKey((drafts) => ({
       ...drafts,
-      [resolveAgentComposerDraftScopeKey({
-        projectPath: current.selectedProjectPathRef.current
-      })]: buildContinueInNewConversationDraft({
-        sourceDraft,
-        prompt: nextDraftPrompt
-      })
+      [resolveAgentComposerDraftScopeKey({})]:
+        buildContinueInNewConversationDraft({
+          sourceDraft,
+          prompt: nextDraftPrompt
+        })
     }));
     current.persistActiveConversation(null);
     current.loadDraftComposerOptions();

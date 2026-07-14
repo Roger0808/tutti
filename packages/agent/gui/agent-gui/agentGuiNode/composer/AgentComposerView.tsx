@@ -76,6 +76,7 @@ interface Props {
     | AgentHostApi["workspace"]["getReferenceForFile"]
     | undefined;
   promptFilesSupported: boolean;
+  onDismissProjectMenuAutoFocus?: (event: Event) => void;
   paletteDraftPrompt: string;
   showFileMentionPalette: boolean;
   showSlashPalette: boolean;
@@ -581,6 +582,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                   projectMissingDescription: labels.projectMissingDescription
                 }}
                 selectProjectDirectory={selectProjectDirectory}
+                onDismissAutoFocus={input.onDismissProjectMenuAutoFocus}
                 onProjectMissingChange={input.setIsSelectedProjectMissing}
                 onProjectPathChange={onProjectPathChange}
               />

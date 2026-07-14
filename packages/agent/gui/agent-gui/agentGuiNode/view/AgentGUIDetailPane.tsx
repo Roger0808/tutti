@@ -291,9 +291,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   );
   const handleSelectHomeSuggestion = useCallback(
     (prompt: string) => {
-      // Don't request focus here: replacing the draft already makes the composer
-      // focus the filled prompt (focusAtStart). A second focus (focusAtEnd) would
-      // race it and make the cursor/scroll jump — a visible flicker on fill.
+      // Don't request focus here: replacing the draft already focuses the
+      // filled prompt at the end. A second focus request would race it.
       updateDraftContent(
         updateAgentComposerDraft(viewModel.composer.draftContent, { prompt })
       );
@@ -427,8 +426,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       usage: viewModel.detail.usage,
       draftContent: viewModel.composer.draftContent,
       draftScopeKey: resolveAgentComposerDraftScopeKey({
-        agentSessionId: viewModel.rail.activeConversationId,
-        projectPath: viewModel.composer.composerSettings.selectedProjectPath
+        agentSessionId: viewModel.rail.activeConversationId
       }),
       availableCommands: viewModel.composer.availableCommands,
       hasCompactableContext: viewModel.detail.hasSentUserMessage,

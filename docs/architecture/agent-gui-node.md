@@ -1726,36 +1726,37 @@ Only the submit boundary converts this array to the existing
 persistence protocols do not own a second draft representation.
 
 Draft content identity is independent from provider, model, and the other
-composer settings. On the home composer, content is cached under the normalized
-selected project path (`project:<path>`, or `project:<none>` without a project).
-An existing conversation uses `session:<agentSessionId>`. Switching providers
-within one project therefore preserves the whole message, switching projects
-restores the destination project's message, and returning home from a session
-restores the current project draft instead of the session draft. Provider/target
+composer settings. On the home composer, content is cached under one shared
+scope (`home`) for every selected project, including no project. An existing
+conversation uses `session:<agentSessionId>`. Switching providers or projects
+on home therefore preserves the whole message; returning home from a session
+restores the shared home draft instead of the session draft. Provider/target
 default settings, session settings, optimistic setting updates, model
 inheritance, validation, and fallback keep their existing ownership and keys;
-project identity must not be added to those setting caches.
+project identity must not be added to those setting caches or to the home draft
+scope.
 
 Attachment upload work also owns the draft scope where it started. If the user
-switches projects or sessions before an image or pasted-text upload settles,
-the completion or failure updates the latest draft in the original scope by
-block id; it must not read attachment projections from, or write results into,
-the newly selected scope. Derived attachment arrays used by the composer are
+switches sessions (or leaves home for a session) before an image or pasted-text
+upload settles, the completion or failure updates the latest draft in the
+original scope by block id; it must not read attachment projections from, or
+write results into, the newly selected scope. Switching projects on home does
+not change draft scope. Derived attachment arrays used by the composer are
 memoized from the atomic content value and synchronized together so rerenders
 cannot overwrite an optimistic attachment update with an older projection.
 
 Each composer submit records a lightweight snapshot of the source scope and its
 full content array, correlated by `clientSubmitId`; existing-session sends also
-record the destination session because a recovered submit can send a project
-draft to a previously active session. A successful first-message activation
-clears its project scope; an accepted/confirmed existing-session send,
-including a queued or recovered send, clears its recorded source scope. Failure
-or an uncertain state retains the draft. Before clearing, the controller
-compares the complete current array with the snapshot, including attachment
-upload metadata, so edits made while a request is pending are retained as one
-new message. Terminal results, immediate engine rejection, and conversation
-deletion discard snapshots that can no longer resolve. Non-composer control
-sends must not participate in this draft cleanup.
+record the destination session because a recovered submit can send a home draft
+to a previously active session. A successful first-message activation clears
+its home scope; an accepted/confirmed existing-session send, including a queued
+or recovered send, clears its recorded source scope. Failure or an uncertain
+state retains the draft. Before clearing, the controller compares the complete
+current array with the snapshot, including attachment upload metadata, so edits
+made while a request is pending are retained as one new message. Terminal
+results, immediate engine rejection, and conversation deletion discard
+snapshots that can no longer resolve. Non-composer control sends must not
+participate in this draft cleanup.
 
 User-visible rules:
 

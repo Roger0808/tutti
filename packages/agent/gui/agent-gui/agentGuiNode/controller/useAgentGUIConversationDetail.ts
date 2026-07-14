@@ -136,7 +136,6 @@ export function useAgentGUIConversationDetail(
         })
       ] ?? EMPTY_AGENT_COMPOSER_DRAFT)
     : readAgentComposerDraftContent({
-        projectPath: input.selectedProjectPath,
         drafts: input.draftByScopeKey
       });
   const engineAvailableCommands = useEngineSelector(

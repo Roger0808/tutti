@@ -180,9 +180,7 @@ export function useAgentGUINewConversationActivation(
         queued: false,
         startedAtUnixMs: Date.now()
       });
-      const sourceScopeKey = resolveAgentComposerDraftScopeKey({
-        projectPath: selectedProjectPath
-      });
+      const sourceScopeKey = resolveAgentComposerDraftScopeKey({});
       const submittedDraft =
         draftByScopeKeyRef.current[sourceScopeKey] ?? emptyAgentComposerDraft();
       submittedDraftSnapshotsRef.current[submitTrace.clientSubmitId] = {
