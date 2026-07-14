@@ -37,6 +37,7 @@ interface AgentGUIConversationRailSectionProps {
   isDeletingConversation: boolean;
   isDeletingProjectConversations: boolean;
   isRequestingBatchDeletion: boolean;
+  isConversationSearchActive: boolean;
   isLoadingMoreConversations: boolean;
   sectionHasMore: boolean;
   createConversationDisabled: boolean;
@@ -76,6 +77,7 @@ export const AgentGUIConversationRailSection = memo(
     isDeletingConversation,
     isDeletingProjectConversations,
     isRequestingBatchDeletion,
+    isConversationSearchActive,
     isLoadingMoreConversations,
     sectionHasMore,
     createConversationDisabled,
@@ -319,6 +321,7 @@ export const AgentGUIConversationRailSection = memo(
                     <DropdownMenuItem
                       className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
                       disabled={
+                        isConversationSearchActive ||
                         (section.items.length === 0 && !sectionHasMore) ||
                         isDeletingProjectConversations ||
                         isRequestingBatchDeletion
@@ -397,6 +400,7 @@ export const AgentGUIConversationRailSection = memo(
                     <DropdownMenuItem
                       className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
                       disabled={
+                        isConversationSearchActive ||
                         (section.items.length === 0 && !sectionHasMore) ||
                         isDeletingProjectConversations ||
                         isRequestingBatchDeletion

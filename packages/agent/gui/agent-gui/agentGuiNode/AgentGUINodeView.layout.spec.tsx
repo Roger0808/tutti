@@ -3093,6 +3093,55 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toHaveAttribute("data-disabled");
   });
 
+  it("keeps project and Chats batch delete disabled while searching", async () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversations: [
+          createConversationSummary("project-session", {
+            cwd: "/workspace/app"
+          }),
+          createConversationSummary("chats-session", { cwd: "/workspace" })
+        ],
+        userProjects: [
+          {
+            id: "project-app",
+            path: "/workspace/app",
+            label: "App"
+          }
+        ]
+      }
+    });
+
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "searchPlaceholder" }),
+      { target: { value: "session" } }
+    );
+
+    const projectMoreActionsButton = screen.getByRole("button", {
+      name: "projectSectionMoreActions"
+    });
+    fireEvent.pointerDown(projectMoreActionsButton);
+    fireEvent.click(projectMoreActionsButton);
+    expect(
+      (await screen.findByText("batchDeleteProjectSessions")).closest(
+        '[role="menuitem"]'
+      )
+    ).toHaveAttribute("data-disabled");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    const chatsMoreActionsButton = screen.getByRole("button", {
+      name: "conversationsSectionMoreActions"
+    });
+    fireEvent.pointerDown(chatsMoreActionsButton);
+    fireEvent.click(chatsMoreActionsButton);
+    expect(
+      (await screen.findByText("batchDeleteConversations")).closest(
+        '[role="menuitem"]'
+      )
+    ).toHaveAttribute("data-disabled");
+  });
+
   it("uses the immutable backend candidate snapshot for one Chats batch delete", async () => {
     const requestCandidates = vi.fn(async () => [
       "loaded-session",

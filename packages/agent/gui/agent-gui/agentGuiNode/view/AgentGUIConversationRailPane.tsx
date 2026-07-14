@@ -462,6 +462,9 @@ export const AgentGUIConversationRailPane = memo(
                       isDeletingProjectConversations
                     }
                     isRequestingBatchDeletion={isRequestingBatchDeletion}
+                    isConversationSearchActive={Boolean(
+                      conversationQuery.trim()
+                    )}
                     isLoadingMoreConversations={
                       sectionPageState?.isLoading ?? false
                     }
