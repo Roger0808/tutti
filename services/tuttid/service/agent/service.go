@@ -122,6 +122,12 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	logAgentSubmitTrace("service.create.model_validated", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
 		"model": value(input.Model),
 	})
+	input.ReasoningEffort = s.clampReasoningEffortPointerForModel(
+		ctx,
+		provider,
+		value(input.Model),
+		input.ReasoningEffort,
+	)
 	nodeStartedAt = time.Now()
 	cwd, err := s.resolveCwd(ctx, input.Cwd)
 	if err != nil {
@@ -442,6 +448,15 @@ func (s *Service) LocalAttachmentPath(ctx context.Context, workspaceID string, a
 }
 
 func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID string, _ bool) (Session, error) {
+	if s.SessionReader != nil {
+		deleted, err := s.SessionReader.SessionDeleted(workspaceID, agentSessionID)
+		if err != nil {
+			return Session{}, err
+		}
+		if deleted {
+			return Session{}, ErrSessionNotFound
+		}
+	}
 	session, ok := s.controller().Session(workspaceID, agentSessionID)
 	if ok {
 		resumable := s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session))
@@ -570,35 +585,6 @@ func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentS
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
 	})
-}
-
-func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentSessionID string, settings ComposerSettingsPatch) (Session, error) {
-	ensured, err := s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		return Session{}, err
-	}
-	if settings.ReasoningEffort != nil {
-		normalizedReasoningEffort := normalizeReasoningEffortForProvider(
-			strings.TrimSpace(ensured.Session.Provider),
-			*settings.ReasoningEffort,
-		)
-		settings.ReasoningEffort = &normalizedReasoningEffort
-	}
-	if settings.Speed != nil {
-		normalizedSpeed := normalizeSpeedForProvider(
-			strings.TrimSpace(ensured.Session.Provider),
-			*settings.Speed,
-		)
-		settings.Speed = &normalizedSpeed
-	}
-	if err := s.controller().UpdateSettings(ctx, RuntimeUpdateSettingsInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: agentSessionID,
-		Settings:       settings,
-	}); err != nil {
-		return Session{}, normalizeRuntimeError(err)
-	}
-	return s.Get(ctx, workspaceID, agentSessionID)
 }
 
 func (s *Service) SubmitInteractive(ctx context.Context, workspaceID string, agentSessionID string, requestID string, input SubmitInteractiveInput) (Session, error) {

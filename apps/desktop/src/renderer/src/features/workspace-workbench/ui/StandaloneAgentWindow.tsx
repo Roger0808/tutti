@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   AGENT_GUI_DETAIL_MIN_WIDTH_PX,
+  AGENT_GUI_EXPANDED_TARGET_WIDTH_PX,
   AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX,
   shouldAutoCollapseAgentGUIConversationRail
 } from "@tutti-os/agent-gui";
@@ -23,7 +24,6 @@ import {
   type AgentGuiWorkbenchConversationRailToggleDetail,
   type AgentGuiWorkbenchNewConversationDetail
 } from "@tutti-os/agent-gui/workbench/contribution";
-import { resolveAgentGuiSessionProviderIconUrl } from "@tutti-os/agent-gui/agentGuiSessionProviderIconUrls";
 import type {
   WorkbenchContribution,
   WorkbenchHostHandle,
@@ -34,7 +34,6 @@ import { createDesktopAgentGUIWorkbenchHostInput } from "@renderer/features/work
 import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
-import { resolveDesktopAgentGUIProviderForAgentTarget } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchStateHelpers.ts";
 import type { DesktopAgentGUIPrefillPromptRequest } from "@renderer/features/workspace-agent/services/desktopAgentGUIPrefillPromptActivation.ts";
 import { isDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import {
@@ -72,6 +71,7 @@ import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import type { WorkspaceWorkbenchCapabilitySettingsTarget } from "../services/workspaceWorkbenchHostService.interface";
 import { resolveDesktopWindowIntent } from "@shared/contracts/windowIntent.ts";
 import { useStandaloneAgentLaunchRouting } from "./useStandaloneAgentLaunchRouting.ts";
+import { resolveStandaloneAgentHeaderIdentity } from "./standaloneAgentHeaderIdentity.ts";
 
 const LazyWorkspaceAccountMenu = lazy(() =>
   import("./WorkspaceAccountMenu").then(({ WorkspaceAccountMenu }) => ({
@@ -302,8 +302,8 @@ export function StandaloneAgentWindow({
   const [fileOpenRequest, setFileOpenRequest] =
     useState<StandaloneAgentFileOpenRequest | null>(null);
   const fileOpenRequestSequenceRef = useRef(0);
-  const openFileInSidebar = useCallback((path: string): boolean => {
-    const normalizedPath = path.trim();
+  const openFileInSidebar = useCallback((file: string): boolean => {
+    const normalizedPath = file.trim();
     if (!normalizedPath) {
       return false;
     }
@@ -324,7 +324,10 @@ export function StandaloneAgentWindow({
   useEffect(() => {
     workspaceFileManagerService.setCanvasFilePreviewLauncher(
       workspaceId,
-      (target) => openFileInSidebar(target.path)
+      async (target) => {
+        await desktopApi.host.files.openFile(workspaceId, target.path);
+        return true;
+      }
     );
     workspaceFileManagerService.setPreviewUnsupportedFallbackNotificationEnabled(
       workspaceId,
@@ -336,7 +339,7 @@ export function StandaloneAgentWindow({
         null
       );
     };
-  }, [openFileInSidebar, workspaceFileManagerService, workspaceId]);
+  }, [desktopApi.host.files, workspaceFileManagerService, workspaceId]);
   useEffect(() => {
     workspaceAppCenterService.setWorkspaceAppLauncher(
       async ({ appId, workspaceId: targetWorkspaceId }) => {
@@ -424,26 +427,19 @@ export function StandaloneAgentWindow({
     [launchProvider, workspaceId]
   );
   const activeAgentTargetId = nodeState.agentTargetId?.trim() || null;
-  const headerProvider = resolveDesktopAgentGUIProviderForAgentTarget(
-    activeAgentTargetId,
+  const {
+    agentTitle: headerAgentTitle,
+    conversationIconFallbackUrl: headerConversationIconFallbackUrl,
+    conversationIconUrl: headerConversationIconUrl,
+    conversationTitle: headerConversationTitle,
+    provider: headerProvider
+  } = resolveStandaloneAgentHeaderIdentity({
+    agentTargetId: activeAgentTargetId,
     agents,
-    readStandaloneNodeProvider(nodeState, launchProvider)
-  );
-  const headerAgentTarget = activeAgentTargetId
-    ? (agents.find((target) => target.agentTargetId === activeAgentTargetId) ??
-      null)
-    : null;
-  const headerConversationIconFallbackUrl =
-    resolveAgentGuiSessionProviderIconUrl(headerProvider);
-  const headerConversationIconUrl =
-    headerAgentTarget?.iconUrl ?? headerConversationIconFallbackUrl;
-  const headerConversationTitle =
-    activitySnapshot.sessions
-      .find(
-        (session) =>
-          session.agentSessionId === nodeState.lastActiveAgentSessionId
-      )
-      ?.title?.trim() || null;
+    fallbackProvider: readStandaloneNodeProvider(nodeState, launchProvider),
+    lastActiveAgentSessionId: nodeState.lastActiveAgentSessionId,
+    sessions: activitySnapshot.sessions
+  });
   const headerConversationRailWidthPx =
     typeof nodeState.conversationRailWidthPx === "number" &&
     Number.isFinite(nodeState.conversationRailWidthPx)
@@ -538,6 +534,11 @@ export function StandaloneAgentWindow({
   }, [agentsService]);
   const handleConversationRailToggle = useCallback(
     (collapsed: boolean) => {
+      if (!collapsed && frame.width < 640) {
+        void hostWindowApi.resizeContentWidth({
+          width: AGENT_GUI_EXPANDED_TARGET_WIDTH_PX
+        });
+      }
       setNodeState((current) => ({
         ...current,
         conversationRailCollapsed: collapsed
@@ -554,7 +555,7 @@ export function StandaloneAgentWindow({
         )
       );
     },
-    [instanceId]
+    [frame.width, hostWindowApi, instanceId]
   );
   const handleCreateConversation = useCallback(() => {
     window.dispatchEvent(
@@ -651,6 +652,7 @@ export function StandaloneAgentWindow({
         }
         renderHeader={(toolActions) => (
           <AgentGuiWorkbenchHeader
+            agentTitle={headerAgentTitle}
             copy={{
               collapseConversationRail: i18n.t(
                 "workspace.agentGui.collapseConversationRail"
@@ -683,8 +685,7 @@ export function StandaloneAgentWindow({
             primaryAccessory={<AppUpdateStatus presentation="standalone" />}
             secondaryAccessory={isContentLoading ? null : toolActions}
             showConversationRailToggle={!isContentLoading}
-            showAppTitle
-            title={i18n.t("workspace.agentGui.fallbackAgentLabel")}
+            showAppTitle={false}
             windowActions={{
               close: () => {
                 void toolWorkbench.requestWindowClose();

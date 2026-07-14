@@ -6,12 +6,16 @@ type composerCommandSessionReaderStub struct {
 	sessions []PersistedSession
 }
 
-func (s composerCommandSessionReaderStub) GetSession(string, string) (PersistedSession, bool) {
+func (composerCommandSessionReaderStub) GetSession(string, string) (PersistedSession, bool) {
 	return PersistedSession{}, false
 }
 
 func (s composerCommandSessionReaderStub) ListSessions(string) ([]PersistedSession, bool) {
 	return s.sessions, true
+}
+
+func (composerCommandSessionReaderStub) SessionDeleted(string, string) (bool, error) {
+	return false, nil
 }
 
 func TestComposerCommandsFromRuntimeContextPrefersDetailedCatalog(t *testing.T) {

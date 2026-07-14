@@ -25,7 +25,7 @@ describe("useAgentGUIConversationDetail", () => {
         avoidGroupingEdits: false,
         codeFor: () => null,
         detailError: null,
-        draftBySessionId: {},
+        draftByScopeKey: {},
         errorFor: () => null,
         providerComposerOptions: {
           commands: [{ name: "memory", description: "Manage memory" }],
@@ -41,6 +41,7 @@ describe("useAgentGUIConversationDetail", () => {
           provider: "acp:gemini",
           targetId: "extension:gemini"
         },
+        selectedProjectPath: "/workspace",
         sessionEngine: createTestAgentSessionEngine("workspace-1"),
         workspaceId: "workspace-1",
         workspacePath: "/workspace"
@@ -72,7 +73,7 @@ describe("useAgentGUIConversationDetail", () => {
         avoidGroupingEdits: false,
         codeFor: () => null,
         detailError: null,
-        draftBySessionId: {},
+        draftByScopeKey: {},
         errorFor: () => null,
         providerComposerOptions: null,
         selectedComposerTargetData: {
@@ -85,6 +86,7 @@ describe("useAgentGUIConversationDetail", () => {
           provider: "codex",
           targetId: "local:codex"
         },
+        selectedProjectPath: "/workspace",
         sessionEngine: createTestAgentSessionEngine("workspace-1"),
         workspaceId: "workspace-1",
         workspacePath: "/workspace"
