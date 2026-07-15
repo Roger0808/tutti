@@ -3523,8 +3523,15 @@ aside.workspace-agents-status-panel
 .agent-gui-conversation__interactive-feedback-composer {
   position: relative;
   display: block;
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
+  min-height: 80px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--background-fronted);
+  padding-bottom: 44px;
 }
 
 .agent-gui-conversation__interactive-prompt-textarea {
@@ -3544,17 +3551,18 @@ aside.workspace-agents-status-panel
 
 .agent-gui-conversation__interactive-feedback-composer
   .agent-gui-conversation__interactive-prompt-textarea {
+  display: block;
   box-sizing: border-box;
   min-width: 0;
-  min-height: 42px;
+  min-height: 36px;
   max-height: 132px;
-  border: 1px solid var(--line-2);
-  border-radius: 7px;
-  background: var(--background-fronted);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--text-primary);
   font-size: 13px;
   line-height: 1.45;
-  padding: 9px 48px 42px 10px;
+  padding: 9px 10px;
   resize: vertical;
 }
 

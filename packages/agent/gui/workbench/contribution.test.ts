@@ -1819,6 +1819,17 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
+  it("keeps interactive feedback scrolling above the send button", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-conversation__interactive-feedback-composer\s*{[^}]*min-height:\s*80px;[^}]*overflow:\s*hidden;[^}]*padding-bottom:\s*44px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__interactive-feedback-composer\s+\.agent-gui-conversation__interactive-prompt-textarea\s*{[^}]*min-height:\s*36px;[^}]*border:\s*0;[^}]*padding:\s*9px 10px;/s
+    );
+  });
+
   it("keeps provider manager drag hit boxes stable while previewing insertion", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
