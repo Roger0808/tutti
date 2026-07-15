@@ -29,12 +29,14 @@ interface ToolPanelResizeState {
 
 interface UseStandaloneAgentToolSidebarLayoutInput {
   activePanel: StandaloneAgentToolPanelId | null;
+  activePanelPreferredWidth?: number;
   mainContentMinWidthPx?: number;
   resizeWindowContentWidth(width: number): Promise<{ width: number }>;
 }
 
 export function useStandaloneAgentToolSidebarLayout({
   activePanel,
+  activePanelPreferredWidth,
   mainContentMinWidthPx,
   resizeWindowContentWidth
 }: UseStandaloneAgentToolSidebarLayoutInput) {
@@ -77,13 +79,15 @@ export function useStandaloneAgentToolSidebarLayout({
       )
     : 0;
   const activePanelWidth = activePanel
-    ? resolveStandaloneAgentToolSidebarWidth({
-        allowFullWidth: isActivePanelExpanded,
+    ? resolveActivePanelWidth({
+        activePanel,
+        activePanelMaxWidth,
+        activePanelPreferredWidth,
         baselineViewportWidth:
           baselineViewportWidthRef.current ?? viewportWidth,
-        mainContentMinWidth: mainContentMinWidthPx,
-        panel: activePanel,
-        preferredWidth: panelWidths[activePanel],
+        isActivePanelExpanded,
+        mainContentMinWidthPx,
+        panelWidth: panelWidths[activePanel],
         viewportWidth
       })
     : 0;
@@ -150,7 +154,10 @@ export function useStandaloneAgentToolSidebarLayout({
   );
 
   const resizeForPanel = useCallback(
-    async (nextPanel: StandaloneAgentToolPanelId | null): Promise<boolean> => {
+    async (
+      nextPanel: StandaloneAgentToolPanelId | null,
+      preferredWidth?: number
+    ): Promise<boolean> => {
       const requestId = ++resizeRequestRef.current;
       const expansionTransition = resetPanelExpansion(nextPanel);
       if (
@@ -167,7 +174,7 @@ export function useStandaloneAgentToolSidebarLayout({
         nextPanel === null
           ? baselineViewportWidth
           : (baselineViewportWidth ?? window.innerWidth) +
-            panelWidths[nextPanel];
+            resolvePreferredWidth(preferredWidth, panelWidths[nextPanel]);
 
       if (requestedWidth !== null) {
         try {
@@ -315,4 +322,45 @@ export function useStandaloneAgentToolSidebarLayout({
     stopResizing,
     togglePanelExpansion
   };
+}
+
+function resolveActivePanelWidth(input: {
+  activePanel: StandaloneAgentToolPanelId;
+  activePanelMaxWidth: number;
+  activePanelPreferredWidth?: number;
+  baselineViewportWidth: number;
+  isActivePanelExpanded: boolean;
+  mainContentMinWidthPx?: number;
+  panelWidth: number;
+  viewportWidth: number;
+}): number {
+  if (
+    typeof input.activePanelPreferredWidth === "number" &&
+    Number.isFinite(input.activePanelPreferredWidth)
+  ) {
+    return Math.round(
+      Math.max(
+        0,
+        Math.min(input.activePanelMaxWidth, input.activePanelPreferredWidth)
+      )
+    );
+  }
+
+  return resolveStandaloneAgentToolSidebarWidth({
+    allowFullWidth: input.isActivePanelExpanded,
+    baselineViewportWidth: input.baselineViewportWidth,
+    mainContentMinWidth: input.mainContentMinWidthPx,
+    panel: input.activePanel,
+    preferredWidth: input.panelWidth,
+    viewportWidth: input.viewportWidth
+  });
+}
+
+function resolvePreferredWidth(
+  preferredWidth: number | undefined,
+  fallbackWidth: number
+): number {
+  return typeof preferredWidth === "number" && Number.isFinite(preferredWidth)
+    ? Math.max(0, Math.round(preferredWidth))
+    : fallbackWidth;
 }

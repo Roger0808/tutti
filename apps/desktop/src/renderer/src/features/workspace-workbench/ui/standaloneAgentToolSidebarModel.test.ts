@@ -11,6 +11,7 @@ import {
   resolveStandaloneAgentToolSidebarLayoutWidth,
   resolveStandaloneAgentToolSidebarWidth,
   resolveStandaloneAgentToolPanelMaxWidth,
+  standaloneAgentEmptyToolSidebarWidth,
   standaloneAgentToolPanelDefaultWidthById
 } from "./standaloneAgentToolSidebarModel.ts";
 
@@ -204,6 +205,14 @@ test("standalone agent browser and apps open at the same roomy default width", (
     }),
     720
   );
+});
+
+test("standalone agent empty tool sidebar uses sixty percent of the file panel width", () => {
+  assert.equal(
+    standaloneAgentEmptyToolSidebarWidth,
+    standaloneAgentToolPanelDefaultWidthById.files * 0.6
+  );
+  assert.equal(standaloneAgentEmptyToolSidebarWidth, 432);
 });
 
 test("standalone agent messages open wide enough for message cards", () => {

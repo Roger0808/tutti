@@ -12,6 +12,9 @@ export type StandaloneAgentToolLauncherPanelId =
   | StandaloneAgentSharedToolPanelId;
 
 const standaloneAgentBrowserAndAppsDefaultWidth = 720;
+export const standaloneAgentEmptyToolSidebarWidth = Math.round(
+  standaloneAgentBrowserAndAppsDefaultWidth * 0.6
+);
 
 export const standaloneAgentToolPanelDefaultWidthById: Record<
   StandaloneAgentToolPanelId,

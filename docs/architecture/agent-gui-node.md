@@ -395,7 +395,12 @@ window chrome exposes one right-panel toggle plus quick actions for apps and
 messages while the panel is closed; those quick actions open the right panel
 and mount/select the corresponding tab. Once open, the panel header owns the
 active tab strip and its add menu for files, terminal, browser, apps, and
-messages.
+messages. If the panel opens without any mounted child tab, its body first
+shows a compact picker for Files, Terminal, and Browser; selecting one of those
+entries creates and activates the corresponding tool tab. The empty picker is
+not itself a tool tab, and the closed-panel quick actions stay hidden while it
+is visible. Its default width is 60% of the Files panel default; selecting an
+entry replaces that compact width with the chosen tool's normal panel width.
 Opening a tool mounts it as a tab and selecting another tab only changes the
 visible projection; this state is not durable AgentGUI session data.
 The Files tool tab remains the file-navigation surface. Double-clicking a file
@@ -530,15 +535,17 @@ and the sidebar remains adjacent; it must not become an absolutely positioned
 overlay above the transcript. Width added from the panel's left separator is
 also reserved by layout and does not change the native window bounds. Closing
 the panel restores the captured baseline width.
-Opening must be renderer-first: update the active panel immediately, let the
-clipped width transition begin, and defer the host-window resize request until
-the next animation frame. Do not await native IPC before showing the panel.
-Files, Browser, Apps, and other expensive first-use bodies mount after the
-outer width transition, then remain mounted while hidden for instant later
-switches. macOS may use Electron's native bounds animation in parallel; other
-platforms apply the same resolved bounds without requesting unsupported native
-animation. Respect `prefers-reduced-motion` by removing the CSS transition and
-the content-mount delay.
+Opening must be renderer-first: update the active panel immediately and defer
+the host-window resize request until the next animation frame. Do not await
+native IPC before showing the panel. Commit the sidebar's final layout width in
+one step; do not animate `width`, `flex-basis`, or another layout property,
+because that repeatedly reflows both the panel and the adjacent conversation.
+An optional entrance may animate only a fixed-size inner surface with
+`transform` and `opacity`. Files, Browser, Apps, and other expensive first-use
+bodies mount after that short compositor entrance, then remain mounted while
+hidden for instant later switches. Native bounds changes are applied without a
+parallel window animation. Respect `prefers-reduced-motion` by removing the
+inner entrance and the content-mount delay.
 Lazy mounting also applies to module loading. The standalone shell may derive a
 small reminder count from the activity engine, but it must not statically import
 BrowserNode, TerminalNode, File Manager, App Center, or the full Message Center
