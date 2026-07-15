@@ -415,10 +415,10 @@ window chrome exposes one right-panel toggle plus quick actions for apps and
 messages while the panel is closed; each quick action exposes its localized
 tooltip, opens the right panel, and mounts/selects the corresponding tab. Once
 open, the panel header owns the
-active tab strip and its add menu for files, terminal, browser, apps, and
-messages. If the panel opens without any mounted child tab, its body first
-shows a compact picker for Files, Terminal, and Browser; selecting one of those
-entries creates and activates the corresponding tool tab. The empty picker is
+active tab strip and its add menu for files, terminal, browser, tasks, apps,
+and messages. If the panel opens without any mounted child tab, its body first
+shows a compact picker for Files, Terminal, Browser, Tasks, Apps, and Messages;
+selecting one of those entries creates and activates the corresponding tool tab. The empty picker is
 not itself a tool tab, and the closed-panel quick actions stay hidden while it
 is visible. Its default width is 60% of the Files panel default; selecting an
 entry replaces that compact width with the chosen tool's normal panel width.

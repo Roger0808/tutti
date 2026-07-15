@@ -155,19 +155,24 @@ left separator follows the same adjacent layout rule. Closing the sidebar
 restores the pre-panel native width. This sizing remains renderer/main window
 presentation state and never enters AgentGUI or workbench snapshots.
 An Agent-only right sidebar with no mounted tool uses a compact picker width at
-60% of the Files panel default. Selecting a tool switches the reserved layout
-and requested native width to that tool's normal default. While the picker is
-visible, its sole header toggle stays right-anchored to the same window edge
-as the collapsed sidebar control, avoiding a horizontal jump when the panel
-opens.
+60% of the Files panel default. The picker lists Files, Terminal, Browser,
+Tasks, Apps, and Messages in the same tool hierarchy used by the panel header.
+Selecting a tool switches the reserved layout and requested native width to
+that tool's normal default. While the picker is visible, its sole header toggle
+stays right-anchored to the same window edge as the collapsed sidebar control,
+avoiding a horizontal jump when the panel opens.
 The renderer commits the panel shell's final layout width before issuing the
 native resize IPC on the next frame, so host latency cannot block visual
-feedback. The shell must not animate layout width; any optional entrance stays
-inside the fixed-size panel and uses only compositor-friendly transform and
-opacity. Heavy first-use tool bodies mount after that brief entrance and remain
-mounted for later opens. Native content bounds change without a parallel bounds
-animation, while reduced-motion preferences disable the inner entrance and
-mount delay.
+feedback. The shell must not animate layout width before a heavy first-use tool
+body mounts. The lightweight empty picker and width changes for an already
+mounted tool use the same 260ms ease-in-out transition; an empty-picker close
+restores the native window width only after that transition so the shell is not
+clipped early. Other optional first-use entrances stay inside the fixed-size
+panel and use only compositor-friendly transform and opacity. Heavy first-use
+tool bodies mount after that brief entrance and remain mounted for later opens.
+Native content bounds otherwise change without a parallel bounds animation,
+while reduced-motion preferences disable transitions, the inner entrance, and
+the mount delay.
 Its Apps panel renders the App Center contribution body instead of mounting a
 catalog-only copy. The shared `openAppId` view state selects which surface is
 visible in both OS and Agent-only shells, but it does not own Browser Node
