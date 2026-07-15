@@ -59,6 +59,21 @@ test("standalone Agent defers non-critical panel hosts until after the first fra
   );
 });
 
+test("standalone Agent delegates live window focus to the engagement controller", () => {
+  assert.match(standaloneWindowSource, /isFocused: true/);
+  assert.doesNotMatch(
+    standaloneWindowSource,
+    /isFocused: document\.hasFocus\(\)/
+  );
+});
+
+test("standalone Agent accepts a startup intent without a provider", () => {
+  assert.match(
+    standaloneWindowSource,
+    /windowIntent\.kind === "agent" && windowIntent\.provider\s*\? normalizeDesktopAgentGUIProvider\(windowIntent\.provider\)\s*: "codex"/
+  );
+});
+
 test("standalone Agent starts the app runtime lifecycle only when apps open", () => {
   assert.match(
     standaloneWindowSource,
