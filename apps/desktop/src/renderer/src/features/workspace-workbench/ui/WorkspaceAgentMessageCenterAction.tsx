@@ -294,11 +294,14 @@ export function WorkspaceAgentMessageCenterAction({
   const handleLinkAction = useCallback(
     (action: Parameters<typeof runDesktopAgentGUILinkAction>[0]) => {
       void runDesktopAgentGUILinkAction(action, {
+        getAgentSession: ({ agentSessionId, workspaceId }) =>
+          workspaceAgentActivityService.getSession(workspaceId, agentSessionId),
         homeDirectory: workbenchHostService.getHomeDirectory(),
         launchAgentGui: async (input) => {
           const nodeId = await launchNode?.(
             createWorkspaceAgentGuiSessionLaunchRequest({
               agentSessionId: input.agentSessionId,
+              agentTargetId: input.agentTargetId,
               provider: input.provider
             })
           );
@@ -311,7 +314,12 @@ export function WorkspaceAgentMessageCenterAction({
         workspaceId: workspace.id
       });
     },
-    [launchNode, workbenchHostService, workspace.id]
+    [
+      launchNode,
+      workbenchHostService,
+      workspace.id,
+      workspaceAgentActivityService
+    ]
   );
   const closeMessageCenter = useCallback(() => {
     setOpen(false);
