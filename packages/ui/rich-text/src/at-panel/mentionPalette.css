@@ -714,6 +714,7 @@
 
 .rich-text-at-mention-row__file-count {
   flex: 0 0 auto;
+  font-size: 11px;
 }
 
 .rich-text-at-mention-row__session-title,
