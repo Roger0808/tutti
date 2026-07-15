@@ -287,6 +287,39 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [codex_appserver_events.go](../../../packages/agent/daemon/runtime/codex_appserver_events.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
 
+### Clearing a Codex goal hides Stop and moves processing below the clear command
+
+- Symptom:
+  Clearing a goal while its current turn is still running leaves the composer
+  on a non-clickable send spinner. The transcript shows `/goal clear` followed
+  by a new processing row even though no new provider turn started.
+- Quick checks:
+  Inspect the AgentGUI clear handler and the engine pending-submit records. If
+  clear calls `executePrompt` with an immediate `/goal clear`, the control has
+  entered the normal message pipeline and received a pseudo turn identity.
+- Root cause:
+  Goal clear changes thread metadata and does not interrupt the current turn.
+  Submitting it as a prompt creates a pending submit without a real provider
+  turn. That local submit owns the send spinner and its visible user message
+  becomes the last timeline turn, so canonical processing is projected under
+  the wrong item.
+- Fix:
+  Route every goal action, including clear, through the dedicated runtime
+  goal-control API. Do not create a user message, pending submit, or pseudo turn.
+  Keep Stop and processing derived from the canonical active turn, and report a
+  successful clear with a localized transient toast. Render that toast in an
+  AgentGUI detail-scoped viewport and use UI System themed surface, foreground,
+  and border tokens so it centers within the content area and follows the
+  active light or dark theme instead of using the inverted neutral toast style.
+- Validation:
+  Clear a goal while a turn is running and verify the goal-control API is called
+  without an engine submit dispatch. The clear command must not appear in the
+  transcript, the original processing row must remain in place, and Stop must
+  remain clickable until the active turn settles or is interrupted.
+- References:
+  [useAgentGUISubmitInteractionActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISubmitInteractionActions.ts)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### Agent session stays loading after a completed turn
 
 - Symptom:

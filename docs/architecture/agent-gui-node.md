@@ -1925,6 +1925,18 @@ results, immediate engine rejection, and conversation deletion discard
 snapshots that can no longer resolve. Non-composer control sends must not
 participate in this draft cleanup.
 
+Goal set, pause, resume, and clear operations must use the runtime goal-control
+API rather than `executePrompt`. A goal control is thread metadata, not a user
+turn: it must not create a transcript message, pending submit, or pseudo turn.
+Clearing a goal may leave the current turn running; the composer stop control
+and transcript processing row therefore continue to derive from that canonical
+active turn. Successful clear feedback is a transient localized toast, not a
+durable timeline item. AgentGUI-scoped feedback must use a viewport positioned
+relative to the detail content container, so conversation-rail width does not
+shift its visual center. Its colors must use the UI System themed surface,
+foreground, and border tokens rather than the intentionally inverted neutral
+toast tokens, so light mode stays light and dark mode stays dark.
+
 User-visible rules:
 
 - Home composer submit with no active conversation starts activation. Detail
