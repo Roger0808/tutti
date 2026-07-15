@@ -776,6 +776,11 @@
   flex: 0 0 24px;
 }
 
+.rich-text-at-mention-row__file-count
+  + .rich-text-at-mention-row__navigate-into {
+  margin-left: -6px;
+}
+
 .rich-text-at-mention-row__open-references:hover,
 .rich-text-at-mention-row__navigate-into:hover,
 .rich-text-at-mention-row__open-references:focus-visible,
