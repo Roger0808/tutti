@@ -832,6 +832,26 @@ the canonical tool payload consumed by shared renderers. Agent GUI may normalize
 historical persisted envelopes for display compatibility, but it must not add
 provider-specific rendering branches.
 
+Provider command lifecycle banners, including context compaction, are canonical
+`agent_system_notice` messages rather than ordinary assistant text. One stable
+message ID carries the lifecycle from `running` to `completed`, `failed`, or
+`canceled`, with `noticeCommand` and `noticeCommandStatus` as the presentation
+contract. The canonical message `semantics` field is authoritative; duplicated
+payload fields are a compatibility fallback for historical timeline data. Agent
+GUI maps the context-compaction lifecycle through one pure presentation resolver:
+active compaction becomes `specific-progress`, while terminal compaction notices
+become `turn-boundary`. Generic processing and transcript-divider layout consume
+those roles instead of matching the provider, command name, or English copy.
+Shared command presentation policy does not belong in the provider registry;
+provider adapters only normalize their wire events into the canonical contract.
+Agent GUI keeps notices outside assistant-text coalescing. It may normalize
+historical `source=compact` messages and stable `compaction:` lifecycle records
+with exact canonical titles into that contract. Legacy title inference requires
+compact identity evidence; arbitrary notices with matching copy remain ordinary
+content. Agent GUI removes an immediately following assistant echo only when it
+exactly repeats the failed notice detail; distinct provider guidance remains
+visible.
+
 Conversation file links use the selected project root when one exists. For a
 no-project session, the durable session cwd is the file-resolution root. This
 keeps link navigation attached to session identity instead of requiring project

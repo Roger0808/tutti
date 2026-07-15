@@ -166,6 +166,44 @@ func TestClaudeCodeSDKAdapterIgnoresCanceledTurnOrphanBeforeCompactResult(t *tes
 	}
 }
 
+func TestClaudeCodeSDKAdapterMapsCompactLifecycleAsSystemNotice(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	session := standardTestSession(ProviderClaudeCode)
+
+	started, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+		Type:    "compact_started",
+		Payload: map[string]any{"turnId": "turn-compact"},
+	})
+	if err != nil || terminal || len(started) != 1 {
+		t.Fatalf("compact_started events=%#v terminal=%v err=%v", started, terminal, err)
+	}
+	failed, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+		Type: "compact_failed",
+		Payload: map[string]any{
+			"turnId":  "turn-compact",
+			"content": "Compacting failed: Not enough messages to compact.",
+		},
+	})
+	if err != nil || terminal || len(failed) != 1 {
+		t.Fatalf("compact_failed events=%#v terminal=%v err=%v", failed, terminal, err)
+	}
+	if started[0].EventID != failed[0].EventID {
+		t.Fatalf("compact event IDs = %q and %q, want one stable notice", started[0].EventID, failed[0].EventID)
+	}
+	if started[0].Payload.Content != appServerCompactingContextTitle ||
+		started[0].Payload.Metadata["kind"] != "agent_system_notice" ||
+		started[0].Payload.Metadata["noticeCommand"] != "compact" ||
+		started[0].Payload.Metadata["noticeCommandStatus"] != "running" {
+		t.Fatalf("compact_started = %#v, want running compact system notice", started[0])
+	}
+	if failed[0].Payload.Content != appServerCompactionInterruptedTitle ||
+		failed[0].Payload.Metadata["noticeCommandStatus"] != "failed" ||
+		failed[0].Payload.Metadata["detail"] != "Not enough messages to compact." {
+		t.Fatalf("compact_failed = %#v, want failed compact system notice", failed[0])
+	}
+}
+
 func TestClaudeCodeSDKAdapterMapsThinkingEvents(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	adapterSession := &claudeSDKAdapterSession{}

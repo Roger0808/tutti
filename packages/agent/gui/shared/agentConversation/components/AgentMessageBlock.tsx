@@ -360,7 +360,12 @@ function AgentSystemNoticeMessage({
   if (isContextCompactionInterruptedNotice(message, title)) {
     return (
       <ContextCompactionDivider
-        text={translate("agentHost.agentGui.contextCompactionInterrupted")}
+        text={[
+          translate("agentHost.agentGui.contextCompactionInterrupted"),
+          detail
+        ]
+          .filter(Boolean)
+          .join(" ")}
       />
     );
   }
@@ -446,9 +451,10 @@ function isContextCompactionNotice(
 ): boolean {
   const notice = message.systemNotice;
   return (
-    notice?.noticeKind === "system_notice" &&
-    (notice.detail?.trim() ?? "") === "" &&
-    title.trim() === CONTEXT_COMPACTION_NOTICE_TITLE
+    (notice?.command === "compact" && notice.commandStatus === "completed") ||
+    (notice?.noticeKind === "system_notice" &&
+      (notice.detail?.trim() ?? "") === "" &&
+      title.trim() === CONTEXT_COMPACTION_NOTICE_TITLE)
   );
 }
 
@@ -458,9 +464,10 @@ function isContextCompactionProgressNotice(
 ): boolean {
   const notice = message.systemNotice;
   return (
-    notice?.noticeKind === "system_notice" &&
-    (notice.detail?.trim() ?? "") === "" &&
-    title.trim() === CONTEXT_COMPACTION_IN_PROGRESS_TITLE
+    (notice?.command === "compact" && notice.commandStatus === "running") ||
+    (notice?.noticeKind === "system_notice" &&
+      (notice.detail?.trim() ?? "") === "" &&
+      title.trim() === CONTEXT_COMPACTION_IN_PROGRESS_TITLE)
   );
 }
 
@@ -470,9 +477,12 @@ function isContextCompactionInterruptedNotice(
 ): boolean {
   const notice = message.systemNotice;
   return (
-    notice?.noticeKind === "system_notice" &&
-    (notice.detail?.trim() ?? "") === "" &&
-    title.trim() === CONTEXT_COMPACTION_INTERRUPTED_TITLE
+    (notice?.command === "compact" &&
+      (notice.commandStatus === "failed" ||
+        notice.commandStatus === "canceled")) ||
+    (notice?.noticeKind === "system_notice" &&
+      (notice.detail?.trim() ?? "") === "" &&
+      title.trim() === CONTEXT_COMPACTION_INTERRUPTED_TITLE)
   );
 }
 

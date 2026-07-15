@@ -583,7 +583,7 @@ func claudeSDKCallBodyKey(eventType string) string {
 	}
 }
 
-func (s *claudeSDKAdapterSession) compactMessageEvent(session Session, turnID string, streamState string, content string) activityshared.Event {
+func (s *claudeSDKAdapterSession) compactMessageEvent(session Session, turnID string, streamState string, detail string) activityshared.Event {
 	if s.compactMessages == nil {
 		s.compactMessages = make(map[string]string)
 	}
@@ -592,10 +592,29 @@ func (s *claudeSDKAdapterSession) compactMessageEvent(session Session, turnID st
 		messageID = "claude-sdk:compact:" + turnID
 		s.compactMessages[turnID] = messageID
 	}
-	return newTurnActivityEventWithID(session, messageID, EventMessage, turnID, streamState, RoleAssistant, content, map[string]any{
-		"adapter":     claudeSDKSidecarAdapterName,
-		"messageId":   messageID,
-		"contentMode": messageContentModeSnapshot,
-		"source":      "compact",
-	})
+	title := appServerCompactingContextTitle
+	noticeStatus := "running"
+	if streamState == messageStreamStateCompleted {
+		title = appServerContextCompactedTitle
+		noticeStatus = "completed"
+	}
+	if streamState == messageStreamStateFailed {
+		title = appServerCompactionInterruptedTitle
+		noticeStatus = "failed"
+	}
+	metadata := map[string]any{
+		"adapter":             claudeSDKSidecarAdapterName,
+		"messageId":           messageID,
+		"contentMode":         messageContentModeSnapshot,
+		"source":              "compact",
+		"kind":                "agent_system_notice",
+		"noticeKind":          "system_notice",
+		"noticeCommand":       "compact",
+		"noticeCommandStatus": noticeStatus,
+		"title":               title,
+	}
+	if strings.TrimSpace(detail) != "" {
+		metadata["detail"] = strings.TrimSpace(detail)
+	}
+	return newTurnActivityEventWithID(session, messageID, EventMessage, turnID, streamState, RoleAssistant, title, metadata)
 }
