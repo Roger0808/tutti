@@ -333,6 +333,7 @@ export const WorkspaceAgentMessageCenterStack = memo(
               <div className="flex min-w-0 items-center justify-between gap-2 px-0.5 pb-1.5">
                 <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-4 text-[var(--text-tertiary)]">
                   <MessageCenterIdentityAvatarMark
+                    agentAvatarUrl={items[0]?.agentAvatarUrl}
                     identity={items[0]?.identity ?? null}
                     provider={items[0]?.provider ?? ""}
                     userId={items[0]?.userId ?? null}
@@ -518,6 +519,7 @@ function MessageCenterStackSummary({
         <span className="flex min-w-0 items-center justify-between gap-2.5">
           <span className="flex min-w-0 items-center gap-2">
             <MessageCenterIdentityAvatarMark
+              agentAvatarUrl={firstItem.agentAvatarUrl}
               identity={firstItem.identity}
               provider={firstItem.provider}
               userId={firstItem.userId}
@@ -585,20 +587,6 @@ export function MessageCenterSummary({
     summaryRef,
     shouldRenderRichSummary
   );
-  const handleLinkAction = useCallback(
-    (action: WorkspaceLinkAction): void => {
-      const agentTargetId = item.agentTargetId?.trim() || null;
-      onLinkAction?.(
-        action.type === "open-agent-session" &&
-          !action.agentTargetId &&
-          agentTargetId
-          ? { ...action, agentTargetId }
-          : action
-      );
-    },
-    [item.agentTargetId, onLinkAction]
-  );
-
   useEffect(() => {
     if (!shouldMeasureOverflow) {
       setIsOverflowing(false);
@@ -641,7 +629,7 @@ export function MessageCenterSummary({
         <AgentMessageMarkdown
           content={summary}
           className="[&_a]:text-[var(--tutti-purple)] [&_code]:text-[var(--text-secondary)] [&_hr]:border-t-[color-mix(in_srgb,var(--text-primary)_14%,transparent)] [&_ol]:!bg-transparent [&_p]:m-0 [&_th]:bg-[color-mix(in_srgb,var(--background-panel)_94%,var(--text-primary))] [&_th]:text-[var(--text-primary)] [&_ul]:!bg-transparent text-[var(--text-primary)]"
-          onLinkAction={handleLinkAction}
+          onLinkAction={onLinkAction}
           workspaceLinkContext={{
             workspaceRoot: item.cwd || null,
             basePath: item.cwd,

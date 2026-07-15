@@ -138,6 +138,18 @@ Timeline-specific parsing may produce display-only card content, while request
 identity, options, and response commands come only from canonical pending
 Interaction projections.
 
+Ordinary consecutive tool calls project into one stable transcript disclosure
+starting with the first call. Working, waiting, completed, and failed updates
+change the calls and accumulated count inside that disclosure; they must not
+split, finalize, replace, expand, or collapse it. The disclosure identity is
+scoped by session, turn, and first call so incremental calls preserve the same
+UI state without leaking it across conversations. It starts collapsed, and
+only an explicit user toggle changes whether it is expanded. The group header
+reports the accumulated call count without claiming a lifecycle state; each
+call row owns its working, completed, or failed presentation. Interactive
+approval, question, plan-mode, task, and delegated-agent surfaces remain
+independent boundaries rather than ordinary grouped tool calls.
+
 Protocol-v2 host adapters must require `activeTurnId`,
 `latestTurnInteractions`, and `pendingInteractions`. Missing fields are a
 contract error at the desktop boundary, not an empty-list/default-value case.
@@ -160,6 +172,13 @@ entries.
 Agent launches from Launchpad/All must still use the unified Agent dock entry
 identity (`agent-gui:unified`) so the resulting AgentGUI node appears under the
 same Dock icon as direct Dock launches.
+The unified dock identity is a reserved aggregate identifier, not a provider
+identifier. Provider extraction must recognize and exclude reserved aggregate
+identities before parsing the `agent-gui:<provider>` instance namespace, even
+though provider metadata accepts extension-defined strings. Provider-specific
+dock status must never override the unified entry's visibility; an aggregate
+status, if needed, must be modeled explicitly instead of synthesizing an
+`unified` provider.
 Empty launches from the unified Agent dock entry should set dock-entry reuse so
 the second dock click restores/focuses the existing AgentGUI node; draft
 prefill launches and explicit session launches keep their narrower reuse rules
@@ -204,6 +223,10 @@ mention's visible label must use the source conversation title without
 prefixing the source agent or provider name, because the submitted draft also
 becomes the new conversation's initial title. Source agent identity stays in
 the mention metadata instead of being duplicated into title text. The
+`agent-session` navigation path is session-authoritative: clicking a mention
+resolves the canonical session by workspace and session ID, then launches with
+that session's provider and Agent Target. It must not inherit the current
+AgentGUI node's target or derive a provider from the unified dock identity. The
 prefill activation provider is authoritative for the new workbench panel's
 initial provider chrome, so choosing Codex from a Claude Code session must open
 a Codex panel before the draft prefill effect runs. The prefilled handoff panel
@@ -257,6 +280,12 @@ selected agent's availability so coming-soon entries remain inspectable but
 cannot start sessions. Hosts may use `renderAgentUnavailableState` and
 `renderAgentReadinessState` for product-specific presentation, with actions
 routed through `onAgentAvailabilityAction`.
+Daemon-managed extension targets use this same host-projected availability.
+Their signed target name, icon URL, and open provider identity flow through the
+host `agents` array; AgentGUI must not add extension keys, provider fallbacks,
+or extension-specific artwork. A missing compatible local runtime projects as
+`not-installed`, while historical sessions keep their recorded target and
+remain outside the empty-home readiness gate.
 When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
@@ -265,7 +294,11 @@ When a model catalog advertises model-specific reasoning profiles, the composer
 must derive the reasoning options from the currently presented model and
 re-resolve an unsupported prior effort to that model's advertised default.
 Do not render the provider-level reasoning list when a profile exists for the
-selected model.
+selected model. The presence of any non-empty model profile keeps the reasoning
+dimension available across model switches even when the initially selected
+model has no options. An advertised empty profile for the selected model is
+authoritative: hide the reasoning control and do not reinsert a stale selected
+or draft effort as a synthetic option.
 Reasoning values are an extensible provider vocabulary. Known shared values may
 use AgentGUI's canonical labels, while unrecognized values must preserve the
 localized option label supplied by the composer-options contract instead of
@@ -322,6 +355,10 @@ Provider-scoped rail footer affordances, such as usage limits and environment
 setup, follow the rail's active provider filter target in multi-provider scope;
 when the rail filter is `All`, they should stay hidden because there is no
 single provider target to inspect.
+Runtime session usage is normalized once at the activity-core boundary,
+including quota type and numeric/text fields. AgentGUI read hooks may memoize
+that canonical projection, but views consume the typed quota array directly;
+they must not rebuild or stabilize quota DTOs with render-time refs.
 AgentGuiNode may also receive a neutral `renderSidebarFooter` slot for host or
 product affordances that belong at the bottom of the far-left provider/sidebar
 rail, below the system-settings control and not below the conversation-list
@@ -417,7 +454,10 @@ The standalone Agent header reuses that button to duplicate its current native
 window. It hands off the active session, agent target, provider, agents, and
 provider-status snapshot, and explicitly keeps the source standalone window
 visible. The duplicate reconstructs UI from the shared durable activity source;
-it must not clone or fork AgentGUI session state in the renderer.
+it must not clone or fork AgentGUI session state in the renderer. Place the
+duplicate 25 pixels to the right and 25 pixels below its source, clamped to the
+active display work area, so the new window does not completely cover the
+source window when the available work area permits.
 When the conversation rail collapses, the standalone Agent header remains a
 full-width window control surface and keeps its secondary tool actions anchored
 to the right window edge. Content-width caps belong to the conversation body,
@@ -771,6 +811,22 @@ Desktop passes grouped Agent GUI props and runtime interfaces. It must not
 mirror engine entities, implement provider policy switches, or derive session
 truth to make a panel render correctly.
 
+Agent GUI engagement reporting follows the same boundary:
+
+- `AgentGUINodeView` owns DOM exposure observation and the UI-local panel visit.
+  A visit ends when the panel becomes ineligible or its active session/target
+  context changes; events from different session contexts never share a
+  `panelVisitId`.
+- Composer and rich-text modules report semantic focus and accepted user-content
+  signals. Controlled draft hydration, prefill, and programmatic mention-trigger
+  insertion are not user-content events.
+- Workbench presentation visibility enters through `frame.isVisible`. Reusable
+  Agent GUI code must not query desktop workbench class names or data attributes.
+- The package emits a discriminated engagement event through
+  `hostActions.onEngagementEvent`. Desktop owns product event names, surface
+  labels, reporter construction, and analytics transport. Prompt text, file
+  names, paths, mention URIs, and attachment payloads never cross this boundary.
+
 Opening a conversation activates a durable session through the engine. Opening
 it in another panel creates workbench presentation state around the same durable
 session; it does not clone the session. Provider handoff starts a new session
@@ -881,7 +937,12 @@ Claude SDK sidecars must not treat Edit/Write input text as authoritative patch
 data. They should collect the `PostToolUse` `tool_response.structuredPatch`
 hunks, convert them into file-level `changes[].diff` payloads, and only use
 input-derived file metadata for optimistic display before the tool response
-arrives.
+arrives. Provider diff metadata must be canonicalized at this adapter boundary
+before it becomes durable activity data. In particular, unified-diff control
+markers such as `\ No newline at end of file` must use Git's exact syntax;
+provider display formatting must not flow unchanged into executable
+`patchBatches`. AgentGUI also canonicalizes this marker while reading older
+persisted activity so pre-fix sessions remain reversible.
 
 Provider adapters that receive successful write/edit/apply_patch tool calls
 without a native turn-level diff event must still normalize the executed tool
@@ -995,8 +1056,12 @@ repository by resolving from the nearest existing parent directory.
 The Git mutation belongs in `services/tuttid`, not `apps/desktop` or
 `@tutti-os/agent-gui`. The daemon creates a temporary `tutti-apply-*`
 directory, writes `patch.diff`, optionally copies the Git index into that
-directory for non-atomic unstaged `--3way` operations, executes `git apply` or
-`git apply -R`, and removes the temporary directory on every exit path.
+directory for non-atomic unstaged `--3way` operations, runs `git apply --check`
+with the same target, reverse, binary, directory, and temporary-index options,
+then executes `git apply` or `git apply -R` only after preflight succeeds. A
+syntax failure returns `invalid-patch`; a valid patch that no longer matches the
+worktree returns `patch-does-not-apply`. The daemon removes the temporary
+directory on every exit path.
 When reversing an added-file patch, the daemon has one narrow fallback for
 less-structured summary diffs: if Git rejects the patch, the target is still
 untracked, and the current file content only differs from the patch by trailing
@@ -1014,7 +1079,10 @@ AgentGUI shared components should not call the sonner `toast.error` entrypoint
 directly except as a last-resort fallback when no host toast capability exists.
 The summary card does not keep an inline failure row or durable error state
 because the source of truth remains the recorded diff plus the current worktree
-state.
+state. The desktop and daemon record the same `agent-git-patch` diagnostic
+family with JSON payloads, including the action, result, error code, paths, and
+Git stderr. Diagnostics record a diff hash and byte count rather than raw file
+content.
 
 Codex invalidates Git query caches after this operation. Tutti currently has no
 equivalent renderer Git cache group. The AgentGUI row emits a lightweight
@@ -1131,7 +1199,9 @@ cover every visible session in the workspace rather than only the loaded rail
 sections. Each returned session is upserted into the same workspace engine;
 the search controller stores only result ids, cursor, and request state, then
 the rail joins those ids to canonical entities. It must not recreate the old
-conversation-summary cache. Search grouping renders only sections containing
+conversation-summary cache. An initial backend-search failure renders a
+localized retry action; retry reissues the current target-scoped query instead
+of presenting the failure as an empty result. Search grouping renders only sections containing
 matching rows; empty user-project and Chats sections remain hidden. Hosts without `listSessionsPage`, including
 preview-only hosts, may fall back to local title filtering of loaded rows.
 Ordinary section pages and backend search pages share one deterministic order:
@@ -1145,6 +1215,9 @@ Every section page and pinned page also carries `totalCount` for the full
 target-filtered scope before cursor pagination. Ordinary section pages exclude
 pinned sessions because those rows belong only to the dedicated pinned page;
 filtering pinned rows after section pagination corrupts page size and totals.
+If a refresh of an already-resolved section scope fails, keep its membership,
+cursor, and totals; only an unresolved or newly selected scope may resolve to an
+empty failure state.
 The active conversation is a
 display overlay, not a pageable row: it may render beside the first five rows,
 but it must not consume the local visible-item limit or advance the cursor.
@@ -1223,6 +1296,11 @@ previous section page metadata paired with that stale chrome until the new
 first page resolves; clearing `hasMore` independently makes the pagination row
 disappear and reappear. Disable paging actions while the replacement request is
 pending so a stale cursor cannot enter the new provider scope.
+The rail query controller owns this interaction lock and exposes a live query
+method for row and portaled-menu actions. Views must not mirror the pending flag
+through value refs or manufacture a stable callback around such refs; deferred
+actions query the controller at execution time so an already-open menu cannot
+cross a newly entered replacement state.
 Conversation-list read-state metadata is notification-style UI state. Historical
 imports that carry `runtimeContext.imported === true` should remain visible in
 the rail, but they must not seed unread completion lamps as though they just
@@ -1266,6 +1344,11 @@ record that failed cursor and suppress automatic retries until the detail page
 is reloaded or a different oldest durable version is reached. Do not let scroll
 position and `isLoadingOlderMessages=false` form an immediate retry loop against
 the same failing backend page.
+Older-page request coordination is an explicit controller state machine keyed
+by session and cursor. Its phases are `in_flight`, `exhausted`, and `failed`;
+reset invalidates an outstanding request, stale results cannot merge or clear a
+newer loading flag, and cursor advance starts a new request. Do not represent
+these transitions as parallel render refs or independent maps.
 
 The selected detail window is a UI-local page cache, not proof that the full
 durable transcript has loaded. If live updates or snapshot reconciliation seed a
@@ -1717,6 +1800,9 @@ User-visible rules:
   backend, target-scoped, cursor-paged query across all visible sessions; its
   results are engine entities joined through ID-only query state. These queries
   may hide a session from the rail, but must not delete or unactivate it.
+- Conversation search matches only the user-visible session title. Session ids,
+  providers, and working directories are routing or runtime metadata and must
+  not produce title-search results.
 - Conversation target filters are also list-query concerns. The All rail filter
   applies no `agentTargetId` constraint; provider target rail filters such as
   Codex and Claude Code match sessions by `session.agentTargetId`, not by
@@ -2021,6 +2107,22 @@ moment the session becomes available. Only an explicit user send lifts the
 hold — composer submit resumes the queue, and a send-now intent clears the
 suspension in the queue core. The send-now cancel path never suspends: intent is
 captured at its source, never inferred from the cancel outcome.
+
+Queue suspension must also remain visible in the presentation projection.
+AgentGUI controllers map the queue record's `suspendReason` to the internal
+`queueStatus` (`active` or `paused_by_user`) and carry it through the composer
+view model. React queue components render that projection directly; they must
+not infer a paused queue from cancel request state or turn settlement. A paused
+queue keeps its count, expansion, edit, delete, and send-now controls available,
+and returns to the ordinary queued label as soon as the queue core resumes it.
+
+Reducer transitions that resume and then enqueue are compositional: the final
+state and every command from both stages must be preserved. In particular, a
+normal submit after a user stop sends the existing FIFO head and appends the new
+prompt at the tail; it must not retain an `inFlight` claim after dropping the
+corresponding `queue/sendPrompt` command. Send-now continues to use its atomic
+promotion transition so it clears suspension, preserves priority semantics, and
+emits only one delivery command.
 
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,
@@ -2360,6 +2462,12 @@ the resolved icon, label, and optional owner badge. The DOM rail, single-agent
 empty state, and WebGL empty-home carousel consume that same presentation;
 renderer adapters may differ, but they must not create parallel icon-only
 models that can silently discard badge or identity fields.
+Conversation rail rows render icons through a monochrome CSS mask. Built-in
+providers therefore use their mask-safe flat catalog artwork before consulting
+the Target presentation; using a square colorful Target asset there collapses
+to a solid block. When an open extension provider has no built-in flat asset,
+the row resolves the signed Target `iconUrl` through the conversation's
+`agentTargetId`. Open providers must not require a renderer icon catalog entry.
 One carousel image-load owner fetches and decodes icon, vinyl-cover, and badge
 images for a complete item generation. Remote badge images must be requested
 with anonymous CORS before assigning `src`, and the asset host must return an
@@ -2409,6 +2517,16 @@ fallbacks to make providers look aligned. For OpenCode, `/compact` and
 surface these as OpenCode fallbacks. OpenCode may reuse the shared review
 picker, but picker selections must still submit provider-native `/review ...`
 text and must not call Codex's structured `review/start` protocol.
+Standard ACP command snapshots also project their detailed catalog into the
+session runtime context. Composer options may reuse that catalog when the
+renderer subscribed after the startup update or after a restart; a live engine
+snapshot remains authoritative whenever it is present. This recovery path must
+preserve provider-advertised names, descriptions, and input hints and must not
+invent an extension-specific fallback list.
+Open Agent Extensions declare Skill discovery roots, invocation mode, and
+trigger prefix in their validated composer profile. The daemon resolves only
+safe relative workspace/user roots and projects the resulting Skill options;
+AgentGUI must not infer Skill behavior from an open provider identifier.
 Legacy local hosts may keep AgentGUI's provider-default slash entries by
 omitting `slashCommandFallbackMode`. Shared or remote-owner hosts that already
 query slash commands from the owning runtime must pass
@@ -2432,8 +2550,7 @@ provider identity stays `tutti-agent`.
 `nexight` remains a historical/runtime provider identity for old activity data
 and compatibility code, but it is no longer a desktop new-entry AgentGUI
 provider. Do not reintroduce `agent-nexight` or the old "Tutti" pseudo-app as a
-launch surface; use the first-party `agent-tutti-agent` / `local:tutti-agent`
-path instead.
+launch surface; use the first-party `local:tutti-agent` Agent Target instead.
 
 ### Conversation Projection
 
@@ -2542,6 +2659,15 @@ Tiptap suggestion plugin publish `AgentRichTextEditor` suggestion state. Do not
 open the mention palette as a separate UI-only state path; the trigger range
 still owns command replacement, keyboard handling, and panel anchoring.
 
+Line-start mention chips may use an editor-only zero-width caret anchor so the
+caret can move to both sides of an atomic Tiptap node. That anchor is not prompt
+content and is removed during prompt serialization. Its lifecycle therefore
+belongs to the rich-text document layer: deleting the last adjacent line-start
+mention with Backspace or Delete must remove the mention and anchor in the same
+transaction. If another adjacent mention remains at line start, retain the
+anchor for that node. Never leave an anchor-only document whose serialized
+prompt is empty while its editor DOM is not.
+
 Pasting text that contains an `@` must not be treated as active mention input
 unless the paste leaves the caret immediately after the `@` trigger. A bare
 `@` paste may open the mention panel; a complete pasted query such as `@readme`
@@ -2573,6 +2699,12 @@ For `source=app` references, readonly and markdown renderers should hydrate the
 icon from the same `workspaceAppIcons` appId/workspaceId table used by ordinary
 `workspace-app` mentions.
 
+After an app artifact reference is submitted into the conversation timeline,
+clicking its readonly or markdown chip routes the reference's app id through the
+existing `open-workspace-app` host action. The composer keeps its narrower draft
+behavior: clicking the same reference before submission reopens the artifact
+picker at that source instead of launching the app.
+
 System file drag-and-drop uses the same composer mention path as the reference
 picker. `@tutti-os/agent-gui` receives a host-injected dropped-file resolver
 that returns host-local `WorkspaceFileReference` values with `hostPath`,
@@ -2593,12 +2725,20 @@ path-backed source into the session attachment store before runtime execution.
 Agent launch mentions use the external rich-text `agent-target` provider. The
 `workspace-app` provider is reserved for real workspace apps and must not return
 legacy `agent-codex` or `agent-claude-code` pseudo apps. New agent mentions
-should serialize as `mention://agent-target/local:codex` or
-`mention://agent-target/local:claude-code` with workspace scope only; they must
-not serialize provider ids or icon hints into the href. Renderer display code
+must serialize the exact current Agent Target id, for example
+`mention://agent-target/local:codex?workspaceId=<workspace-id>`. Examples are
+non-exhaustive; callers must discover the current target list instead of
+assuming a fixed provider catalog. Mentions must not serialize provider ids or
+icon hints into the href. Renderer display code
 must resolve labels, providers, and icons by looking up the current
 `agentTargetId` in `AgentsService`-derived presentation data, so future
 user-defined icons and editable targets have one renderer source of truth.
+The same rule applies to Agent Session mention rows and message-center cards:
+`provider` remains runtime/protocol identity, while user-visible Agent name and
+artwork come from the session's `agentTargetId`. Open extension providers must
+not be filtered through the built-in provider catalog. Historical sessions
+without an `agentTargetId` may use the provider presentation as their legacy
+display identity.
 Historical pseudo-app mentions may remain as display tokens but are not a new
 insertion target.
 Desktop AgentGUI host input must include the `agent-target` capability when it
@@ -2607,6 +2747,10 @@ the Apps tab queries only `workspace-app`; first-party launch targets appear in
 a separate Agents tab that queries only `agent-target`. Do not use the Apps tab
 as an agent fallback, because that recreates the old pseudo workspace-app
 contract.
+Workspace-app search in the Apps tab matches only the localized display name.
+App ids, descriptions, scopes, and CLI command metadata may enrich presentation
+or routing, but they must not produce search results that the visible app name
+cannot explain.
 
 Quick check:
 

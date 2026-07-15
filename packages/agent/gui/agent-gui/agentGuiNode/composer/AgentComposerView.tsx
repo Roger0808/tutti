@@ -52,7 +52,11 @@ import type { useComposerPresentation } from "./useComposerPresentation";
 import type { useComposerProviderTargets } from "./useComposerProviderTargets";
 import type { useComposerSlashActions } from "./useComposerSlashActions";
 import type { useMentionPaletteFrame } from "./useMentionPaletteFrame";
-import { agentComposerDraftImages } from "../model/agentComposerDraft";
+import {
+  agentComposerDraftHasContent,
+  agentComposerDraftImages,
+  updateAgentComposerDraft
+} from "../model/agentComposerDraft";
 
 interface Props {
   props: AgentComposerProps;
@@ -101,8 +105,11 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     slashStatus = null,
     usage = null,
     draftContent,
+    engagement,
     availableSkills = EMPTY_PROVIDER_SKILLS,
     composerSettings,
+    workspaceId,
+    queueStatus = "active",
     queuedPrompts,
     drainingQueuedPromptId,
     workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
@@ -130,6 +137,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     hasCompactableContext = true
   } = input.props;
   const draftImages = agentComposerDraftImages(draftContent);
+  const slashStatusAgentSessionId = slashStatus?.agentSessionId ?? null;
   const { availableCapabilities, slashPaletteEntries, slashQuery } =
     input.paletteCatalog;
   const { mentionPaletteFrame, mentionPaletteHeightPx, mentionPaletteStyle } =
@@ -263,10 +271,12 @@ export function AgentComposerView(input: Props): React.JSX.Element {
           data-testid="agent-gui-composer-queued-prompts"
         >
           <AgentQueuedPromptPanel
+            queueStatus={queueStatus}
             queuedPrompts={queuedPrompts}
             drainingQueuedPromptId={drainingQueuedPromptId}
             labels={{
               queuedLabel: labels.queuedLabel,
+              queuePausedByUserLabel: labels.queuePausedByUserLabel,
               sendQueuedPromptNext: labels.sendQueuedPromptNext,
               editQueuedPrompt: labels.editQueuedPrompt,
               deleteQueuedPrompt: labels.deleteQueuedPrompt,
@@ -275,7 +285,9 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             onSendQueuedPromptNext={onSendQueuedPromptNext}
             onRemoveQueuedPrompt={onRemoveQueuedPrompt}
             onEditQueuedPrompt={onEditQueuedPrompt}
+            agentSessionId={slashStatusAgentSessionId}
             onLinkClick={handleLinkClick}
+            workspaceId={workspaceId}
             workspaceAppIcons={workspaceAppIcons}
           />
         </div>
@@ -366,6 +378,21 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                     disabled={inputDisabled}
                     className={styles.composerTextarea}
                     onChange={handleDraftChange}
+                    onFocus={(method) => engagement?.focused(method)}
+                    onUserContentChange={(nextPrompt) => {
+                      if (
+                        agentComposerDraftHasContent(
+                          updateAgentComposerDraft(draftContent, {
+                            prompt: nextPrompt
+                          })
+                        )
+                      ) {
+                        engagement?.contentEntered({
+                          contentType: "text",
+                          hadPrefill: agentComposerDraftHasContent(draftContent)
+                        });
+                      }
+                    }}
                     onSubmit={submitCurrentPrompt}
                     onSubmitGuidance={() =>
                       submitCurrentPrompt({ guidance: true })

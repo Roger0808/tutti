@@ -69,8 +69,14 @@
 - Symptom:
   A local development launch creates the standalone Agent native window, but
   only the window chrome is visible for several seconds before the Agent header,
-  rail, conversation, and composer appear.
+  rail, conversation, and composer appear. A related failure leaves the window
+  black permanently because the renderer root throws before AgentGUI mounts.
 - Quick checks:
+  Check `tutti-desktop.log` for `react.uncaught` before profiling cold startup.
+  If the error is `agent_gui_workbench.invalid_provider`, compare the encoded
+  Agent window intent with the standalone route's launch-provider resolution.
+  A primary standalone Agent startup may legitimately omit both provider and
+  Agent Target metadata while the directory is still loading.
   Compare desktop-ready, first renderer diagnostic, standalone route mount,
   AgentGUI body mount, and composer-ready timestamps. Time the daemon workspace,
   session-list, rail, target, and provider-status endpoints independently. If
@@ -79,7 +85,22 @@
   transformation/evaluation rather than SQLite or workspace hydration. Also
   time provider statuses per provider; one slow CLI probe can dominate a serial
   all-provider scan.
+  For provider-status startup, correlate the same `session_id` across
+  `tutti-desktop.log` and `tuttid.log`. Renderer events
+  `agent_provider_status.request.started`, `.resolved`, `.failed`,
+  `.cache_hit`, and `.reused` show request scope, provider IDs, request ID, and
+  total elapsed time. Daemon event
+  `tutti.agent_provider.status_list.completed` shows the batch total; per-provider
+  `tutti.agent_provider.status_detection.completed` events split runtime
+  resolution, adapter probe, auth, CLI version, and post-check time. Concurrent
+  step times overlap, so compare the largest step with the provider total rather
+  than summing every step.
 - Root cause:
+  For the permanent-black variant, an optional startup provider can be passed
+  directly to the strict workbench provider normalizer. The generic primary
+  Agent window starts with workspace identity only, so normalizing that absent
+  value throws during React render even while the daemon and provider probes
+  remain healthy.
   Development Vite transforms source modules on demand. An Agent-only route can
   therefore remain on a black Suspense fallback while nested lazy boundaries
   discover large dependency graphs. In the desktop renderer, enabling Babel
@@ -94,6 +115,10 @@
   same cold compile. Separately, a single global in-flight provider-status
   promise makes the active provider wait behind a slow all-provider scan.
 - Fix:
+  Resolve the absent startup provider to the existing workbench default at the
+  standalone route boundary, then use the strict normalizer only for a supplied
+  provider. Keep malformed non-empty values as errors, and keep Agent Target
+  directory resolution authoritative once it loads.
   Keep workspace and standalone Agent routes separate. Let both already-lazy
   routes statically own the full AgentGUI body so neither adds a second import
   waterfall beneath its route fallback. Render
@@ -116,6 +141,9 @@
   per provider, and ignore stale results for a provider already refreshed by a
   newer request.
 - Validation:
+  Keep a focused regression test for an Agent window intent with no provider;
+  it must reach the startup shell without weakening extension-provider
+  validation.
   Run focused provider concurrency and standalone tool-lifecycle tests, desktop
   typecheck, renderer boundary checks, and a production desktop build. Inspect
   the generated chunks to confirm the standalone shell does not statically
@@ -128,11 +156,21 @@
   manual renderer verification requires explicit user approval. If the dynamic
   import still dominates, compare cold and warm module-graph timings before
   investigating daemon hydration or provider discovery.
+  When a provider-status request is slow, compare Renderer `durationMs` with the
+  daemon batch `durationMs`. A large daemon total points to provider detection;
+  a large Renderer-only gap points to transport, timeout handling, or Renderer
+  runtime-probe fallback. Within the daemon, compare each provider total and its
+  largest phase. Logs intentionally record provider IDs, counts, outcomes, and
+  durations, but not executable paths, command output, environment values, or
+  error messages.
 - References:
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
   [WorkspaceWindow.tsx](../../../apps/desktop/src/renderer/src/app/windows/workspace/WorkspaceWindow.tsx)
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
   [desktopAgentProviderStatusService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
+  [desktopAgentProviderStatusDiagnostics.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusDiagnostics.ts)
+  [service.go](../../../services/tuttid/service/agentstatus/service.go)
+  [service_status.go](../../../services/tuttid/service/agentstatus/service_status.go)
 
 ### Renderer body requests fail with `ERR_H2_OR_QUIC_REQUIRED`
 
@@ -383,22 +421,43 @@
   Do not leave it enabled during normal development: it tracks every component
   and hook, and restoring a large AgentGUI session directory can then block the
   renderer long enough to keep Workbench hydration and the Dock non-interactive.
+  For AgentGUI render storms, trace the full
+  `engine -> selector -> projection -> controller -> section` chain. Separate
+  real summary-field changes from reference-only array, object, or callback
+  changes; a memoized leaf cannot contain churn created at the selector boundary.
 - Root cause:
   React StrictMode can intentionally replay setup/cleanup in development, but a
   continuously increasing render count usually means a parent is passing a new
   object/function every render or an effect writes state from a dependency that
-  changes on every render.
+  changes on every render. An external-store selector can also project a fresh
+  list for every unrelated engine event, after which a container rebuilds command
+  callbacks and fans one update out to every list section. A render-budget test
+  that injects an already-stable view model bypasses this production chain and
+  cannot detect that regression.
 - Fix:
   Stabilize the value at the ownership boundary, or remove derived presentation
   values from bidirectional state. For external/workbench state, only sync
-  canonical identifiers and derive display text from the owning service.
+  canonical identifiers and derive display text from the owning service. In
+  AgentGUI, select the narrow render projection with a render-field equality
+  function, keep command callbacks stable, and separate Rail render equality
+  from active-session semantic equality. Stabilize usage, commands, prompt
+  queue, quota, session-chrome, and host callback projections at their owning
+  selector/controller boundary; do not clone canonical arrays while assembling
+  the view model. During Rail reconciliation, expose a stable lock reader so
+  portaled menu actions can check current state without passing a changing
+  boolean through every section.
 - Validation:
   With why-did-you-render enabled, reproduce once and confirm the noisy
   component lists the expected prop or hook difference. Then disable the tool
-  and run the affected renderer tests plus desktop typecheck.
+  and run the affected renderer tests plus desktop typecheck. AgentGUI budget
+  tests must dispatch a real engine update and assert the unrelated Rail subtree
+  stays at zero renders; do not replace this with a manual view-model rerender
+  that reuses the Rail reference by construction.
 - References:
   [main.tsx](../../../apps/desktop/src/renderer/src/main.tsx)
   [whyDidYouRender.ts](../../../apps/desktop/src/renderer/src/lib/whyDidYouRender.ts)
+  [useAgentGUIConversationRailQuery.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.ts)
+  [useAgentGUIConversationRailQuery.search.spec.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.search.spec.tsx)
 
 ### Dense list panel stutters when mounted or resized
 
@@ -466,3 +525,59 @@
 - References:
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
   [standaloneAgentWindowBounds.ts](../../../apps/desktop/src/main/windows/standaloneAgentWindowBounds.ts)
+
+### Dialog action reacts to Enter but ignores pointer clicks
+
+- Symptom:
+  A dialog action succeeds from an input's Enter handler, but clicking its
+  visible action button does nothing. No request, caught error, or busy state is
+  produced.
+- Quick checks:
+  Trace `pointerdown`, `pointerup`, `click`, and the command boundary without
+  logging field contents. If both pointer events arrive but `click` and the
+  command do not, stop debugging the daemon or persistence layer.
+- Root cause:
+  Electron, a modal interaction layer, or surrounding Workbench chrome can
+  suppress the synthesized `click` even though the button receives the pointer
+  sequence. A handler wired only to `onClick` therefore never runs.
+- Fix:
+  Handle `pointerup` only after a matching primary-button `pointerdown`; clear
+  the armed action on `pointerleave` and `pointercancel`. If the button instead
+  establishes pointer capture explicitly, also clear on lost capture and
+  validate that the release coordinates remain inside the action before
+  executing it. Preserve keyboard activation explicitly, retain an
+  assistive-technology click-only path, and guard the async action with a
+  synchronous in-flight ref so multiple event paths cannot dispatch the command
+  twice.
+- Validation:
+  Cover pointer activation, the following synthesized mouse click, keyboard
+  activation, assistive click-only activation, unmatched pointerup, canceled
+  pointer sequences, blank input, and cancellation. Assert the command runs
+  exactly once for each accepted action.
+- References:
+  [AgentGUIRenameConversationDialog.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIRenameConversationDialog.tsx)
+
+### Daemon validation error appears as untranslated developer text
+
+- Symptom:
+  A renderer action shows an English daemon message such as a validation
+  failure while the UI locale is not English.
+- Quick checks:
+  Inspect the protocol error's `code`, `reason`, and `params`. If the reason is
+  generic and the UI falls through to `developerMessage`, the transport lost
+  the stable domain identity needed by i18n.
+- Root cause:
+  The daemon classified a specific business validation error as a generic
+  request failure. The renderer then had no stable key and exposed diagnostic
+  text as user-facing copy.
+- Fix:
+  Define a stable daemon error identity, publish a documented protocol `reason`
+  with interpolation-only `params`, then translate that reason in the owning UI
+  package. Never infer user-facing errors by matching developer-message text.
+- Validation:
+  Test service error identity, protocol classification and params, every locale
+  dictionary, and renderer mapping while an English `developerMessage` is
+  present. Run API-generation and i18n consistency checks.
+- References:
+  [apierrors.go](../../../services/tuttid/apierrors/apierrors.go)
+  [agentGuiController.errors.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiController.errors.ts)

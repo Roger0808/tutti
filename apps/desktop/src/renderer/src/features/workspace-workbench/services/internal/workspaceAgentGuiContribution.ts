@@ -111,10 +111,17 @@ export function createWorkspaceAgentGuiContribution(input: {
     workspaceUserProjectService: input.workspaceUserProjectService,
     workspaceId: input.workspaceId
   });
+  const trackWorkspaceAgentGUIEngagement =
+    agentGUIWorkbenchHostInput.createAgentGUIEngagementEventSink("workspace");
   const handleLinkAction: NonNullable<
     DesktopAgentGUIWorkbenchBodyProps["onLinkAction"]
   > = (action) => {
     void runDesktopAgentGUILinkAction(action, {
+      getAgentSession: ({ agentSessionId, workspaceId }) =>
+        input.workspaceAgentActivityService.getSession(
+          workspaceId,
+          agentSessionId
+        ),
       homeDirectory: input.platformApi.homeDirectory,
       launchAgentGui: requestWorkspaceAgentGuiLaunch,
       launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
@@ -166,6 +173,7 @@ export function createWorkspaceAgentGuiContribution(input: {
       runtimeApi: input.runtimeApi,
       trackAgentProviderChatReady:
         agentGUIWorkbenchHostInput.trackAgentProviderChatReady,
+      onEngagementEvent: trackWorkspaceAgentGUIEngagement,
       trackWorkspaceFileReferences:
         agentGUIWorkbenchHostInput.trackWorkspaceFileReferences,
       workspaceFileReferenceAdapter:

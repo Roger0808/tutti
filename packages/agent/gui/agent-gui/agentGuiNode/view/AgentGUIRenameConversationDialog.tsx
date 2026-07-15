@@ -27,10 +27,14 @@ export const AgentGUIRenameConversationDialog = memo(
     "use memo";
     const [title, setTitle] = useState("");
     const [isSaving, setIsSaving] = useState(false);
+    const isSavingRef = useRef(false);
+    const armedPointerActionRef = useRef<"cancel" | "confirm" | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
     const trimmedTitle = title.trim();
     useEffect(() => {
       if (!open || !conversation) {
+        isSavingRef.current = false;
+        armedPointerActionRef.current = null;
         setTitle("");
         setIsSaving(false);
         return;
@@ -49,14 +53,15 @@ export const AgentGUIRenameConversationDialog = memo(
       return () => window.clearTimeout(timer);
     }, [open, conversation?.id]);
     const closeRenameDialog = useCallback(() => {
-      if (!isSaving) {
+      if (!isSavingRef.current) {
         onOpenChange(false);
       }
-    }, [isSaving, onOpenChange]);
+    }, [onOpenChange]);
     const confirmRename = useCallback(() => {
-      if (!conversation || isSaving || !trimmedTitle) {
+      if (!conversation || isSavingRef.current || !trimmedTitle) {
         return;
       }
+      isSavingRef.current = true;
       setIsSaving(true);
       void onRename(conversation.id, trimmedTitle)
         .then(() => {
@@ -66,9 +71,10 @@ export const AgentGUIRenameConversationDialog = memo(
           inputRef.current?.focus();
         })
         .finally(() => {
+          isSavingRef.current = false;
           setIsSaving(false);
         });
-    }, [conversation, isSaving, onOpenChange, onRename, trimmedTitle]);
+    }, [conversation, onOpenChange, onRename, trimmedTitle]);
     return (
       <ConfirmationDialog
         cancelLabel={labels.cancel}
@@ -85,8 +91,30 @@ export const AgentGUIRenameConversationDialog = memo(
               type="button"
               variant="ghost"
               onClick={closeRenameDialog}
-              onPointerUp={(event) => {
+              onLostPointerCapture={() => {
+                if (armedPointerActionRef.current === "cancel") {
+                  armedPointerActionRef.current = null;
+                }
+              }}
+              onPointerCancel={() => {
+                if (armedPointerActionRef.current === "cancel") {
+                  armedPointerActionRef.current = null;
+                }
+              }}
+              onPointerDown={(event) => {
                 if (event.button === 0) {
+                  armedPointerActionRef.current = "cancel";
+                }
+              }}
+              onPointerLeave={() => {
+                if (armedPointerActionRef.current === "cancel") {
+                  armedPointerActionRef.current = null;
+                }
+              }}
+              onPointerUp={(event) => {
+                const isArmed = armedPointerActionRef.current === "cancel";
+                armedPointerActionRef.current = null;
+                if (event.button === 0 && isArmed) {
                   closeRenameDialog();
                 }
               }}
@@ -99,7 +127,48 @@ export const AgentGUIRenameConversationDialog = memo(
               size="dialog"
               type="button"
               variant="default"
-              onClick={confirmRename}
+              onClick={(event) => {
+                if (event.detail !== 0) {
+                  return;
+                }
+                confirmRename();
+              }}
+              onKeyDown={(event) => {
+                if (
+                  (event.key === "Enter" || event.key === " ") &&
+                  !event.repeat
+                ) {
+                  event.preventDefault();
+                  confirmRename();
+                }
+              }}
+              onLostPointerCapture={() => {
+                if (armedPointerActionRef.current === "confirm") {
+                  armedPointerActionRef.current = null;
+                }
+              }}
+              onPointerCancel={() => {
+                if (armedPointerActionRef.current === "confirm") {
+                  armedPointerActionRef.current = null;
+                }
+              }}
+              onPointerDown={(event) => {
+                if (event.button === 0) {
+                  armedPointerActionRef.current = "confirm";
+                }
+              }}
+              onPointerLeave={() => {
+                if (armedPointerActionRef.current === "confirm") {
+                  armedPointerActionRef.current = null;
+                }
+              }}
+              onPointerUp={(event) => {
+                const isArmed = armedPointerActionRef.current === "confirm";
+                armedPointerActionRef.current = null;
+                if (event.button === 0 && isArmed) {
+                  confirmRename();
+                }
+              }}
             >
               {labels.renameSessionSave}
             </Button>

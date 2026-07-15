@@ -443,21 +443,26 @@ export type PutDesktopPreferencesRequest = {
   preferences: DesktopPreferences;
 };
 
-export type AgentTargetProvider =
-  | "codex"
-  | "claude-code"
-  | "tutti-agent"
-  | "cursor"
-  | "opencode"
-  | "nexight"
-  | "hermes"
-  | "openclaw";
+export type AgentTargetProvider = string;
 
 export type AgentTargetSource = "system" | "user";
 
-export type AgentTargetLaunchRef = {
-  type: "local_cli";
+export type AgentTargetLaunchRef =
+  | ({
+      type: "builtin_local";
+    } & AgentTargetBuiltinLocalLaunchRef)
+  | ({
+      type: "agent_extension";
+    } & AgentTargetExtensionLaunchRef);
+
+export type AgentTargetBuiltinLocalLaunchRef = {
+  type: "builtin_local";
   provider: AgentTargetProvider;
+};
+
+export type AgentTargetExtensionLaunchRef = {
+  type: "agent_extension";
+  extensionInstallationId: string;
 };
 
 export type AgentTarget = {
@@ -466,6 +471,9 @@ export type AgentTarget = {
   launchRef: AgentTargetLaunchRef;
   name: string;
   iconKey?: string | null;
+  iconUrl?: string | null;
+  heroImageUrl?: string | null;
+  availability?: AgentProviderAvailability | null;
   enabled: boolean;
   source: AgentTargetSource;
   sortOrder: number;
@@ -950,15 +958,7 @@ export type WorkspaceTerminalCloseGuardResponse = {
   guard: WorkspaceTerminalCloseGuard;
 };
 
-export type WorkspaceAgentProvider =
-  | "claude-code"
-  | "codex"
-  | "tutti-agent"
-  | "cursor"
-  | "nexight"
-  | "hermes"
-  | "openclaw"
-  | "opencode";
+export type WorkspaceAgentProvider = string;
 
 export type AgentSessionComposerSettings = {
   model?: string | null;
@@ -1855,7 +1855,10 @@ export type WorkspaceGitPatchRequest = {
 
 export type WorkspaceGitPatchStatus = "success" | "partial-success" | "error";
 
-export type WorkspaceGitPatchErrorCode = "not-git-repo";
+export type WorkspaceGitPatchErrorCode =
+  | "not-git-repo"
+  | "invalid-patch"
+  | "patch-does-not-apply";
 
 export type WorkspaceGitPatchSupportResponse = {
   supported: boolean;
@@ -5520,6 +5523,9 @@ export type ListWorkspaceAgentSessionsData = {
   };
   query?: {
     agentTargetId?: string;
+    /**
+     * Case-insensitive, whitespace-tokenized search over the session title only.
+     */
     searchQuery?: string;
     cursor?: string;
     limit?: number;

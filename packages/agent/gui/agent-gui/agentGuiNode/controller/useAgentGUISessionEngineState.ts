@@ -20,7 +20,8 @@ import {
   selectPendingSubmitsForSession,
   selectSessionHasUnconfirmedSubmit,
   selectSessionIsSubmitting,
-  type AgentSessionEngine
+  type AgentSessionEngine,
+  type EngineQueuedPrompt
 } from "@tutti-os/agent-activity-core";
 import { useMemo } from "react";
 import type {
@@ -32,6 +33,7 @@ import type {
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 import { EMPTY_QUEUED_PROMPTS } from "./agentGuiController.draftMessageHelpers";
 import { agentActivityInteractionListsEqual } from "./agentGuiController.providerHelpers";
+import { agentGUIQueueStatusFromPromptQueue } from "./agentGuiQueueStatus";
 import { isPendingNewConversationActivation } from "./useAgentGUIActivation";
 
 export function useAgentGUISessionEngineState(input: {
@@ -42,13 +44,16 @@ export function useAgentGUISessionEngineState(input: {
   const activeQueuedPromptSnapshot = useEngineSelector(sessionEngine, (state) =>
     selectEnginePromptQueue(state, activeConversationId)
   );
-  const activeQueuedPrompts =
-    activeQueuedPromptSnapshot?.prompts.filter(
-      (prompt) =>
-        prompt.visibleInQueue !== false &&
-        prompt.id !== activeQueuedPromptSnapshot.inFlight?.promptId &&
-        prompt.id !== activeQueuedPromptSnapshot.sendNextPromptId
-    ) ?? EMPTY_QUEUED_PROMPTS;
+  const activeQueuedPrompts = useMemo<readonly EngineQueuedPrompt[]>(
+    () =>
+      activeQueuedPromptSnapshot?.prompts.filter(
+        (prompt) =>
+          prompt.visibleInQueue !== false &&
+          prompt.id !== activeQueuedPromptSnapshot.inFlight?.promptId &&
+          prompt.id !== activeQueuedPromptSnapshot.sendNextPromptId
+      ) ?? EMPTY_QUEUED_PROMPTS,
+    [activeQueuedPromptSnapshot]
+  );
   const activePendingSubmits = useEngineSelector(
     sessionEngine,
     (state) => selectPendingSubmitsForSession(state, activeConversationId),
@@ -195,6 +200,9 @@ export function useAgentGUISessionEngineState(input: {
     activePendingSubmits,
     activeQueuedPromptInFlight: activeQueuedPromptSnapshot?.inFlight ?? null,
     activeQueuedPrompts,
+    activeQueueStatus: agentGUIQueueStatusFromPromptQueue(
+      activeQueuedPromptSnapshot
+    ),
     activeSessionState,
     activeSessionReconcilePending,
     activeSessionReconcileError: activeSessionReconcile?.errorMessage ?? null,

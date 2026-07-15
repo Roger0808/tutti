@@ -14,6 +14,7 @@ import {
 } from "@tutti-os/workspace-file-reference/ui";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
+import { resolveAgentGUIProviderCatalogIdentity } from "../../providerIdentityCatalog";
 import { openWorkspaceSettingsPanel } from "../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
 import { SettingsLinedIcon } from "../../app/renderer/components/icons/SettingsLinedIcon";
 import {
@@ -21,7 +22,6 @@ import {
   type AgentMessageMarkdownAgentTarget
 } from "../../shared/AgentTargetPresentationContext";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
-import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import styles from "./AgentGUINode.styles";
 import {
   fallbackWorkspaceFileReferenceCopy,
@@ -37,12 +37,13 @@ import { type AgentGUIConversationRailState } from "./view/AgentGUIConversationR
 import { AgentGUIConversationRailController } from "./controller/AgentGUIConversationRailController";
 import {
   AgentGUIDetailPane,
+  EMPTY_WORKSPACE_APP_ICONS,
   mergeWorkspaceAppIconsFromCommands
 } from "./view/AgentGUIDetailPane";
 import { AgentGUIRenameConversationDialog } from "./view/AgentGUIRenameConversationDialog";
 import { useAgentGUIWorkspaceReferencePicker } from "./view/useAgentGUIWorkspaceReferencePicker";
 import type { AgentGUINodeViewProps } from "./view/AgentGUINodeView.types";
-
+import { useAgentGUINodeEngagement } from "./engagement/useAgentGUINodeEngagement";
 export type {
   AgentGUINodeViewProps,
   AgentGUIAgentsEmptyRenderer,
@@ -70,9 +71,6 @@ export {
   shouldEmphasizeEmptyHeroProvider
 } from "./view/AgentGUIEmptyState";
 
-const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
-  [];
-
 export function AgentGUINodeView({
   viewModel,
   renderSidebarFooter,
@@ -84,6 +82,8 @@ export function AgentGUINodeView({
   capabilityMenuState,
   onCapabilitySettingsRequest,
   isActive = true,
+  isVisible = true,
+  onEngagementEvent,
   composerFocusRequestSequence = null,
   newConversationRequestSequence = null,
   isAgentProviderReady,
@@ -128,7 +128,14 @@ export function AgentGUINodeView({
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUINodeViewProps): React.JSX.Element {
   "use memo";
-  const layoutElementRef = useRef<HTMLDivElement | null>(null);
+  const { composerEngagement, layoutElementRef } = useAgentGUINodeEngagement({
+    composerReady: isAgentProviderReady,
+    isActive,
+    isVisible,
+    onEvent: onEngagementEvent,
+    previewMode,
+    viewModel
+  });
   const [providerManagerOpen, setProviderManagerOpen] = useState(false);
   const railResizeInteractionRef = useRef<{
     lastWidthPx: number;
@@ -258,7 +265,6 @@ export function AgentGUINodeView({
       workspaceAppIcons
     ]
   );
-
   const clampConversationRailWidth = useCallback(
     (widthPx: number) =>
       Math.min(
@@ -414,6 +420,9 @@ export function AgentGUINodeView({
     viewModel.rail.conversationFilter.kind === "all" ||
     viewModel.rail.selectedAgentTarget?.disabled !== true;
   const shouldShowProviderRailConfigMenu = shouldShowProviderRailConfigButton;
+  const environmentSetupVisible = !!resolveAgentGUIProviderCatalogIdentity(
+    effectiveRailConfigProvider ?? ""
+  );
   const effectiveProviderAuthAccountLabel = useMemo(() => {
     const provider =
       (effectiveRailConfigProvider ?? viewModel.shell.data.provider)?.trim() ??
@@ -592,6 +601,17 @@ export function AgentGUINodeView({
               onUpdateConversationFilter={actions.updateConversationFilter}
               onRequestComposerFocus={requestComposerFocus}
             />
+            {renderSidebarFooter ? (
+              <div
+                className={`${styles.providerRailFooter} ${styles.providerRailSidebarFooter} nodrag tsh-desktop-no-drag`}
+                data-testid="agent-gui-sidebar-footer-slot"
+              >
+                {renderSidebarFooter({
+                  currentUserId: viewModel.shell.currentUserId,
+                  activeConversation: viewModel.rail.activeConversation
+                })}
+              </div>
+            ) : null}
             {shouldShowProviderRailConfigButton ? (
               <div
                 className={`${styles.providerRailFooter} ${styles.providerRailConfigFooter} nodrag tsh-desktop-no-drag`}
@@ -599,6 +619,7 @@ export function AgentGUINodeView({
               >
                 {shouldShowProviderRailConfigMenu ? (
                   <AgentGUIConfigMenu
+                    environmentSetupVisible={environmentSetupVisible}
                     labels={labels}
                     previewMode={previewMode}
                     providerScopedActionsVisible={
@@ -634,17 +655,6 @@ export function AgentGUINodeView({
                     />
                   </button>
                 )}
-              </div>
-            ) : null}
-            {renderSidebarFooter ? (
-              <div
-                className={`${styles.providerRailFooter} ${styles.providerRailSidebarFooter} nodrag tsh-desktop-no-drag`}
-                data-testid="agent-gui-sidebar-footer-slot"
-              >
-                {renderSidebarFooter({
-                  currentUserId: viewModel.shell.currentUserId,
-                  activeConversation: viewModel.rail.activeConversation
-                })}
               </div>
             ) : null}
           </aside>
@@ -706,6 +716,7 @@ export function AgentGUINodeView({
         <section id="agent-gui-detail" className={styles.detailPanel}>
           <AgentGUIDetailPane
             viewModel={viewModel}
+            composerEngagement={composerEngagement}
             actions={actions}
             labels={labels}
             uiLanguage={uiLanguage}

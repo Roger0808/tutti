@@ -94,6 +94,9 @@ type Listener = (snapshot: AgentGUIConversationRailQuerySnapshot) => void;
 export class AgentGUIConversationRailQueryController {
   readonly getSnapshot = (): AgentGUIConversationRailQuerySnapshot =>
     this.snapshot;
+  readonly isInteractionLocked = (): boolean =>
+    this.snapshot.runtimeRailSectionsPending &&
+    !(this.searchQuery && this.snapshot.railSearch.enabled);
   readonly subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -172,8 +175,7 @@ export class AgentGUIConversationRailQueryController {
     this.queryState = {
       ...this.queryState,
       pending: this.runtimeSectionsEnabled(),
-      reconcilingSessionIds: [],
-      resolvedScopeKey: nextScopeKey
+      reconcilingSessionIds: []
     };
     this.emit();
     if (this.attached) this.refreshFirstPages();
@@ -187,7 +189,9 @@ export class AgentGUIConversationRailQueryController {
     this.requestSearch();
   }
 
-  loadMoreSectionConversations(section: ConversationSection): void {
+  readonly loadMoreSectionConversations = (
+    section: ConversationSection
+  ): void => {
     const scopeKey = this.railSectionQueryKey;
     if (
       this.scope?.previewMode ||
@@ -304,9 +308,9 @@ export class AgentGUIConversationRailQueryController {
           this.pagingAbortControllers.delete(section.id);
         }
       });
-  }
+  };
 
-  loadMoreSearchResults(): void {
+  readonly loadMoreSearchResults = (): void => {
     const listSessionsPage = this.runtime.listSessionsPage;
     if (
       !this.searchEnabled() ||
@@ -369,7 +373,12 @@ export class AgentGUIConversationRailQueryController {
         };
         this.emit();
       });
-  }
+  };
+
+  readonly retrySearchResults = (): void => {
+    if (!this.searchQuery || !this.searchEnabled()) return;
+    this.requestSearch();
+  };
 
   private handleEngineState(state: AgentSessionEngineState): void {
     const next = membershipRecords(state);
@@ -406,13 +415,15 @@ export class AgentGUIConversationRailQueryController {
     }
     this.pagingRequestSequence += 1;
     const requestSequence = this.pagingRequestSequence;
+    const wasResolvedForScope =
+      this.queryState.resolvedScopeKey === scopeKey &&
+      this.queryState.sections !== null;
     this.cancelPagingRequests(false);
     const abortController = new AbortController();
     this.pagingAbortControllers.set("__first_pages__", abortController);
     this.queryState = {
       ...this.queryState,
-      pending: true,
-      resolvedScopeKey: scopeKey
+      pending: true
     };
     this.emit();
     void listSections({
@@ -464,13 +475,19 @@ export class AgentGUIConversationRailQueryController {
         ) {
           return;
         }
-        this.queryState = {
-          ...this.queryState,
-          pending: false,
-          resolvedScopeKey: scopeKey,
-          sectionPageStates: new Map(),
-          sections: []
-        };
+        this.queryState = wasResolvedForScope
+          ? {
+              ...this.queryState,
+              pending: false,
+              reconcilingSessionIds: []
+            }
+          : {
+              pending: false,
+              reconcilingSessionIds: [],
+              resolvedScopeKey: scopeKey,
+              sectionPageStates: new Map(),
+              sections: []
+            };
         this.emit();
       })
       .finally(() => {

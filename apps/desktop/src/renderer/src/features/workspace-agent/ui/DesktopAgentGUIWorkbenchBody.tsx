@@ -91,6 +91,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   contextMentionProviders,
   runtimeApi,
   trackAgentProviderChatReady,
+  onEngagementEvent,
   trackWorkspaceFileReferences,
   workspaceFileReferenceAdapter,
   resolveDroppedFileReferences,
@@ -686,6 +687,21 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     }
     return labels;
   }, [providerStatusSnapshot.statuses]);
+  const handleHandoffConversation = useCallback<
+    NonNullable<AgentGUIProps["hostActions"]["onHandoffConversation"]>
+  >(
+    async (request) => {
+      await requestWorkspaceAgentGuiLaunch({
+        agentTargetId: request.agentTargetId,
+        draftPrompt: request.draftPrompt,
+        openInNewWindow: true,
+        provider: normalizeDesktopAgentGUIProvider(request.provider),
+        userProjectPath: request.userProjectPath,
+        workspaceId
+      });
+    },
+    [workspaceId]
+  );
 
   return (
     <>
@@ -736,6 +752,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           desktopSize,
           isMaximized: context.displayMode === "fullscreen",
           isActive: context.isFocused,
+          isVisible:
+            context.presentationMode !== "mission-control" &&
+            context.node.isMinimized !== true,
           embedded: true,
           previewMode,
           conversationRailAutoCollapseWidthPx
@@ -779,20 +798,12 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           onLinkAction: previewMode ? undefined : onLinkAction,
           onHandoffConversation: previewMode
             ? undefined
-            : async (request) => {
-                await requestWorkspaceAgentGuiLaunch({
-                  agentTargetId: request.agentTargetId,
-                  draftPrompt: request.draftPrompt,
-                  openInNewWindow: true,
-                  provider: normalizeDesktopAgentGUIProvider(request.provider),
-                  userProjectPath: request.userProjectPath,
-                  workspaceId
-                });
-              },
+            : handleHandoffConversation,
           onResize: DESKTOP_AGENT_GUI_NOOP,
           onShowMessage: handleDesktopAgentGUIShowMessage,
           onUpdateNode: handleUpdateNode,
           onRememberComposerDefaults: handleRememberComposerDefaults,
+          onEngagementEvent: previewMode ? undefined : onEngagementEvent,
           onOpenConversationWindow:
             previewMode || !onOpenAgentConversationWindow
               ? undefined

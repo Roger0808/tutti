@@ -39,7 +39,9 @@ import type {
 } from "../AgentGUINodeView";
 import {
   buildAgentConversationHandoffPrompt,
-  handoffProjectPathForConversation
+  commandAppSource,
+  handoffProjectPathForConversation,
+  workspaceAppIconKey
 } from "./agentGUIDetailModelHelpers";
 import { AgentGUIBottomDockPane } from "./AgentGUIBottomDockPane";
 import {
@@ -58,6 +60,7 @@ import styles from "../AgentGUINode.styles";
 import { useAgentGUIDetailScroll } from "./useAgentGUIDetailScroll";
 import { useAgentGUIDetailModel } from "./useAgentGUIDetailModel";
 import { useAgentGUIProviderRailPreferences } from "./useAgentGUIProviderRailPreferences";
+import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   width: "100%",
@@ -66,10 +69,11 @@ const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   gridTemplateColumns: "minmax(0, 1fr)",
   gap: "24px"
 };
-const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
+export const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
 export interface AgentGUIDetailPaneProps {
   viewModel: AgentGUINodeViewModel;
+  composerEngagement?: AgentGUIComposerEngagement;
   actions: AgentGUINodeViewProps["actions"];
   labels: AgentGUIViewLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
@@ -149,24 +153,9 @@ export function mergeWorkspaceAppIconsFromCommands(input: {
   return next ?? input.workspaceAppIcons;
 }
 
-function commandAppSource(command: unknown): Record<string, unknown> | null {
-  if (!command || typeof command !== "object" || !("source" in command)) {
-    return null;
-  }
-  const source = (command as { source?: unknown }).source;
-  if (!source || typeof source !== "object") {
-    return null;
-  }
-  const sourceRecord = source as Record<string, unknown>;
-  return sourceRecord.kind === "app" ? sourceRecord : null;
-}
-
-function workspaceAppIconKey(appId: string, workspaceId: string): string {
-  return `${workspaceId}\u0000${appId}`;
-}
-
 export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   viewModel,
+  composerEngagement,
   actions,
   labels,
   workspaceUserProjectI18n,
@@ -415,6 +404,26 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             target.agentTargetId === agentTargetId
           );
         }) ?? viewModel.rail.selectedAgentTarget);
+  const stableHandoffConversation = useOptionalStableEventCallback(
+    onHandoffConversation && viewModel.rail.activeConversationId !== null
+      ? (target: (typeof composerHandoffProviderTargets)[number]) =>
+          onHandoffConversation({
+            agentTargetId: target.agentTargetId ?? target.targetId,
+            draftPrompt: buildAgentConversationHandoffPrompt({
+              activeConversation: viewModel.rail.activeConversation,
+              currentUserId: viewModel.shell.currentUserId,
+              labels,
+              selectedAgentTarget: composerSelectedProviderTarget,
+              uiLanguage,
+              workspaceId: viewModel.shell.workspaceId
+            }),
+            provider: target.provider,
+            userProjectPath: handoffProjectPathForConversation(
+              viewModel.rail.activeConversation
+            )
+          })
+      : undefined
+  );
   const bottomDockComposerProps = useMemo<AgentComposerProps>(
     () => ({
       workspaceId: viewModel.shell.workspaceId,
@@ -425,6 +434,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onSlashStatusOpen,
       usage: viewModel.detail.usage,
       draftContent: viewModel.composer.draftContent,
+      engagement: composerEngagement,
       draftScopeKey: resolveAgentComposerDraftScopeKey({
         agentSessionId: viewModel.rail.activeConversationId
       }),
@@ -447,6 +457,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       disabledReason: composerDisabledReason,
       submitDisabled,
       composerSettings: viewModel.composer.composerSettings,
+      queueStatus: viewModel.composer.queueStatus,
       queuedPrompts: viewModel.composer.queuedPrompts,
       drainingQueuedPromptId: viewModel.composer.drainingQueuedPromptId,
       workspaceAppIcons,
@@ -457,8 +468,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       showStopButton,
       previewMode,
       workspaceReferencePickerOpen,
-      // Plan decisions replace the composer via bottomDockReplacementPrompt;
-      // approval / ask-user embed here (composerActivePrompt encodes that).
+      // Plan decisions replace the composer; approval / ask-user embed here.
       activePrompt: composerActivePrompt,
       backgroundAgentStatusText,
       activePromptKeyboardShortcutsEnabled: isActive,
@@ -489,25 +499,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onSubmitInteractivePrompt: submitInteractivePrompt,
       onCapabilitySettingsRequest,
       onLinkAction: stableLinkAction,
-      onHandoffConversation:
-        onHandoffConversation && viewModel.rail.activeConversationId !== null
-          ? (target) =>
-              onHandoffConversation({
-                agentTargetId: target.agentTargetId ?? target.targetId,
-                draftPrompt: buildAgentConversationHandoffPrompt({
-                  activeConversation: viewModel.rail.activeConversation,
-                  currentUserId: viewModel.shell.currentUserId,
-                  labels,
-                  selectedAgentTarget: composerSelectedProviderTarget,
-                  uiLanguage,
-                  workspaceId: viewModel.shell.workspaceId
-                }),
-                provider: target.provider,
-                userProjectPath: handoffProjectPathForConversation(
-                  viewModel.rail.activeConversation
-                )
-              })
-          : undefined,
+      onHandoffConversation: stableHandoffConversation,
       onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
       resolveDroppedFileReferences,
       selectProjectDirectory: stableSelectProjectDirectory,
@@ -522,6 +514,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       composerDisabled,
       composerDisabledReason,
       composerFocusRequestSequence,
+      composerEngagement,
       composerHandoffProviderTargets,
       composerLabels,
       composerProviderTargets,
@@ -537,7 +530,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.promptTips,
       labels.providerSwitchLabel,
       labels,
-      onHandoffConversation,
+      stableHandoffConversation,
       onSlashStatusOpen,
       previewMode,
       workspaceReferencePickerOpen,
@@ -566,11 +559,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.rail.activeConversationId,
       viewModel.composer.availableCommands,
       viewModel.composer.availableSkills,
-      viewModel.rail.activeConversationId,
       viewModel.composer.compactSupported,
       viewModel.composer.composerSettings,
       viewModel.shell.currentUserId,
-      viewModel.rail.activeConversationId,
       viewModel.rail.activeConversation,
       composerProvider,
       viewModel.composer.draftContent,
@@ -580,6 +571,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.composer.isInterrupting,
       viewModel.interaction.isRespondingApproval,
       viewModel.composer.promptImagesSupported,
+      viewModel.composer.queueStatus,
       viewModel.composer.queuedPrompts,
       viewModel.detail.usage,
       viewModel.shell.workspaceId,
@@ -616,6 +608,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     sessionChrome.recovery?.message ?? "",
     backgroundAgentStatusText ?? "",
     viewModel.composer.queuedPrompts.map((prompt) => prompt.id).join(","),
+    viewModel.composer.queueStatus,
     viewModel.composer.drainingQueuedPromptId ?? "",
     viewModel.interaction.isRespondingApproval ? "1" : "0"
   ].join("|");

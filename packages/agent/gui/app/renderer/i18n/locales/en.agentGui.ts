@@ -184,6 +184,8 @@ export const enAgentGui = {
   planModeOffLabel: "Off",
   planUnavailable: "Plan unavailable",
   queuedLabel: "Queued",
+  queuePausedByUserLabel:
+    "The queue is paused because you interrupted the current response.",
   sendQueuedPromptNext: "Send next",
   editQueuedPrompt: "Edit",
   deleteQueuedPrompt: "Delete",
@@ -352,6 +354,8 @@ export const enAgentGui = {
   loadingConversation: "Loading session...",
   scrollToBottom: "Scroll to bottom",
   searchNoConversations: "No related sessions",
+  searchFailed: "Could not search sessions",
+  retrySearch: "Retry search",
   conversationUnavailable: "Session unavailable.",
   contextPickerBrowseHint: "Search workspace files based on your input",
   contextPickerBrowseFileHint:
@@ -463,6 +467,10 @@ export const enAgentGui = {
   turnSummaryGitRequired: "This directory is not a Git repository",
   turnSummaryPatchUnavailable:
     "No reversible patch data is available for this change",
+  turnSummaryInvalidPatch:
+    "The recorded patch is invalid and cannot be safely applied",
+  turnSummaryPatchDoesNotApply:
+    "The file changed after this edit and cannot be safely restored",
   turnSummaryUndoFailed: "Failed to undo changes",
   turnSummaryReapplyFailed: "Failed to reapply changes",
   turnSummaryShowMoreFiles: "Show {{count}} more file",
@@ -595,6 +603,7 @@ export const enAgentGui = {
     loadMore: "Load more",
     loadMoreGroups: "Load more",
     loading: "Loading...",
+    loadError: "Couldn't load this content. Try again later.",
     previewBinary: "This file looks like binary content.",
     previewDecodeFailed: "This file couldn't be decoded as UTF-8 text.",
     previewError: "Couldn't load a preview.",

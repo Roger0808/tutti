@@ -5,6 +5,7 @@ import {
   insertConversationRailSectionOverlay,
   projectConversationRailSectionsWithActiveConversation,
   planRuntimeRailMembershipRefresh,
+  projectRuntimeSectionsToConversationRailMemberships,
   projectConversationRailSectionsWithTransientConversations,
   resolveConversationRailActiveConversation
 } from "./agentGuiConversationRail";
@@ -173,6 +174,32 @@ describe("planRuntimeRailMembershipRefresh", () => {
   });
 });
 
+describe("projectRuntimeSectionsToConversationRailMemberships", () => {
+  it("preserves the daemon-owned project section key", () => {
+    const memberships = projectRuntimeSectionsToConversationRailMemberships({
+      sections: [
+        {
+          hasMore: false,
+          kind: "project",
+          sectionKey: "project:authoritative",
+          sessions: [],
+          totalCount: 0,
+          userProject: {
+            createdAtUnixMs: 1,
+            id: "project-1",
+            label: "Workspace",
+            path: "/workspace",
+            sectionKey: "project:authoritative",
+            updatedAtUnixMs: 2
+          }
+        }
+      ]
+    });
+
+    expect(memberships[0]?.project?.sectionKey).toBe("project:authoritative");
+  });
+});
+
 describe("projectConversationRailSectionsWithTransientConversations", () => {
   const labels = {
     sectionConversations: "Conversations",
@@ -287,6 +314,26 @@ describe("projectConversationRailSectionsWithActiveConversation", () => {
       },
       sectionId: "project:/workspace"
     });
+  });
+
+  it("reuses the active row when its project is render-equal to the section project", () => {
+    const active = {
+      ...conversation("active"),
+      project: {
+        id: "workspace",
+        label: "Workspace",
+        path: "/workspace",
+        sectionKey: "project:/workspace"
+      }
+    };
+
+    const projected = projectConversationRailSectionsWithActiveConversation({
+      activeConversation: active,
+      labels,
+      sections: section([active])
+    });
+
+    expect(projected.activeOverlay?.conversation).toBe(active);
   });
 
   it("overlays only the missing active row into its matching server section", () => {

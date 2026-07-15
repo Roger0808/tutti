@@ -14,10 +14,12 @@ import type {
   AgentComposerDraft,
   AgentGUIComposerSettingsVM,
   AgentGUIProviderSkillOption,
+  AgentGUIQueueStatus,
   AgentGUIQueuedPromptVM
 } from "../model/agentGuiNodeTypes";
 import type { AgentGUIProvider, AgentGUIAgentTarget } from "../../../types";
 import type { WorkspaceReferencePickResult } from "./useComposerDraftAttachments";
+import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
 
 export interface AgentComposerSubmitOptions {}
 
@@ -29,6 +31,7 @@ export interface AgentComposerProps {
   slashStatus?: AgentComposerSlashStatus | null;
   usage?: AgentComposerUsage | null;
   draftContent: AgentComposerDraft;
+  engagement?: AgentGUIComposerEngagement;
   /** Stable project/session owner for async draft attachment work. */
   draftScopeKey?: string;
   availableCommands: readonly AgentSessionCommand[];
@@ -40,6 +43,7 @@ export interface AgentComposerProps {
   submitDisabled: boolean;
   placeholder: string;
   composerSettings: AgentGUIComposerSettingsVM;
+  queueStatus?: AgentGUIQueueStatus;
   queuedPrompts: readonly AgentGUIQueuedPromptVM[];
   drainingQueuedPromptId: string | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
@@ -131,6 +135,7 @@ export interface AgentComposerProps {
     computerUseCapabilitySettingsLabel: string;
     computerUseCapabilitySettingsDescription: string;
     queuedLabel: string;
+    queuePausedByUserLabel: string;
     sendQueuedPromptNext: string;
     editQueuedPrompt: string;
     deleteQueuedPrompt: string;

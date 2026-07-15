@@ -33,6 +33,7 @@ import type {
   AgentHomeSuggestionCategory,
   AgentGUINodeViewModel
 } from "../model/agentGuiNodeTypes";
+import type { AgentGUIEngagementEventSink } from "../engagement/agentGUIEngagement.types";
 
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
@@ -113,6 +114,7 @@ export interface AgentGUIViewLabels {
   planModeOffLabel: string;
   planUnavailable: string;
   queuedLabel: string;
+  queuePausedByUserLabel: string;
   sendQueuedPromptNext: string;
   editQueuedPrompt: string;
   deleteQueuedPrompt: string;
@@ -174,6 +176,8 @@ export interface AgentGUIViewLabels {
   loadingConversation: string;
   scrollToBottom: string;
   searchNoConversations: string;
+  searchFailed: string;
+  retrySearch: string;
   conversationUnavailable: string;
   fallbackAgentTitle: string;
   searchPlaceholder: string;
@@ -378,6 +382,8 @@ export interface AgentGUINodeViewProps {
   capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
   onCapabilitySettingsRequest?: AgentComposerProps["onCapabilitySettingsRequest"];
   isActive?: boolean;
+  isVisible?: boolean;
+  onEngagementEvent?: AgentGUIEngagementEventSink;
   composerFocusRequestSequence?: number | null;
   newConversationRequestSequence?: number | null;
   isAgentProviderReady: boolean;

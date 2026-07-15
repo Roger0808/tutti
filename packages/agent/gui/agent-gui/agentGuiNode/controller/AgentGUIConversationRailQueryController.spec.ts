@@ -6,6 +6,54 @@ import {
 } from "./AgentGUIConversationRailQueryController";
 
 describe("AgentGUIConversationRailQueryController", () => {
+  it("owns the latest rail interaction lock instead of mirroring it in view refs", async () => {
+    const engine = createTestAgentSessionEngine();
+    let resolveSections!: () => void;
+    const controller = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime: {
+        listSessionSections: (input) =>
+          new Promise((resolve) => {
+            resolveSections = () =>
+              resolve({ sections: [], workspaceId: input.workspaceId });
+          }),
+        listSessionSectionPage: async (input) => ({
+          hasMore: false,
+          kind: "conversations",
+          sectionKey: input.sectionKey,
+          sessions: [],
+          totalCount: 0
+        }),
+        listSessionsPage: async (input) => ({
+          hasMore: false,
+          sessions: [],
+          workspaceId: input.workspaceId
+        })
+      },
+      workspaceId: "test-workspace"
+    });
+    controller.configure({
+      conversationFilter: { kind: "all" },
+      previewMode: false,
+      sectionAgentTargetFallbackId: null,
+      userProjects: []
+    });
+
+    const detach = controller.attach();
+    expect(controller.isInteractionLocked()).toBe(true);
+
+    controller.setSearchQuery("active search");
+    expect(controller.isInteractionLocked()).toBe(false);
+
+    resolveSections();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+    detach();
+    engine.dispose();
+  });
+
   it("reattaches cleanly and follows preview-mode scope changes", async () => {
     const engine = createTestAgentSessionEngine();
     const listSessionSections = vi.fn<
@@ -58,6 +106,76 @@ describe("AgentGUIConversationRailQueryController", () => {
       expect(listSessionSections).toHaveBeenCalledTimes(3)
     );
     expect(controller.getSnapshot().runtimeSectionsEnabled).toBe(true);
+
+    detachSecond();
+    engine.dispose();
+  });
+
+  it("retains resolved section pages when a same-scope refresh fails", async () => {
+    const engine = createTestAgentSessionEngine();
+    let requestCount = 0;
+    const listSessionSections = vi.fn<
+      NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
+    >(async (input) => {
+      requestCount += 1;
+      if (requestCount > 1) throw new Error("transient failure");
+      return {
+        workspaceId: input.workspaceId,
+        sections: [
+          {
+            kind: "conversations",
+            sectionKey: "conversations",
+            sessions: [],
+            hasMore: true,
+            nextCursor: "cursor-1",
+            totalCount: 8
+          }
+        ]
+      };
+    });
+    const controller = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime: {
+        listSessionSections,
+        listSessionSectionPage: async (input) => ({
+          kind: "conversations",
+          sectionKey: input.sectionKey,
+          sessions: [],
+          hasMore: false,
+          totalCount: 0
+        })
+      },
+      workspaceId: "test-workspace"
+    });
+    controller.configure({
+      conversationFilter: { kind: "all" },
+      previewMode: false,
+      sectionAgentTargetFallbackId: null,
+      userProjects: []
+    });
+
+    const detachFirst = controller.attach();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailMemberships).toHaveLength(1)
+    );
+    detachFirst();
+
+    const detachSecond = controller.attach();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+    expect(controller.getSnapshot().runtimeRailMemberships).toEqual([
+      expect.objectContaining({ id: "conversations" })
+    ]);
+    expect(
+      controller.getSnapshot().sectionPageStates.get("conversations")
+    ).toEqual({
+      hasMore: true,
+      isLoading: false,
+      nextCursor: "cursor-1",
+      totalCount: 8
+    });
 
     detachSecond();
     engine.dispose();

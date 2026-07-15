@@ -26,6 +26,10 @@ import {
   useOptionalAgentHostApi
 } from "../../../agentActivityHost";
 import { resolveAgentGuiSessionProviderFlatIconUrl } from "../../../agentGuiSessionProviderIconUrls";
+import {
+  resolveAgentTargetPresentation,
+  useAgentTargetPresentations
+} from "../../../shared/AgentTargetPresentationContext";
 import { ConversationMeta } from "../agentGuiNodeViewConversation";
 import { createAgentSessionMarkdownLink } from "../agentRichText/agentFileMentionExtension";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
@@ -34,10 +38,22 @@ import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import styles from "../AgentGUINode.styles";
 import { conversationPlainTitle } from "./agentGUIViewUtils";
 
-function agentGUIConversationProviderIconUrl(
-  provider: string | undefined
+function agentGUIConversationIconUrl(
+  provider: string | undefined,
+  agentTargetId: string | null | undefined,
+  workspaceId: string,
+  agentTargets: ReturnType<typeof useAgentTargetPresentations>
 ): string | null {
-  return resolveAgentGuiSessionProviderFlatIconUrl(provider);
+  const targetPresentation = resolveAgentTargetPresentation({
+    agentTargetId: agentTargetId ?? "",
+    agentTargets,
+    workspaceId
+  });
+  return (
+    resolveAgentGuiSessionProviderFlatIconUrl(provider) ||
+    targetPresentation?.iconUrl?.trim() ||
+    null
+  );
 }
 
 interface AgentGUIConversationRailItemProps {
@@ -45,6 +61,7 @@ interface AgentGUIConversationRailItemProps {
   active: boolean;
   isPendingDeleteConversation: boolean;
   isDeletingConversation: boolean;
+  isRailInteractionLocked: () => boolean;
   currentTimeMs: number;
   labels: AgentGUIViewLabels;
   previewMode: boolean;
@@ -69,6 +86,7 @@ export const AgentGUIConversationRailItem = memo(
     active,
     isPendingDeleteConversation,
     isDeletingConversation,
+    isRailInteractionLocked,
     currentTimeMs,
     labels,
     previewMode,
@@ -86,7 +104,13 @@ export const AgentGUIConversationRailItem = memo(
   }: AgentGUIConversationRailItemProps): React.JSX.Element {
     "use memo";
     const pinned = (item.pinnedAtUnixMs ?? 0) > 0;
-    const providerIconUrl = agentGUIConversationProviderIconUrl(item.provider);
+    const agentTargets = useAgentTargetPresentations();
+    const conversationIconUrl = agentGUIConversationIconUrl(
+      item.provider,
+      item.agentTargetId,
+      workspaceId,
+      agentTargets
+    );
     const setItemElement = useCallback(
       (element: HTMLDivElement | null) => {
         registerItemElement(item.id, element);
@@ -99,16 +123,22 @@ export const AgentGUIConversationRailItem = memo(
     const contextMenuCopySessionLinkRequestedRef = useRef(false);
     const agentHostApi = useOptionalAgentHostApi();
     const handleMouseLeave = useCallback(() => {
-      if (isPendingDeleteConversation) {
+      if (isPendingDeleteConversation && !isRailInteractionLocked()) {
         onCancelDeleteConversation();
       }
-    }, [isPendingDeleteConversation, onCancelDeleteConversation]);
+    }, [
+      isPendingDeleteConversation,
+      isRailInteractionLocked,
+      onCancelDeleteConversation
+    ]);
     const handleSelect = useCallback(() => {
+      if (isRailInteractionLocked()) return;
       onSelectConversation(item.id);
-    }, [item.id, onSelectConversation]);
+    }, [isRailInteractionLocked, item.id, onSelectConversation]);
     const handleTogglePinned = useCallback(() => {
+      if (isRailInteractionLocked()) return;
       onToggleConversationPinned(item.id, !pinned);
-    }, [item.id, onToggleConversationPinned, pinned]);
+    }, [isRailInteractionLocked, item.id, onToggleConversationPinned, pinned]);
     const canMarkUnread = Boolean(
       !previewMode &&
       !item.hasUnreadCompletion &&
@@ -118,52 +148,78 @@ export const AgentGUIConversationRailItem = memo(
         item.status === "ready")
     );
     const handleMarkUnread = useCallback(() => {
-      if (!canMarkUnread) {
+      if (!canMarkUnread || isRailInteractionLocked()) {
         return;
       }
       onMarkConversationUnread(item.id);
-    }, [canMarkUnread, item.id, onMarkConversationUnread]);
+    }, [
+      canMarkUnread,
+      isRailInteractionLocked,
+      item.id,
+      onMarkConversationUnread
+    ]);
     const handleOpenConversationWindow = useCallback(() => {
+      if (isRailInteractionLocked()) return;
       onOpenConversationWindow?.(item.id);
-    }, [item.id, onOpenConversationWindow]);
+    }, [isRailInteractionLocked, item.id, onOpenConversationWindow]);
     const handleRequestDelete = useCallback(() => {
+      if (isRailInteractionLocked()) return;
       onRequestDeleteConversation(item.id);
-    }, [item.id, onRequestDeleteConversation]);
+    }, [isRailInteractionLocked, item.id, onRequestDeleteConversation]);
     const handleRequestRename = useCallback(() => {
+      if (isRailInteractionLocked()) return;
       onRequestRenameConversation(item);
-    }, [item, onRequestRenameConversation]);
+    }, [isRailInteractionLocked, item, onRequestRenameConversation]);
     const handleContextMenuRename = useCallback(() => {
-      if (contextMenuRenameRequestedRef.current) {
+      if (isRailInteractionLocked() || contextMenuRenameRequestedRef.current) {
         return;
       }
       contextMenuRenameRequestedRef.current = true;
       setContextMenuResetKey((key) => key + 1);
       // timing: defer past the context menu's own close/dismiss handling
       window.setTimeout(() => {
+        if (isRailInteractionLocked()) {
+          contextMenuRenameRequestedRef.current = false;
+          return;
+        }
         handleRequestRename();
         contextMenuRenameRequestedRef.current = false;
       }, 0);
-    }, [handleRequestRename]);
+    }, [handleRequestRename, isRailInteractionLocked]);
     const handleContextMenuOpenConversationWindow = useCallback(() => {
-      if (contextMenuOpenConversationWindowRequestedRef.current) {
+      if (
+        isRailInteractionLocked() ||
+        contextMenuOpenConversationWindowRequestedRef.current
+      ) {
         return;
       }
       contextMenuOpenConversationWindowRequestedRef.current = true;
       setContextMenuResetKey((key) => key + 1);
       // timing: defer past the context menu's own close/dismiss handling
       window.setTimeout(() => {
+        if (isRailInteractionLocked()) {
+          contextMenuOpenConversationWindowRequestedRef.current = false;
+          return;
+        }
         handleOpenConversationWindow();
         contextMenuOpenConversationWindowRequestedRef.current = false;
       }, 0);
-    }, [handleOpenConversationWindow]);
+    }, [handleOpenConversationWindow, isRailInteractionLocked]);
     const handleContextMenuCopySessionLink = useCallback(() => {
-      if (contextMenuCopySessionLinkRequestedRef.current) {
+      if (
+        isRailInteractionLocked() ||
+        contextMenuCopySessionLinkRequestedRef.current
+      ) {
         return;
       }
       contextMenuCopySessionLinkRequestedRef.current = true;
       setContextMenuResetKey((key) => key + 1);
       // timing: defer past the context menu's own close/dismiss handling
       window.setTimeout(() => {
+        if (isRailInteractionLocked()) {
+          contextMenuCopySessionLinkRequestedRef.current = false;
+          return;
+        }
         if (!agentHostApi?.clipboard?.writeText) {
           contextMenuCopySessionLinkRequestedRef.current = false;
           return;
@@ -183,7 +239,14 @@ export const AgentGUIConversationRailItem = memo(
             contextMenuCopySessionLinkRequestedRef.current = false;
           });
       }, 0);
-    }, [agentHostApi, item, labels, uiLanguage, workspaceId]);
+    }, [
+      agentHostApi,
+      isRailInteractionLocked,
+      item,
+      labels,
+      uiLanguage,
+      workspaceId
+    ]);
     const row = (
       <div
         ref={setItemElement}
@@ -192,6 +255,12 @@ export const AgentGUIConversationRailItem = memo(
         data-pinned={pinned}
         data-pending-delete={isPendingDeleteConversation}
         data-testid={`agent-gui-conversation-item-${item.id}`}
+        onContextMenuCapture={(event) => {
+          if (isRailInteractionLocked()) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
         onMouseLeave={handleMouseLeave}
       >
         <button
@@ -204,13 +273,13 @@ export const AgentGUIConversationRailItem = memo(
           }}
         >
           <span className={styles.conversationTitleRow}>
-            {providerIconUrl ? (
+            {conversationIconUrl ? (
               <span
                 aria-hidden="true"
                 className={styles.conversationProviderIcon}
                 style={
                   {
-                    "--agent-gui-conversation-provider-icon-url": `url("${providerIconUrl}")`
+                    "--agent-gui-conversation-provider-icon-url": `url("${conversationIconUrl}")`
                   } as CSSProperties
                 }
               />
@@ -232,7 +301,9 @@ export const AgentGUIConversationRailItem = memo(
                 disabled={isDeletingConversation}
                 onClick={(event) => {
                   event.stopPropagation();
-                  onConfirmDeleteConversation();
+                  if (!isRailInteractionLocked()) {
+                    onConfirmDeleteConversation();
+                  }
                 }}
               >
                 <span className={styles.conversationDeleteConfirmText}>
@@ -368,10 +439,12 @@ export const AgentGUIConversationRailItem = memo(
 );
 
 export function AgentGUIProjectRailHeader({
+  disabled,
   labels,
   selectProjectDirectory,
   workspaceUserProjectI18n
 }: {
+  disabled?: boolean;
   labels: Pick<
     AgentGUIViewLabels,
     "projectRailCreateProject" | "projectRailLinkExistingProject"
@@ -424,6 +497,7 @@ export function AgentGUIProjectRailHeader({
           contentAlign="end"
           contentSide="bottom"
           contentSideOffset={6}
+          disabled={disabled}
           i18n={workspaceUserProjectI18n}
           labels={{
             addProject: labels.projectRailCreateProject,

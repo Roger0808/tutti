@@ -2,7 +2,7 @@
 
 [Agent runtime index](./agent-runtime.md) · [All troubleshooting](./README.md)
 
-Turn state, loading, cancel, restore, rail projection, event updates, imports, and performance.
+Turn state, loading, cancel, restore, file-change undo, rail projection, event updates, imports, and performance.
 
 ### AgentGUI turn actions return plain-text route 404s
 
@@ -328,7 +328,9 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   uses the previous model. Logs may show
   `agent.gui.composer_defaults.remembered` for the new model while
   `workspace_agent_sessions.settings_json`, `runtimeContext.model`, or
-  app-server `turn/start` still show the old model.
+  app-server `turn/start` still show the old model. For an Agent Extension, the
+  selected model may also change back to Auto as soon as a new session is
+  created, even though the durable session row contains the requested model.
 - Quick checks:
   Search desktop and daemon logs for the full settings chain:
   `agent.gui.composer_settings.default_only`,
@@ -339,7 +341,10 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   `agent_session.app_server.turn_start.params`. If only the defaults event is
   present, the UI changed the target default draft, not the active session. If
   daemon settings update completed but `turn_start.params.model` is old or
-  empty, inspect the app-server adapter path.
+  empty, inspect the app-server adapter path. If persistence and the provider
+  request both contain the selected model but the daemon session response omits
+  `settings.model`, inspect the service projection before debugging the
+  renderer selector.
 - Root cause:
   AgentGUI has two distinct composer surfaces. The target home composer writes
   remembered defaults and node drafts. An active conversation composer must
@@ -349,12 +354,19 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   response still reports the old model, check the service merge path:
   `serviceSessionWithPersistedFreshness` must not let a newer activity
   projection snapshot overwrite live runtime settings after an explicit
-  settings update.
+  settings update. For extension-owned open provider IDs, established runtime
+  and persisted sessions must use open-provider-aware normalization. Applying
+  the closed built-in composer registry to an ID such as `acp:<extension>`
+  produces an empty built-in provider, clamps the model, and makes the UI
+  correctly render Auto from an already-corrupted session projection.
 - Fix:
   Preserve the default-draft path, but make active-session model changes
   observable at every layer. Do not conclude that a provider ignored the model
   until the logs show the active session settings update reached the daemon and
-  the following `turn/start` carried the requested model.
+  the following `turn/start` carried the requested model. Keep closed
+  normalization for unverified composer requests, but preserve provider-owned
+  settings when projecting or resuming a session that was already authorized
+  through an Agent Target.
 - Validation:
   Reproduce by switching a model in a running session and sending a follow-up.
   Confirm the logs include the update chain above and that
@@ -362,7 +374,9 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   model and the next `turn/start` carries it. If the persisted
   `workspace_agent_sessions.settings_json.model` is older while the runtime is
   live, `Get` responses should still expose live runtime settings instead of
-  the stale projection value.
+  the stale projection value. Add a service regression with a generic open
+  provider ID and assert `serviceSession` retains its model; also assert an
+  invalid provider still loses stale settings.
 - References:
   [useAgentGUINodeController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
   [createDesktopAgentActivityRuntime.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts)
@@ -404,7 +418,11 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - Validation:
   Run `pnpm --filter @tutti-os/agent-gui test`,
   `pnpm --filter @tutti-os/agent-activity-core test`, and
-  `pnpm check:agent-activity-runtime-boundaries`. Cover Codex -> All -> Codex,
+  `pnpm check:agent-activity-runtime-boundaries`. Also run
+  `cd packages/agent/store-sqlite && go test ./... -run 'SessionSection|TurnsBackfill'`
+  and
+  `cd services/tuttid && go test ./service/agent ./api -run 'ListPage|SessionList|SessionSection'`
+  so cursor metadata and daemon ordering are covered. Cover Codex -> All -> Codex,
   client restart restore, active row outside first page, five-plus-active totals,
   nine-session Show more, slow provider refetch, and bounded snapshot omission.
 - References:
@@ -552,6 +570,41 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [catalog.go](../../../services/tuttid/service/eventstream/catalog.go)
   [activity.updated.event.json](../../../packages/events/protocol/definitions/agent/activity.updated.event.json)
 
+### AgentGUI file-change undo reports a generic failure
+
+- Symptom:
+  Clicking Undo on a changed-files summary shows a failure even though the
+  target directory is a Git repository and the file appears unchanged since
+  the agent edit.
+- Quick checks:
+  Search desktop and daemon logs for the `agent-git-patch` diagnostic family.
+  Inspect `errorCode`, Git `stderr`, the diff byte count and hash, and the
+  affected paths. For `invalid-patch`, inspect the durable tool output for
+  malformed unified-diff control markers. A no-newline marker must begin with
+  `\`, not a leading context-space followed by `\`. For
+  `patch-does-not-apply`, compare the recorded after-state with the current
+  file rather than assuming the original turn is still the latest writer.
+- Root cause:
+  Provider display diffs can contain syntax that a viewer tolerates but
+  `git apply` rejects. Treating that display payload as executable patch data
+  produces corrupt hunks. A separate failure occurs when the patch is valid
+  but later edits changed its context.
+- Fix:
+  Canonicalize provider file-change metadata at the runtime adapter boundary
+  before persistence, and canonicalize historical no-newline markers on read.
+  The daemon must preflight with `git apply --check` using the same execution
+  options, return `invalid-patch` for syntax failures and
+  `patch-does-not-apply` for state mismatch, and avoid mutating the worktree on
+  either result.
+- Validation:
+  Cover leading-whitespace no-newline markers, historical activity projection,
+  corrupt-patch preflight without mutation, worktree divergence, reverse
+  application, and the existing untracked-created-file behavior.
+- References:
+  [claude_sdk_activity.go](../../../packages/agent/daemon/runtime/claude_sdk_activity.go)
+  [agentPatchMetadata.ts](../../../packages/agent/gui/shared/agentConversation/rules/agentPatchMetadata.ts)
+  [git_patch.go](../../../services/tuttid/service/agent/git_patch.go)
+
 ### Remote agent cancel does not stop the local turn
 
 - Symptom:
@@ -579,44 +632,58 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [controller_test.go](../../../packages/agent/daemon/runtime/controller_test.go)
 
-### Claude Code cancel leaves Write/tool cards stuck in progress
+### Claude Code cancel leaves Write/tool cards or thinking stuck in progress
 
 - Symptom:
-  User stops a Claude Code turn while a tool such as Write is running. The turn
-  settles as canceled/interrupted, but the transcript still shows the tool as
-  in progress.
+  User stops a Claude Code turn while a tool such as Write is running, or while
+  the assistant is still in a thinking disclosure. The turn settles as
+  canceled/interrupted, but the transcript still shows the tool as in progress
+  or thinking as forever-"thinking".
 - Quick checks:
-  Compare durable tool-call message status with turn outcome. If the turn is
-  interrupted/canceled and the open `tool_call` is still `running`, the Claude
-  SDK turn lifecycle did not finish dangling calls. Confirm Codex/ACP cancel of
-  the same shape closes open tools via `acpTurnNormalizer.FinishInterrupted`.
+  Compare durable tool-call / `assistant_thinking` message status with turn
+  outcome. If the turn is interrupted/canceled and an open `tool_call` is still
+  `running`, or thinking is still `streaming`/`working`, the Claude SDK turn
+  lifecycle did not finish dangling normalizer-owned rows. Confirm Codex/ACP
+  cancel of the same shape closes open tools and thinking via
+  `acpTurnNormalizer.FinishInterrupted`.
 - Root cause:
-  Claude Code SDK projected tool events without owning the shared turn event
-  lifecycle (`acpTurnNormalizer`). Cancel and sidecar `turn_canceled` settled
-  the turn without `Finish*`, so open tools never received a terminal
-  `call.failed`.
+  Claude Code SDK first projected tool events without owning the shared turn
+  event lifecycle (`acpTurnNormalizer`), so cancel settled the turn without
+  `Finish*` and open tools never received terminal `call.failed`. A follow-on
+  gap kept thinking/assistant snapshots off that same normalizer: only tools
+  were tracked, so Stop could fail open Write cards while leaving an in-flight
+  thinking row at `streamState=streaming`.
 - Fix:
   Attach per-turn `acpTurnNormalizer` on the Claude SDK session. Track
-  `call.started/completed/failed` against that normalizer, and call
+  `call.started/completed/failed` against that normalizer, route thinking and
+  assistant snapshots through the same normalizer, and call
   `FinishInterrupted` / `FinishFailed` / `FinishCompleted` as part of turn
   terminalization (`Cancel`, sidecar `turn_*`, reader failure). Drop late tool
   events after the turn is already settled.
   Also: controller Cancel cancels the Exec context before `adapter.Cancel`.
   Claude Exec unregisters its waiter on that context cancel, so Cancel must
-  finish open tools from the turn-normalizer map (not only live waiters), and
-  the Exec context-canceled path must retain CallFailed events instead of
-  replacing the whole event slice with a bare turn.canceled.
+  finish open tools/streams from the turn-normalizer map (not only live
+  waiters). The controller Exec context-canceled path must retain those
+  adapter-produced close events via `retainTurnCallLifecycleEvents` — not only
+  `call.failed`, but also failed/completed assistant/thinking message
+  snapshots — instead of replacing the whole event slice with a bare
+  turn.canceled. Otherwise FinishInterrupted runs in Exec, then the controller
+  drops the thinking settlement and the durable row stays `streaming`.
 - Validation:
-  `go test ./packages/agent/daemon/runtime -run 'TestClaudeCodeSDKAdapter(CancelFailsOpenToolCalls|CancelFailsOpenToolsAfterWaiterUnregistered|TurnCanceledFailsOpenToolCalls)'`.
-  Manually: start a long Write on Claude Code, press Stop, confirm the tool
-  card leaves "in progress". Rebuild/restart desktop so the running `tuttid`
-  binary includes the fix.
+  `go test ./packages/agent/daemon/runtime -run 'TestClaudeCodeSDKAdapter(CancelFailsOpenToolCalls|CancelFailsOpenToolsAfterWaiterUnregistered|TurnCanceledFailsOpenToolCalls|CancelFailsOpenThinking|MapsThinkingEvents)|TestRetainTurnCallLifecycleEvents'`.
+  Manually: rebuild/restart desktop so `tuttid` includes the fix, then start
+  Claude Code, stop during thinking and during a long Write; confirm thinking
+  leaves the active state and the tool card leaves "in progress". In
+  `~/.tutti-dev/tuttid.db`, the reasoning message status should leave
+  `streaming` after cancel.
 - References:
   [claude_sdk_turn.go](../../../packages/agent/daemon/runtime/claude_sdk_turn.go)
   [claude_sdk_events.go](../../../packages/agent/daemon/runtime/claude_sdk_events.go)
   [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go)
   [controller_turn_exec.go](../../../packages/agent/daemon/runtime/controller_turn_exec.go)
+  [controller_turn_state.go](../../../packages/agent/daemon/runtime/controller_turn_state.go)
   [acp_turn_normalizer.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer.go)
+  [acp_turn_normalizer_snapshots.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer_snapshots.go)
 
 ### AgentGUI freezes when session history is large
 
@@ -916,6 +983,42 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [controller_session_lifecycle.go](../../packages/agent/daemon/runtime/controller_session_lifecycle.go)
   [agent_runtime_adapter.go](../../services/tuttid/agent_runtime_adapter.go)
 
+### Cursor auto-continue invents interrupted work after a network drop
+
+- Symptom:
+  After a Cursor `RetriableError` / TLS drop and Tutti's automatic
+  `transport_retry`, the agent does not answer the user's last message
+  (for example a simple greeting). Instead it talks about recovering prior
+  context, reading transcripts, or continuing an interrupted task that never
+  started.
+- Quick checks:
+  In the session transcript, confirm the failed attempt produced only the
+  `Error: RetriableError:` / `Error: ConnectError:` tail (no useful assistant
+  text and no tool calls) before the retry notice. Check
+  `agent_session.acp.exec.auto_continue` in `tuttid` logs for
+  `has_useful_progress=false`.
+- Root cause:
+  Cursor keeps conversation history on its backend; Tutti can mainly control the
+  synthetic auto-continue `session/prompt`. Mid-task wording
+  ("Continue exactly where you left off") misleads the model when the attempt
+  died before any useful output.
+- Fix:
+  Branch the auto-continue prompt by useful progress: zero-progress retries ask
+  the model to answer the user's most recent message normally and not invent
+  interrupted work; mid-task retries keep the continue wording. Progress is
+  assistant text after stripping the retriable error tail, or any observed tool
+  call.
+- Validation:
+  `cd packages/agent/daemon && go test ./runtime/ -run
+'TestACPAutoContinueHasUsefulProgress|TestACPAutoContinuePromptContentBranches|TestCursorAdapterAutoContinuesAfterRetriableTurnError|TestCursorAdapterAutoContinueMidTaskUsesContinuePrompt'`.
+  Live: send a short Cursor message that fails before any reply, confirm the
+  retry answers the user instead of recovering a phantom task, and that
+  mid-task drops still resume in place.
+- References:
+  [acp_auto_continue.go](../../../packages/agent/daemon/runtime/acp_auto_continue.go)
+  [standard_acp_turn.go](../../../packages/agent/daemon/runtime/standard_acp_turn.go)
+  [acp_auto_continue_test.go](../../../packages/agent/daemon/runtime/acp_auto_continue_test.go)
+
 ### Canceling an old AgentGUI turn stops a newer turn
 
 - Symptom:
@@ -1031,3 +1134,37 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts)
   [main.test.ts](../../packages/agent/claude-sdk-sidecar/src/main.test.ts)
   [claude_sdk_adapter.go](../../packages/agent/daemon/runtime/claude_sdk_adapter.go)
+
+### AgentActivity replication repeatedly rejects message batches as invalid
+
+- Symptom:
+  A downstream AgentActivity replica repeatedly returns `INVALID_ARGUMENT` for
+  the same message batch. The source session has a higher `messageVersion`, but
+  the destination has no messages or stops at an earlier version.
+- Quick checks:
+  Compare the session watermark with the current message rows. Values such as
+  `1,3` or `1,5` are valid when an intermediate snapshot of the same
+  `messageId` was overwritten. Check whether the destination requires
+  `incomingVersion == maxStoredVersion + 1` or treats a message version as
+  immutable identity.
+- Root cause:
+  `Message.Version` is a per-session change cursor on a mutable snapshot. Each
+  accepted update advances the cursor, and updating the same `messageId`
+  replaces its prior row. Current rows therefore need not contain every cursor
+  value, and the same message identity legitimately moves to a higher version.
+- Fix:
+  Replicas must accept any positive version for a new message, accept a higher
+  version for an existing `messageId`, and ignore or reject only stale lower
+  versions. Use a version-guarded atomic upsert so concurrent stale snapshots
+  cannot overwrite newer state. Do not add an event-history table merely to
+  make the current snapshot appear contiguous.
+- Validation:
+  Record message A at v1, message B at v2, then update B to v3. Verify the
+  current snapshot is `A@1,B@3`, `afterVersion=1` returns B at v3, and a
+  rejected projection does not consume another cursor. Downstream replication
+  coverage should also accept an initial v3, update it to v5, and preserve v5
+  when v4 arrives later.
+- References:
+  [activity_messages.go](../../../packages/agent/store-sqlite/activity_messages.go)
+  [activity_message_read.go](../../../packages/agent/store-sqlite/activity_message_read.go)
+  [repository.go](../../../packages/agent/store-sqlite/repository.go)

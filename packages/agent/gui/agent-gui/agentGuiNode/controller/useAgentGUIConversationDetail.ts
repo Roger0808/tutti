@@ -23,6 +23,7 @@ import {
 } from "../model/agentGuiConversationModel";
 import type {
   AgentComposerDraft,
+  AgentGUIQueueStatus,
   AgentGUIQueuedPromptVM
 } from "../model/agentGuiNodeTypes";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
@@ -58,6 +59,7 @@ interface UseAgentGUIConversationDetailInput {
   activePendingInteractions: readonly AgentActivityInteraction[];
   activeQueuedPromptInFlight: PromptQueueInFlightCommand | null;
   activeQueuedPrompts: readonly EngineQueuedPrompt[];
+  activeQueueStatus: AgentGUIQueueStatus;
   activeSessionReconcileError: string | null;
   activeSessionView: {
     hasOlderMessages: boolean;
@@ -143,8 +145,12 @@ export function useAgentGUIConversationDetail(
     (state) => selectEngineAvailableCommands(state, input.activeConversationId)
   );
   const availableCommands = useMemo(
-    () => engineAvailableCommands.map((command) => ({ ...command })),
-    [engineAvailableCommands]
+    () =>
+      (engineAvailableCommands.length > 0
+        ? engineAvailableCommands
+        : (input.providerComposerOptions?.commands ?? [])
+      ).map((command) => ({ ...command })),
+    [engineAvailableCommands, input.providerComposerOptions?.commands]
   );
   const availableSkills = useStableProviderSkillOptions(
     useMemo(
@@ -262,16 +268,20 @@ export function useAgentGUIConversationDetail(
           .find((candidate) => candidate.kind !== "approval") ?? null;
       return interactivePromptFromInteraction(interaction);
     }, [input.activePendingInteractions]);
-  const queuedPrompts: AgentGUIQueuedPromptVM[] = input.activeConversationId
-    ? input.activeQueuedPrompts.map((prompt) => ({
-        id: prompt.id,
-        content: [...prompt.content] as AgentPromptContentBlock[],
-        ...(prompt.displayPrompt
-          ? { displayPrompt: prompt.displayPrompt }
-          : {}),
-        createdAtUnixMs: prompt.createdAtUnixMs
-      }))
-    : [];
+  const queuedPrompts = useMemo<AgentGUIQueuedPromptVM[]>(
+    () =>
+      input.activeConversationId
+        ? input.activeQueuedPrompts.map((prompt) => ({
+            id: prompt.id,
+            content: [...prompt.content] as AgentPromptContentBlock[],
+            ...(prompt.displayPrompt
+              ? { displayPrompt: prompt.displayPrompt }
+              : {}),
+            createdAtUnixMs: prompt.createdAtUnixMs
+          }))
+        : [],
+    [input.activeConversationId, input.activeQueuedPrompts]
+  );
 
   return {
     activeLiveState,
@@ -297,6 +307,7 @@ export function useAgentGUIConversationDetail(
     pendingApproval: hasProviderSessionNotFoundError
       ? null
       : rawPendingApproval,
+    queueStatus: input.activeQueueStatus,
     queuedPrompts,
     serverInteractivePrompt: hasProviderSessionNotFoundError
       ? null

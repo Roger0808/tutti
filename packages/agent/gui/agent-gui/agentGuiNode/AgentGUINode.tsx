@@ -44,11 +44,12 @@ import {
 } from "./AgentGUINode.labels";
 import {
   resolveAgentGUIRailStatusProvider,
-  slashStatusLimitsFromQuotas,
-  slashStatusQuotasFromCanonicalUsage
+  slashStatusLimitsFromQuotas
 } from "./AgentGUINode.usage";
 
 export type { AgentGUINodeProps } from "./AgentGUINode.types";
+
+const EMPTY_SLASH_STATUS_QUOTAS = [] as const;
 
 export const AgentGUINode = memo(function AgentGUINode({
   identity,
@@ -83,6 +84,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     desktopSize,
     isMaximized = false,
     isActive,
+    isVisible = true,
     embedded = false,
     previewMode = false,
     conversationRailAutoCollapseWidthPx = null
@@ -111,7 +113,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     providerAuthAccountLabels,
     managedAgentsState,
     contextMentionProviders,
-    workspaceAppIcons
+    workspaceAppIcons,
+    disabledHomeSuggestions
   } = hostCapabilities;
   const {
     onLinkAction,
@@ -126,7 +129,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     isMuted = false,
     onMinimize,
     onToggleMaximize,
-    onShowMessage
+    onShowMessage,
+    onEngagementEvent
   } = hostActions;
   const {
     providerRailEmpty: renderProviderRailEmpty,
@@ -147,16 +151,9 @@ export const AgentGUINode = memo(function AgentGUINode({
   );
   const handleLinkAction = useCallback(
     (action: WorkspaceLinkAction) => {
-      const agentTargetId = state.agentTargetId?.trim() || null;
-      onLinkAction?.(
-        action.type === "open-agent-session" &&
-          !action.agentTargetId &&
-          agentTargetId
-          ? { ...action, agentTargetId }
-          : action
-      );
+      onLinkAction?.(action);
     },
-    [onLinkAction, state.agentTargetId]
+    [onLinkAction]
   );
   const handleAgentProviderLogin = useCallback(
     (provider?: string | null) => {
@@ -327,6 +324,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     ? resolveAgentGUIProviderDisplayLabel(activeProvider, fallbackAgentTitle)
     : selectedAgentTargetLabel;
   const labels = useAgentGUIViewLabels({
+    disabledHomeSuggestions,
     displayProviderLabel,
     fallbackAgentTitle,
     t,
@@ -379,16 +377,15 @@ export const AgentGUINode = memo(function AgentGUINode({
       ) === "installed"
     );
   }, [activeReadinessProvider, managedAgentsState]);
-  const canonicalSlashStatusQuotas = slashStatusQuotasFromCanonicalUsage(
-    viewModel.detail.usage
-  );
+  const canonicalSlashStatusQuotas =
+    viewModel.detail.usage?.quotas ?? EMPTY_SLASH_STATUS_QUOTAS;
   const slashStatusQuotaSource =
     canonicalSlashStatusQuotas.length > 0
       ? canonicalSlashStatusQuotas
       : activeAgentProbe?.usage?.quotas &&
           activeAgentProbe.usage.quotas.length > 0
         ? activeAgentProbe.usage.quotas
-        : [];
+        : EMPTY_SLASH_STATUS_QUOTAS;
   const slashStatusLimits = useMemo(
     () =>
       slashStatusLimitsFromQuotas(
@@ -414,7 +411,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     railAgentProbe?.usage?.quotas &&
     railAgentProbe.usage.quotas.length > 0
       ? railAgentProbe.usage.quotas
-      : [];
+      : EMPTY_SLASH_STATUS_QUOTAS;
   const railSlashStatusLimits = useMemo(
     () => slashStatusLimitsFromQuotas(railSlashStatusQuotaSource, null, t),
     [railSlashStatusQuotaSource, t]
@@ -615,6 +612,8 @@ export const AgentGUINode = memo(function AgentGUINode({
             providerRailAllPresentation={providerRailAllPresentation}
             actions={viewActions}
             isActive={isActive}
+            isVisible={isVisible}
+            onEngagementEvent={onEngagementEvent}
             composerFocusRequestSequence={composerFocusRequestSequence}
             newConversationRequestSequence={newConversationRequestSequence}
             isAgentProviderReady={isActiveAgentProviderReady}
