@@ -1372,7 +1372,7 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
-  it("scopes the transient processing row identity to the latest turn", () => {
+  it("does not infer processing turn identity from transcript history", () => {
     const firstTurn = detailViewModel().turns[0]!;
     const secondTurn = {
       id: "turn-2",
@@ -1403,6 +1403,39 @@ describe("projectAgentConversationVM", () => {
     );
 
     expect(processing).toEqual(
+      expect.objectContaining({
+        id: "processing:session",
+        turnId: null
+      })
+    );
+  });
+
+  it("scopes transient processing to the canonical active turn", () => {
+    const baseDetail = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-2"
+        },
+        turns: [
+          baseDetail.turns[0]!,
+          {
+            id: "turn-2",
+            userMessage: null,
+            userMessages: [],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
       expect.objectContaining({
         id: "processing:turn-2",
         turnId: "turn-2"
