@@ -193,13 +193,16 @@ older stored values, but the desktop host pins it to `unified`. Unified is the
 only Agent dock presentation: it exposes one Agent dock entry, and every
 AgentGUI launch result and persisted Workbench node uses
 `agent-gui:unified` as its stable `dockEntryId`. Launches still create
-provider-specific multi-instance AgentGUI nodes; provider identity belongs in
-the launch payload, `agentTargetId`, provider-specific `instanceId`, and node or
-session state rather than the Dock identity. The unified entry may choose a
-default target or provider for its launch payload; that selection must not
-synthesize a provider or replace the provider identity recorded on the
-node/session. Legacy persisted AgentGUI Dock identities are normalized by the
-daemon snapshot migration instead of renderer-side fallback matching.
+multi-instance AgentGUI nodes, but `instanceId` is an opaque Workbench lifecycle
+token (`agent-gui:instance:<nonce>`). It must never encode or be parsed for a
+provider, target, session, or surface kind. `agentTargetId` is the canonical
+node selection and launch identity; provider is execution metadata resolved
+from that target or from the durable session. The unified entry may choose a
+default ready target for its launch payload, but that selection must not
+synthesize a provider or replace the target recorded on the node/session.
+Legacy persisted Dock identities are normalized, and AgentGUI cache nodes with
+no currently valid `agentTargetId` are removed, by daemon snapshot migrations
+instead of renderer-side fallback matching.
 Workspace Launchpad is a broad launcher surface, not a mirror of the dock
 entry list; it should show one generic Agent tile that resolves to the default
 or first ready provider instead of duplicating provider-specific Agent dock
@@ -208,17 +211,18 @@ Agent launches from Launchpad/All must still use the unified Agent dock entry
 identity (`agent-gui:unified`) so the resulting AgentGUI node appears under the
 same Dock icon as direct Dock launches.
 The unified dock identity is a reserved aggregate identifier, not a provider
-identifier. Provider extraction parses the provider-specific
-`agent-gui:<provider>` instance namespace and must not use `dockEntryId`, even
-though provider metadata accepts extension-defined strings. Provider-specific
-dock status must never override the unified entry's visibility; an aggregate
-status, if needed, must be modeled explicitly instead of synthesizing an
-`unified` provider.
+identifier. Neither Dock identity nor instance identity is a provider parser
+surface. Provider-specific dock status must never override the unified entry's
+visibility; an aggregate status, if needed, must be modeled explicitly instead
+of synthesizing an `unified` provider.
 Empty launches from the unified Agent dock entry should set dock-entry reuse so
 the second dock click restores/focuses the existing AgentGUI node; draft
-prefill launches and explicit session launches keep their narrower reuse rules
-so generated drafts and session navigation do not overwrite an unrelated
-window.
+prefill launches always create a fresh opaque node, while explicit session
+launches may reuse only a node whose current state names that exact session.
+Agent target identity must not select a workbench instance: targets describe
+node content, not canvas-container identity. These mutually exclusive reuse
+rules keep generated drafts and session navigation from overwriting an
+unrelated window.
 The Dock popup's New window card is a distinct launch source and must bypass
 dock-entry reuse for AgentGUI, otherwise it collapses into the normal
 restore/focus behavior instead of opening a fresh Agent window.
@@ -364,6 +368,10 @@ selected agent's availability so coming-soon entries remain inspectable but
 cannot start sessions. Hosts may use `renderAgentUnavailableState` and
 `renderAgentReadinessState` for product-specific presentation, with actions
 routed through `onAgentAvailabilityAction`.
+`disabled` is interaction state, not an availability classification. A disabled
+target is coming soon only when its explicit availability is `coming_soon` (or
+the host's explicit coming-soon catalog says so); unavailable, not-installed,
+auth-required, and checking targets retain their own readiness state.
 Daemon-managed extension targets use this same host-projected availability.
 Their signed target name, icon URL, and open provider identity flow through the
 host `agents` array; AgentGUI must not add extension keys, provider fallbacks,
@@ -541,12 +549,15 @@ the current Tutti workspace surface: `DesktopAgentGUIWorkbenchBody` calls
 `host.launchNode`, and AgentGUI opens the requested session through an
 `agent-gui:open-session` activation. Normal session launches may reuse an
 already-open node only when workbench node state says that node is currently
-showing the requested session. A session-keyed instance id from older snapshots
-is only a legacy window identity hint, not proof of the node's current session.
-If no current-session match exists, the launch should use a provider target or
-panel-scoped AgentGUI container and then activate the durable session. The
+showing the requested session. An instance id from older snapshots is only a
+legacy window identity hint, not proof of the node's current session or target.
+If no current-session match exists, the launch creates a fresh opaque AgentGUI
+container, writes the requested target into that node's state, and then
+activates the durable session. AgentGUI must not maintain a parallel
+target-to-instance index because multiple sessions for the same target are
+valid and the Workbench host already owns live canvas-node lookup. The
 explicit new-window action must pass `openInNewWindow` so the descriptor creates
-a fresh panel-scoped AgentGUI instance while still activating the same durable
+a fresh opaque AgentGUI instance while still activating the same durable
 session.
 The detached Agent button in desktop chrome is a different window boundary: it
 asks main to create an Electron `BrowserWindow` with the `view=agent` renderer
@@ -566,10 +577,12 @@ When the conversation rail collapses, the standalone Agent header remains a
 full-width window control surface and keeps its secondary tool actions anchored
 to the right window edge. Content-width caps belong to the conversation body,
 not to the header control row.
-Standalone Agent window state may keep a minimal UI-local workbench node
-context, but durable conversations, session activation, login, provider
-readiness, and file/project data must still flow through the shared desktop
-AgentGUI host input and activity runtime.
+Standalone Agent windows mount the shared desktop AgentGUI surface through a
+standalone adapter. They must not fabricate a Workbench node/context or mirror
+Workbench runtime and snapshot setters. Their minimal window state is UI-local;
+durable conversations, session activation, login, provider readiness, and
+file/project data still flow through the shared desktop AgentGUI host input and
+activity runtime.
 Standalone-window tools are desktop host chrome, not AgentGUI state.
 The desktop host owns tool identity, toolbar buttons and reminder badges,
 Browser/Terminal grouping, panel placement, lazy mounting, and tool content
@@ -588,7 +601,11 @@ enough for their embedded location, list, and detail columns. Browser and Apps
 share the same roomy default width so switching between them does not move the
 panel boundary. Message Center aligns its default host width with its standard
 embedded content width so it neither clips card content nor leaves unused
-right-side space. Browser and Terminal share one dropdown trigger in the header:
+right-side space. After the user manually resizes any right-sidebar tool, that
+latest manual width becomes the shared preferred width for subsequent tool
+switches; a Browser opened after Files therefore keeps the user's width instead
+of restoring Browser's default. Browser and Terminal share one dropdown trigger
+in the header:
 the entire tool control opens the menu, and choosing an item opens that tool.
 Do not split the control into a primary action and a separate menu-arrow action.
 The standalone
@@ -627,6 +644,10 @@ the host-window resize request until the next animation frame. Do not await
 native IPC before showing the panel. Commit the sidebar's final layout width in
 one step; do not animate `width`, `flex-basis`, or another layout property,
 because that repeatedly reflows both the panel and the adjacent conversation.
+When a tool switch resolves to the current native content width, the host-window
+resize request must be skipped; a previously clamped native width must also be
+treated as settled for the same target so tool switching does not cause a
+redundant resize pulse.
 The sidebar may animate only its fixed-size inner surface with a short
 right-to-left `transform` and opacity entrance. Files, Browser, Apps, and other expensive first-use
 bodies mount after that short compositor entrance, then remain mounted while
@@ -1424,6 +1445,12 @@ current rail. Count, sort, and first-page trimming operate on narrow session-id
 rows; load full session entities only after that trimming. The query shape must
 not add one compound-select arm per requested section or inherit SQLite's
 compound-select term limit as a Rail project-count limit.
+Daemon rail reads use the shared SQLite read-only pool rather than the daemon's
+single write connection. Section pages and their turn/interaction hydration may
+therefore read committed WAL snapshots while an unrelated write transaction is
+in progress. Do not route these independent reads back through the write pool;
+queries that require read-after-write atomicity must instead remain inside the
+owning write transaction.
 When `agentTargetId` narrows the provider rail, use an exact target predicate
 and target-scoped ordinary/pinned composite indexes. An optional
 `(? = '' OR agent_target_id = ?)` predicate on an unscoped index only filters
@@ -1534,7 +1561,12 @@ place for short reloads. Provider/agent switching should not briefly unmount
 the project rail header or replace a populated rail with an empty/skeleton
 rail; if the new first page takes longer than the rail skeleton delay, show the
 skeleton so the user sees loading feedback. Only workspace changes may clear
-the section cache immediately. Local Show more/Show less expansion belongs to
+the section cache immediately. The desktop runtime shares bounded first-page
+query entries across AgentGUI controller mounts, keyed by workspace and exact
+rail scope. A fresh entry is restored without transport; a stale entry remains
+visible while one in-flight request is shared by every consumer. Cache entries
+contain membership, cursor, total, and section metadata only; canonical sessions
+remain in the workspace engine. Local Show more/Show less expansion belongs to
 the workspace-plus-filter query scope, not the backend section id alone. Reset
 its visible-item limit in the filter-change render so stale section chrome
 cannot flash pagination controls from the previous provider scope. Keep the
