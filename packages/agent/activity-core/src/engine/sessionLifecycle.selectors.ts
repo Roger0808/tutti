@@ -292,6 +292,26 @@ export function selectWorkspaceAgentConsumerSessions(
   );
 }
 
+export function selectRootAgentSessionIdsWithPendingInteractions(
+  state: AgentSessionEngineState
+): readonly string[] {
+  const rootAgentSessionIds = new Set<string>();
+  for (const session of Object.values(state.sessionLifecycle.sessionsById)) {
+    if (
+      selectEnginePendingInteractions(state, session.agentSessionId).length ===
+      0
+    ) {
+      continue;
+    }
+    const rootAgentSessionId =
+      session.kind === "child"
+        ? session.rootAgentSessionId
+        : session.agentSessionId;
+    if (rootAgentSessionId) rootAgentSessionIds.add(rootAgentSessionId);
+  }
+  return [...rootAgentSessionIds];
+}
+
 export function selectAllWorkspaceAgentConsumerSessions(
   state: AgentSessionEngineState
 ): readonly WorkspaceAgentConsumerSession[] {

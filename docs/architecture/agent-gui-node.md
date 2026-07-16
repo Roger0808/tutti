@@ -152,6 +152,13 @@ durable Interaction(pending)
   -> approval / question / exit-plan presentation
 ```
 
+The conversation rail is part of this actionable interaction presentation. Its
+Ask indicator must come from canonical pending interactions, aggregated from a
+root session and its child sessions onto the root conversation. A `waiting`
+Turn phase without a pending interaction represents background/delegated work
+and keeps the working presentation; it must not imply that the user has an
+answerable prompt.
+
 The workspace shell and standalone Agent window share one decision-notification
 controller and card presentation. When a new pending interaction arrives while
 the current window is foregrounded and its Message Center is closed, that
