@@ -115,6 +115,7 @@ export {
   selectEngineSubmitAvailability,
   selectEngineTurnsForSession,
   selectEngineTurn,
+  selectRootAgentSessionIdsWithPendingInteractions,
   selectWorkspaceAgentConsumerCounts,
   selectWorkspaceAgentConsumerSession,
   selectWorkspaceAgentConsumerSessions

@@ -152,6 +152,13 @@ durable Interaction(pending)
   -> approval / question / exit-plan presentation
 ```
 
+The conversation rail is part of this actionable interaction presentation. Its
+Ask indicator must come from canonical pending interactions, aggregated from a
+root session and its child sessions onto the root conversation. A `waiting`
+Turn phase without a pending interaction represents background/delegated work
+and keeps the working presentation; it must not imply that the user has an
+answerable prompt.
+
 The workspace shell and standalone Agent window share one decision-notification
 controller and card presentation. When a new pending interaction arrives while
 the current window is foregrounded and its Message Center is closed, that
@@ -3386,11 +3393,15 @@ carry durable provenance and therefore fail closed when either an Agent or
 Member constraint is active. A typed File query must route to the
 provenance-aware generated-file provider for either active dimension, even when
 the ordinary generated-files group is otherwise disabled. Generated-file and
-picker result groups remain source-owned. The Agent Session `@` list is the
-exception: when a host injects an Agent provenance catalog, it groups returned
-sessions by exact `agentTargetId` in catalog order and uses the catalog option
-label as the group heading. This grouping is presentation only; the provider
-still applies the selected provenance constraint before pagination.
+picker result groups remain source-owned. The Agent Session and Agent target
+`@` lists are the exceptions: when a host injects an Agent provenance catalog,
+they group returned rows by exact `agentTargetId` in catalog order and use the
+catalog option label as the group heading. An Agent target row matches with its
+target id; AgentGUI does not synthesize owner-aware row labels because that
+presentation remains host-owned. Rows outside the catalog remain visible in
+stable uncatalogued groups only while no explicit Agent filter is selected.
+This grouping is presentation only; the provider still applies the selected
+provenance constraint before pagination.
 
 Only catalog entries with a durable `agentTargetId` participate in filtering;
 host target ids are not substitutes. Catalogs and filters are normalized at the
