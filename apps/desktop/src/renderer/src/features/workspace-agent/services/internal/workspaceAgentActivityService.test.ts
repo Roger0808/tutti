@@ -1790,6 +1790,7 @@ function workspaceAgentSession(overrides: {
     pendingInteractions: [],
     permissionConfig: { configurable: false, modes: [] },
     pinnedAtUnixMs: null,
+    railSectionKey: "conversations",
     resumable: true,
     settings: overrides.settings ?? {},
     title: "Session 1",

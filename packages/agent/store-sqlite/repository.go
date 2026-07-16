@@ -181,6 +181,7 @@ type Session struct {
 	Metadata               SessionMetadata
 	InternalRuntimeContext map[string]any
 	Cwd                    string
+	RailSectionKey         string
 	Title                  string
 	// ActiveTurnID is the protocol v2 turn reference: the id of the turn
 	// currently in flight, empty when the session is idle.
