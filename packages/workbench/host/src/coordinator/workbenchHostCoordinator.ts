@@ -1,10 +1,10 @@
+import type { WorkbenchDiagnosticsPort } from "../diagnostics/workbenchDiagnosticsPort.ts";
 import {
   areWorkbenchSnapshotPartitionsEqual,
   createWorkbenchScopeKey,
   WorkbenchHostSession,
   type WorkbenchSnapshotPartition
-} from "./workbenchHostSession.ts";
-import type { WorkbenchDiagnosticsPort } from "./workbenchHostPorts.ts";
+} from "../session/workbenchHostSession.ts";
 
 declare const workbenchHostSessionConfigurationBrand: unique symbol;
 

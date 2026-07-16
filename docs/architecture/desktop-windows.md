@@ -201,6 +201,23 @@ Agent-only shell, only the latest attempt whose App is still selected may report
 successful presentation; stale completions cannot claim success for a newer or
 cleared inline selection.
 
+Workspace file previews use the same ownership direction without sharing the
+App Center's attempt protocol. File Manager owns file activation, preview-kind
+resolution, system fallback, and opened-file reporting. A feature-owned file
+preview surface host routes the placement decision by workspace. The OS shell
+registers a presenter that launches the matching Workbench preview Node; the
+standalone Agent shell registers a presenter that opens the file through the
+desktop system host. Unsupported-preview notification policy belongs to that
+presenter registration, so disposing the Agent shell restores the default OS
+policy automatically. Registrations use identity-checked cleanup, preventing an
+old Shell effect cleanup from removing a newer presenter. A presentation started
+under one registration may still report success after that registration is
+replaced or disposed if its presenter eventually completes successfully. Unlike
+App Center preparation, it has no reversible pending attempt, and reporting
+failure would trigger a duplicate system fallback. When presentation fails, its
+fallback notification policy also comes from the registration that started the
+attempt, rather than a replacement registered while the attempt was in flight.
+
 The Agent-only contribution keeps the catalog and one app-specific Browser Node
 for every opened app mounted for the renderer lifetime. The back action clears
 only the selection, marks every retained Browser Node hidden, and reveals the
@@ -223,6 +240,19 @@ window with the draft bootstrap intent, while existing-session navigation
 reuses the current Agent-only window unless the caller explicitly requests a
 new one. Issue Manager launches open the Tasks sidebar and forward the standard
 issue activation so the embedded surface selects the requested issue and task.
+Issue Manager placement is selected through a workspace-scoped presenter
+coordinator rather than by mode checks in the request source. The OS shell
+registers a presenter that launches and activates the Workbench Node, while the
+standalone Agent shell registers a presenter that opens the Tasks sidebar
+inline. Presenter registrations use registration identity for cleanup, so an
+old shell disposer cannot remove a newer presenter, including when both
+registrations reuse the same presenter object.
+Other simple workspace launch coordinators keep their domain-specific request
+normalization and public handler APIs, but share the same private registration
+primitive for workspace key normalization, latest-registration routing, and
+identity-safe disposal. This applies to Browser, Files, Message Center,
+Workbench Node, and Group Chat routing without turning those distinct handlers
+into a generic Shell service.
 The OS Files floating window opens wide by default so its location, list, and
 detail columns begin at approximately 26%, 55%, and 19% of the content width;
 each splitter remains user-resizable within its minimum-content constraints.
