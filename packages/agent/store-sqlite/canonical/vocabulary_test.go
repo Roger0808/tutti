@@ -5,17 +5,25 @@ import "testing"
 func TestClosedVocabularyValidation(t *testing.T) {
 	t.Parallel()
 
-	for _, phase := range []string{TurnPhaseSubmitted, TurnPhaseRunning, TurnPhaseWaiting, TurnPhaseSettling, TurnPhaseSettled} {
-		if !IsKnownTurnPhase(phase) {
-			t.Fatalf("IsKnownTurnPhase(%q) = false", phase)
+	tests := []struct {
+		name   string
+		values []string
+		known  func(string) bool
+	}{
+		{"turn phase", []string{TurnPhaseSubmitted, TurnPhaseRunning, TurnPhaseWaiting, TurnPhaseSettling, TurnPhaseSettled}, IsKnownTurnPhase},
+		{"turn outcome", []string{TurnOutcomeCompleted, TurnOutcomeFailed, TurnOutcomeCanceled, TurnOutcomeInterrupted}, IsKnownTurnOutcome},
+		{"turn origin", []string{TurnOriginUserPrompt, TurnOriginGoalArm, TurnOriginGoalContinuation, TurnOriginProviderInitiated, TurnOriginLegacyUnknown}, IsKnownTurnOrigin},
+		{"interaction kind", []string{InteractionKindApproval, InteractionKindQuestion, InteractionKindPlan}, IsKnownInteractionKind},
+		{"interaction status", []string{InteractionStatusPending, InteractionStatusAnswered, InteractionStatusSuperseded}, IsKnownInteractionStatus},
+	}
+	for _, test := range tests {
+		for _, value := range test.values {
+			if !test.known(value) {
+				t.Errorf("%s validator rejected %q", test.name, value)
+			}
 		}
-	}
-	if IsKnownTurnPhase("planning") {
-		t.Fatal("IsKnownTurnPhase(planning) = true")
-	}
-	for _, outcome := range []string{TurnOutcomeCompleted, TurnOutcomeFailed, TurnOutcomeCanceled, TurnOutcomeInterrupted} {
-		if !IsKnownTurnOutcome(outcome) {
-			t.Fatalf("IsKnownTurnOutcome(%q) = false", outcome)
+		if test.known("unknown") {
+			t.Errorf("%s validator accepted unknown value", test.name)
 		}
 	}
 }

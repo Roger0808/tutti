@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"reflect"
 	"testing"
 
 	activityreplication "github.com/tutti-os/tutti/packages/agent/activity-replication"
@@ -16,35 +15,36 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type receipt struct {
-	identity string
-	cursor   uint64
+type projectionDescriptor struct {
+	workspaceID  string
+	entityType   activityreplication.EntityType
+	key          activityreplication.EntityKey
+	targetScope  *activityreplication.TargetScope
+	sessionScope *activityreplication.SessionScope
 }
 
-type sqliteSink struct {
-	db        *sql.DB
-	store     *storesqlite.Store
-	next      uint64
-	receipts  map[string]receipt
-	snapshots map[string]activityreplication.Mutation
+type sqliteProjectionBuilder struct {
+	db          *sql.DB
+	store       *storesqlite.Store
+	descriptors []projectionDescriptor
 }
 
-func TestSQLiteCanonicalStoreConformance(t *testing.T) {
+func TestSQLiteCanonicalProjectionConformance(t *testing.T) {
 	t.Parallel()
 
-	for _, fixture := range conformance.Fixtures() {
+	for _, fixture := range conformance.ProjectionFixtures() {
 		fixture := fixture
 		t.Run(fixture.Name, func(t *testing.T) {
 			t.Parallel()
-			sink := newSQLiteSink(t)
-			if err := conformance.Run(context.Background(), sink, fixture); err != nil {
+			builder := newSQLiteProjectionBuilder(t)
+			if err := conformance.RunProjection(context.Background(), builder, fixture); err != nil {
 				t.Fatal(err)
 			}
 		})
 	}
 }
 
-func newSQLiteSink(t *testing.T) *sqliteSink {
+func newSQLiteProjectionBuilder(t *testing.T) *sqliteProjectionBuilder {
 	t.Helper()
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "activity.db"))
 	if err != nil {
@@ -59,141 +59,147 @@ func newSQLiteSink(t *testing.T) *sqliteSink {
 	if err := store.Migrate(context.Background()); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	return &sqliteSink{db: db, store: store}
+	return &sqliteProjectionBuilder{db: db, store: store}
 }
 
-func (s *sqliteSink) Reset(ctx context.Context) error {
+func (b *sqliteProjectionBuilder) Reset(ctx context.Context) error {
 	for _, table := range []string{
 		"workspace_agent_messages", "workspace_agent_interactions", "workspace_agent_turns",
 		"workspace_agent_sessions", "agent_targets",
 	} {
-		if _, err := s.db.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+		if _, err := b.db.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return fmt.Errorf("clear %s: %w", table, err)
 		}
 	}
-	s.next = 0
-	s.receipts = make(map[string]receipt)
-	s.snapshots = make(map[string]activityreplication.Mutation)
+	b.descriptors = nil
 	return nil
 }
 
-func (s *sqliteSink) Apply(ctx context.Context, batch activityreplication.ChangeBatch) (conformance.ApplyReport, error) {
-	if err := activityreplication.ValidateBatch(batch); err != nil {
-		return conformance.ApplyReport{}, err
-	}
-	acknowledgements := make([]activityreplication.MutationAcknowledgement, 0, len(batch.Mutations))
-	for _, mutation := range batch.Mutations {
-		identity, err := mutationIdentity(mutation)
-		if err != nil {
-			return conformance.ApplyReport{}, err
+func (b *sqliteProjectionBuilder) Seed(ctx context.Context, seeds []conformance.CanonicalSeed) error {
+	for _, seed := range seeds {
+		mutation := seedWireMutation(seed)
+		if err := activityreplication.ValidateMutation(mutation); err != nil {
+			return err
 		}
-		if existing, ok := s.receipts[mutation.MutationID]; ok {
-			if existing.identity != identity {
-				return conformance.ApplyReport{}, activityreplication.NewPermanentRejection(
-					activityreplication.RejectionIdentity, mutation, errors.New("mutation identity conflicts with committed receipt"),
-				)
-			}
-			acknowledgements = append(acknowledgements, activityreplication.AcknowledgeDuplicate(mutation, existing.cursor))
-			continue
+		if mutation.Operation != activityreplication.OperationUpsert {
+			return errors.New("SQLite projection fixture seeds must be upserts")
 		}
-		if s.isStale(mutation) {
-			acknowledgements = append(acknowledgements, activityreplication.AcknowledgeStale(mutation))
-			continue
+		if err := b.seedMutation(ctx, mutation); err != nil {
+			return fmt.Errorf("seed %s: %w", mutation.EntityType, err)
 		}
-		if err := s.applyMutation(ctx, mutation); err != nil {
-			return conformance.ApplyReport{}, err
-		}
-		s.next++
-		s.receipts[mutation.MutationID] = receipt{identity: identity, cursor: s.next}
-		s.snapshots[snapshotKey(mutation.EntityType, mutation.Key)] = mutation
-		acknowledgements = append(acknowledgements, activityreplication.AcknowledgeApplied(mutation, s.next))
-	}
-	result, err := activityreplication.SummarizeAcknowledgements(acknowledgements)
-	return conformance.ApplyReport{Result: result, Acknowledgements: acknowledgements}, err
-}
-
-func mutationIdentity(mutation activityreplication.Mutation) (string, error) {
-	identity := struct {
-		SourceDeviceID string                         `json:"sourceDeviceId"`
-		WorkspaceID    string                         `json:"workspaceId"`
-		EntityType     activityreplication.EntityType `json:"entityType"`
-		Operation      activityreplication.Operation  `json:"operation"`
-		Key            activityreplication.EntityKey  `json:"key"`
-	}{mutation.SourceDeviceID, mutation.WorkspaceID, mutation.EntityType, mutation.Operation, mutation.Key}
-	raw, err := json.Marshal(identity)
-	return string(raw), err
-}
-
-func (s *sqliteSink) isStale(mutation activityreplication.Mutation) bool {
-	existing, ok := s.snapshots[snapshotKey(mutation.EntityType, mutation.Key)]
-	if !ok || mutation.Operation == activityreplication.OperationDelete {
-		return false
-	}
-	switch mutation.EntityType {
-	case activityreplication.EntityTarget:
-		return mutation.Target.UpdatedAtUnixMS < existing.Target.UpdatedAtUnixMS
-	case activityreplication.EntitySession:
-		return mutation.Session.UpdatedAtUnixMS < existing.Session.UpdatedAtUnixMS
-	case activityreplication.EntityTurn:
-		return mutation.Turn.UpdatedAtUnixMS < existing.Turn.UpdatedAtUnixMS
-	case activityreplication.EntityInteraction:
-		return mutation.Interaction.UpdatedAtUnixMS < existing.Interaction.UpdatedAtUnixMS
-	case activityreplication.EntityMessage:
-		return mutation.Message.Version < existing.Message.Version
-	default:
-		return false
-	}
-}
-
-func (s *sqliteSink) applyMutation(ctx context.Context, mutation activityreplication.Mutation) error {
-	if mutation.Operation == activityreplication.OperationDelete {
-		return errors.New("SQLite conformance adapter only needs upserts for the published fixtures")
-	}
-	switch mutation.EntityType {
-	case activityreplication.EntityTarget:
-		_, err := s.store.PutAgentTarget(ctx, storesqlite.Target{
-			ID: mutation.Target.ID, Provider: mutation.Target.Provider, LaunchRefJSON: string(mutation.Target.LaunchRef),
-			Name: mutation.Target.Name, IconKey: dereference(mutation.Target.IconKey), IconURL: mutation.Target.IconURL,
-			HeroImageURL: mutation.Target.HeroImageURL, Enabled: mutation.Target.Enabled, Source: mutation.Target.Source,
-			SortOrder: int(mutation.Target.SortOrder), CreatedAtUnixMS: mutation.Target.CreatedAtUnixMS,
+		b.descriptors = append(b.descriptors, projectionDescriptor{
+			workspaceID: mutation.WorkspaceID, entityType: mutation.EntityType, key: mutation.Key,
+			targetScope: cloneTargetScope(mutation.TargetScope), sessionScope: cloneSessionScope(mutation.SessionScope),
 		})
+	}
+	return nil
+}
+
+func seedWireMutation(seed conformance.CanonicalSeed) activityreplication.Mutation {
+	sourceDevice := ""
+	if seed.TargetScope != nil {
+		sourceDevice = seed.TargetScope.OwnerDeviceID
+	} else if seed.SessionScope != nil {
+		sourceDevice = seed.SessionScope.SourceDeviceID
+	}
+	return activityreplication.Mutation{
+		SchemaVersion: activityreplication.SchemaVersion, MutationID: "canonical-seed", TransactionID: "canonical-seed",
+		SourceDeviceID: sourceDevice, WorkspaceID: seed.WorkspaceID, EntityType: seed.EntityType,
+		Operation: activityreplication.OperationUpsert, Key: seed.Key,
+		Target: seed.Target, TargetScope: seed.TargetScope, Session: seed.Session, SessionScope: seed.SessionScope,
+		Turn: seed.Turn, Interaction: seed.Interaction, Message: seed.Message,
+	}
+}
+
+func (b *sqliteProjectionBuilder) Build(ctx context.Context) (activityreplication.ChangeBatch, error) {
+	mutations := make([]activityreplication.Mutation, 0, len(b.descriptors))
+	for index, descriptor := range b.descriptors {
+		mutation, found, err := b.buildMutation(ctx, descriptor)
+		if err != nil {
+			return activityreplication.ChangeBatch{}, err
+		}
+		if !found {
+			return activityreplication.ChangeBatch{}, fmt.Errorf("canonical %s snapshot is missing", descriptor.entityType)
+		}
+		mutation.SchemaVersion = activityreplication.SchemaVersion
+		mutation.MutationID = fmt.Sprintf("sqlite-projection-%d", index+1)
+		mutation.TransactionID = "sqlite-projection"
+		mutations = append(mutations, mutation)
+	}
+	return activityreplication.ChangeBatch{SchemaVersion: activityreplication.SchemaVersion, Mutations: mutations}, nil
+}
+
+func (b *sqliteProjectionBuilder) seedMutation(ctx context.Context, mutation activityreplication.Mutation) error {
+	switch mutation.EntityType {
+	case activityreplication.EntityTarget:
+		target := mutation.Target
+		if _, err := b.store.PutAgentTarget(ctx, storesqlite.Target{
+			ID: target.ID, Provider: target.Provider, LaunchRefJSON: string(target.LaunchRef), Name: target.Name,
+			IconKey: dereference(target.IconKey), IconURL: target.IconURL, HeroImageURL: target.HeroImageURL,
+			Enabled: target.Enabled, Source: target.Source, SortOrder: int(target.SortOrder), CreatedAtUnixMS: target.CreatedAtUnixMS,
+		}); err != nil {
+			return err
+		}
+		_, err := b.db.ExecContext(ctx, `UPDATE agent_targets SET created_at_ms=?,updated_at_ms=? WHERE id=?`,
+			target.CreatedAtUnixMS, target.UpdatedAtUnixMS, target.ID)
 		return err
 	case activityreplication.EntitySession:
-		settings, err := decodeObject(mutation.Session.Settings)
+		session := mutation.Session
+		settings, err := decodeObject(session.Settings)
 		if err != nil {
 			return err
 		}
-		runtimeContext, err := decodeObject(mutation.Session.InternalRuntimeContext)
+		runtimeContext, err := decodeObject(session.InternalRuntimeContext)
 		if err != nil {
 			return err
 		}
-		result, err := s.store.ReportSessionState(ctx, storesqlite.SessionStateReport{
-			WorkspaceID: mutation.Session.WorkspaceID, AgentSessionID: mutation.Session.AgentSessionID,
-			Kind: mutation.Session.Kind, RootAgentSessionID: dereference(mutation.Session.RootAgentSessionID),
-			RootTurnID: dereference(mutation.Session.RootTurnID), ParentAgentSessionID: dereference(mutation.Session.ParentAgentSessionID),
-			ParentTurnID: dereference(mutation.Session.ParentTurnID), ParentToolCallID: dereference(mutation.Session.ParentToolCallID),
-			Origin: mutation.Session.Origin, UserID: mutation.Session.UserID, AgentTargetID: dereference(mutation.Session.AgentTargetID),
-			Provider: mutation.Session.Provider, ProviderSessionID: mutation.Session.ProviderSessionID, Model: mutation.Session.Model,
-			Settings: settings, RuntimeContext: runtimeContext, Cwd: mutation.Session.CWD, Title: mutation.Session.Title,
-			OccurredAtUnixMS: mutation.Session.LastEventAtUnixMS, StartedAtUnixMS: mutation.Session.StartedAtUnixMS,
-			EndedAtUnixMS: mutation.Session.EndedAtUnixMS, CreatedAtUnixMS: mutation.Session.CreatedAtUnixMS,
+		result, err := b.store.ReportSessionState(ctx, storesqlite.SessionStateReport{
+			WorkspaceID: session.WorkspaceID, AgentSessionID: session.AgentSessionID, Kind: session.Kind,
+			RootAgentSessionID: dereference(session.RootAgentSessionID), RootTurnID: dereference(session.RootTurnID),
+			ParentAgentSessionID: dereference(session.ParentAgentSessionID), ParentTurnID: dereference(session.ParentTurnID),
+			ParentToolCallID: dereference(session.ParentToolCallID), Origin: session.Origin, UserID: session.UserID,
+			AgentTargetID: dereference(session.AgentTargetID), Provider: session.Provider, ProviderSessionID: session.ProviderSessionID,
+			Model: session.Model, Settings: settings, RuntimeContext: runtimeContext, Cwd: session.CWD, Title: session.Title,
+			OccurredAtUnixMS: session.LastEventAtUnixMS, StartedAtUnixMS: session.StartedAtUnixMS,
+			EndedAtUnixMS: session.EndedAtUnixMS, CreatedAtUnixMS: session.CreatedAtUnixMS,
 		})
-		if err == nil && !result.Accepted {
-			return errors.New("SQLite canonical store rejected session snapshot")
+		if err != nil {
+			return err
 		}
+		if !result.Accepted {
+			return errors.New("SQLite canonical store rejected session seed")
+		}
+		_, err = b.db.ExecContext(ctx, `UPDATE workspace_agent_sessions SET rail_section_kind=?,rail_project_path=?,rail_section_key=?,message_version=0,last_event_at_unix_ms=?,pinned_at_unix_ms=?,deleted_at_unix_ms=?,created_at_unix_ms=?,updated_at_unix_ms=?,active_turn_id=NULL WHERE workspace_id=? AND agent_session_id=?`,
+			session.RailSectionKind, session.RailProjectPath, session.RailSectionKey, session.LastEventAtUnixMS,
+			session.PinnedAtUnixMS, session.DeletedAtUnixMS, session.CreatedAtUnixMS, session.UpdatedAtUnixMS,
+			session.WorkspaceID, session.AgentSessionID)
 		return err
 	case activityreplication.EntityTurn:
 		turn := mutation.Turn
-		_, accepted, err := s.store.RecordTurnTransition(ctx, storesqlite.TurnTransition{
+		_, accepted, err := b.store.RecordTurnTransition(ctx, storesqlite.TurnTransition{
 			WorkspaceID: turn.WorkspaceID, AgentSessionID: turn.AgentSessionID, TurnID: turn.TurnID,
 			Phase: turn.Phase, Outcome: dereference(turn.Outcome), Origin: turn.Origin,
 			SourceGoalOperationID: dereference(turn.SourceGoalOperationID), SourceGoalRevision: dereferenceInt64(turn.SourceGoalRevision),
 			SourceGoalRepairEpoch: dereferenceInt64(turn.SourceGoalRepairEpoch), StartedAtUnixMS: turn.StartedAtUnixMS,
 			SettledAtUnixMS: dereferenceInt64(turn.SettledAtUnixMS), OccurredAtUnixMS: turn.UpdatedAtUnixMS,
 		})
-		if err == nil && !accepted {
-			return errors.New("SQLite canonical store rejected turn snapshot")
+		if err != nil {
+			return err
 		}
+		if !accepted {
+			return errors.New("SQLite canonical store rejected turn seed")
+		}
+		_, err = b.db.ExecContext(ctx, `UPDATE workspace_agent_turns SET backfilled=?,created_at_unix_ms=?,updated_at_unix_ms=? WHERE workspace_id=? AND agent_session_id=? AND turn_id=?`,
+			turn.Backfilled, turn.CreatedAtUnixMS, turn.UpdatedAtUnixMS, turn.WorkspaceID, turn.AgentSessionID, turn.TurnID)
+		if err != nil {
+			return err
+		}
+		activeTurnID := any(turn.TurnID)
+		if turn.Phase == storesqlite.TurnPhaseSettled {
+			activeTurnID = nil
+		}
+		_, err = b.db.ExecContext(ctx, `UPDATE workspace_agent_sessions SET active_turn_id=? WHERE workspace_id=? AND agent_session_id=?`,
+			activeTurnID, turn.WorkspaceID, turn.AgentSessionID)
 		return err
 	case activityreplication.EntityInteraction:
 		interaction := mutation.Interaction
@@ -209,14 +215,20 @@ func (s *sqliteSink) applyMutation(ctx context.Context, mutation activityreplica
 		if err != nil {
 			return err
 		}
-		_, result, err := s.store.UpsertInteraction(ctx, storesqlite.InteractionUpsert{
+		_, result, err := b.store.UpsertInteraction(ctx, storesqlite.InteractionUpsert{
 			WorkspaceID: interaction.WorkspaceID, AgentSessionID: interaction.AgentSessionID, RequestID: interaction.RequestID,
 			TurnID: interaction.TurnID, Kind: interaction.Kind, Status: interaction.Status, ToolName: interaction.ToolName,
 			Input: input, Output: output, Metadata: metadata, OccurredAtUnixMS: interaction.UpdatedAtUnixMS,
 		})
-		if err == nil && result == storesqlite.InteractionTransitionConflict {
-			return errors.New("SQLite canonical store rejected interaction snapshot")
+		if err != nil {
+			return err
 		}
+		if result == storesqlite.InteractionTransitionConflict {
+			return errors.New("SQLite canonical store rejected interaction seed")
+		}
+		_, err = b.db.ExecContext(ctx, `UPDATE workspace_agent_interactions SET created_at_unix_ms=?,updated_at_unix_ms=? WHERE workspace_id=? AND agent_session_id=? AND turn_id=? AND request_id=?`,
+			interaction.CreatedAtUnixMS, interaction.UpdatedAtUnixMS, interaction.WorkspaceID, interaction.AgentSessionID,
+			interaction.TurnID, interaction.RequestID)
 		return err
 	case activityreplication.EntityMessage:
 		message := mutation.Message
@@ -224,99 +236,195 @@ func (s *sqliteSink) applyMutation(ctx context.Context, mutation activityreplica
 		if err != nil {
 			return err
 		}
-		result, err := s.store.ReportSessionMessages(ctx, storesqlite.SessionMessageReport{
-			WorkspaceID: message.WorkspaceID, AgentSessionID: message.AgentSessionID, Messages: []storesqlite.MessageUpdate{{
+		result, err := b.store.ReportSessionMessages(ctx, storesqlite.SessionMessageReport{
+			WorkspaceID: message.WorkspaceID, AgentSessionID: message.AgentSessionID,
+			Messages: []storesqlite.MessageUpdate{{
 				MessageID: message.MessageID, TurnID: dereference(message.TurnID), Role: message.Role, Kind: message.Kind,
 				Status: message.Status, Payload: payload, OccurredAtUnixMS: message.OccurredAtUnixMS,
 				StartedAtUnixMS: message.StartedAtUnixMS, CompletedAtUnixMS: message.CompletedAtUnixMS,
 			}},
 		})
-		if err == nil && result.AcceptedCount != 1 {
+		if err != nil {
+			return err
+		}
+		if result.AcceptedCount != 1 {
 			return fmt.Errorf("SQLite canonical store accepted %d messages, want 1", result.AcceptedCount)
 		}
+		_, err = b.db.ExecContext(ctx, `UPDATE workspace_agent_messages SET id=?,version=?,semantics_json=?,deleted_at_unix_ms=?,created_at_unix_ms=?,updated_at_unix_ms=? WHERE workspace_id=? AND agent_session_id=? AND message_id=?`,
+			message.ID, message.Version, string(message.Semantics), message.DeletedAtUnixMS, message.CreatedAtUnixMS,
+			message.UpdatedAtUnixMS, message.WorkspaceID, message.AgentSessionID, message.MessageID)
+		if err != nil {
+			return err
+		}
+		_, err = b.db.ExecContext(ctx, `UPDATE workspace_agent_sessions SET message_version=?,last_event_at_unix_ms=?,updated_at_unix_ms=? WHERE workspace_id=? AND agent_session_id=?`,
+			message.Version, message.UpdatedAtUnixMS, message.UpdatedAtUnixMS, message.WorkspaceID, message.AgentSessionID)
 		return err
 	default:
-		return fmt.Errorf("unsupported SQLite conformance entity %q", mutation.EntityType)
+		return fmt.Errorf("unsupported SQLite projection seed entity %q", mutation.EntityType)
 	}
 }
 
-func (s *sqliteSink) Lookup(ctx context.Context, entityType activityreplication.EntityType, key activityreplication.EntityKey) (json.RawMessage, bool, error) {
-	mutation, ok := s.snapshots[snapshotKey(entityType, key)]
-	if !ok {
-		return nil, false, nil
+func (b *sqliteProjectionBuilder) buildMutation(ctx context.Context, descriptor projectionDescriptor) (activityreplication.Mutation, bool, error) {
+	mutation := activityreplication.Mutation{
+		WorkspaceID: descriptor.workspaceID, SourceDeviceID: sourceDeviceID(descriptor), EntityType: descriptor.entityType,
+		Operation: activityreplication.OperationUpsert, Key: descriptor.key,
+		TargetScope: cloneTargetScope(descriptor.targetScope), SessionScope: cloneSessionScope(descriptor.sessionScope),
 	}
-	var snapshot any
-	switch entityType {
+	switch descriptor.entityType {
+	case activityreplication.EntityTarget:
+		stored, err := b.store.GetAgentTarget(ctx, descriptor.key.AgentTargetID)
+		if errors.Is(err, storesqlite.ErrAgentTargetNotFound) {
+			return activityreplication.Mutation{}, false, nil
+		}
+		if err != nil {
+			return activityreplication.Mutation{}, false, err
+		}
+		mutation.Target = &activityreplication.Target{
+			ID: stored.ID, Provider: stored.Provider, LaunchRef: json.RawMessage(stored.LaunchRefJSON), Name: stored.Name,
+			IconKey: nullable(stored.IconKey), IconURL: stored.IconURL, HeroImageURL: stored.HeroImageURL,
+			Enabled: stored.Enabled, Source: stored.Source, SortOrder: int64(stored.SortOrder),
+			CreatedAtUnixMS: stored.CreatedAtUnixMS, UpdatedAtUnixMS: stored.UpdatedAtUnixMS,
+		}
 	case activityreplication.EntitySession:
-		stored, found, err := s.store.GetSession(ctx, mutation.WorkspaceID, key.AgentSessionID)
+		stored, found, err := b.store.GetSession(ctx, descriptor.workspaceID, descriptor.key.AgentSessionID)
 		if err != nil || !found {
-			return nil, found, err
+			return activityreplication.Mutation{}, found, err
 		}
-		copy := *mutation.Session
-		copy.Title, copy.Provider, copy.Origin = stored.Title, stored.Provider, stored.Origin
-		snapshot = &copy
+		metadata, err := json.Marshal(stored.Metadata)
+		if err != nil {
+			return activityreplication.Mutation{}, false, err
+		}
+		settings, err := marshalObject(stored.Settings)
+		if err != nil {
+			return activityreplication.Mutation{}, false, err
+		}
+		runtimeContext, err := marshalObject(stored.InternalRuntimeContext)
+		if err != nil {
+			return activityreplication.Mutation{}, false, err
+		}
+		var railKind, railProjectPath string
+		var deletedAt int64
+		if err := b.db.QueryRowContext(ctx, `SELECT rail_section_kind,rail_project_path,deleted_at_unix_ms FROM workspace_agent_sessions WHERE workspace_id=? AND agent_session_id=?`,
+			descriptor.workspaceID, descriptor.key.AgentSessionID).Scan(&railKind, &railProjectPath, &deletedAt); err != nil {
+			return activityreplication.Mutation{}, false, err
+		}
+		mutation.Session = &activityreplication.Session{
+			WorkspaceID: stored.WorkspaceID, AgentSessionID: stored.ID, Kind: stored.Kind,
+			RootAgentSessionID: nullable(stored.RootAgentSessionID), RootTurnID: nullable(stored.RootTurnID),
+			ParentAgentSessionID: nullable(stored.ParentAgentSessionID), ParentTurnID: nullable(stored.ParentTurnID),
+			ParentToolCallID: nullable(stored.ParentToolCallID), Origin: stored.Origin, UserID: stored.UserID,
+			AgentTargetID: nullable(stored.AgentTargetID), Provider: stored.Provider, ProviderSessionID: stored.ProviderSessionID,
+			Model: stored.Model, Settings: settings, SessionMetadata: metadata, InternalRuntimeContext: runtimeContext,
+			CWD: stored.Cwd, RailSectionKind: railKind, RailProjectPath: railProjectPath, RailSectionKey: stored.RailSectionKey,
+			Title: stored.Title, MessageVersion: stored.MessageVersion, LastEventAtUnixMS: stored.LastEventUnixMS,
+			StartedAtUnixMS: stored.StartedAtUnixMS, EndedAtUnixMS: stored.EndedAtUnixMS, PinnedAtUnixMS: stored.PinnedAtUnixMS,
+			DeletedAtUnixMS: deletedAt, CreatedAtUnixMS: stored.CreatedAtUnixMS, UpdatedAtUnixMS: stored.UpdatedAtUnixMS,
+			ActiveTurnID: nullable(stored.ActiveTurnID),
+		}
 	case activityreplication.EntityTurn:
-		stored, found, err := s.store.GetTurn(ctx, mutation.WorkspaceID, key.AgentSessionID, key.TurnID)
+		stored, found, err := b.store.GetTurn(ctx, descriptor.workspaceID, descriptor.key.AgentSessionID, descriptor.key.TurnID)
 		if err != nil || !found {
-			return nil, found, err
+			return activityreplication.Mutation{}, found, err
 		}
-		copy := *mutation.Turn
-		copy.Phase, copy.Origin = stored.Phase, stored.Origin
-		if stored.Outcome == "" {
-			copy.Outcome = nil
-		} else {
-			copy.Outcome = &stored.Outcome
-		}
-		snapshot = &copy
-	case activityreplication.EntityMessage:
-		page, found, err := s.store.ListSessionMessages(ctx, storesqlite.ListSessionMessagesInput{
-			WorkspaceID: mutation.WorkspaceID, AgentSessionID: key.AgentSessionID, Limit: 100,
+		mutation.Turn = turnSnapshot(stored)
+	case activityreplication.EntityInteraction:
+		items, err := b.store.ListSessionInteractions(ctx, storesqlite.ListSessionInteractionsInput{
+			WorkspaceID: descriptor.workspaceID, AgentSessionID: descriptor.key.AgentSessionID,
 		})
-		if err != nil || !found {
-			return nil, found, err
+		if err != nil {
+			return activityreplication.Mutation{}, false, err
 		}
-		for _, stored := range page.Messages {
-			if stored.MessageID == key.MessageID {
-				copy := *mutation.Message
-				copy.Version, copy.Role, copy.Kind, copy.Status = stored.Version, stored.Role, stored.Kind, stored.Status
-				copy.Payload, err = json.Marshal(stored.Payload)
-				if err != nil {
-					return nil, false, err
-				}
-				snapshot = &copy
-				break
+		for _, stored := range items {
+			if stored.TurnID == descriptor.key.TurnID && stored.RequestID == descriptor.key.RequestID {
+				mutation.Interaction, err = interactionSnapshot(stored)
+				return mutation, err == nil, err
 			}
 		}
-		if snapshot == nil {
-			return nil, false, nil
-		}
-	default:
-		snapshot = snapshotFromMutation(mutation)
-	}
-	raw, err := json.Marshal(snapshot)
-	return raw, err == nil, err
-}
-
-func snapshotFromMutation(mutation activityreplication.Mutation) any {
-	switch mutation.EntityType {
-	case activityreplication.EntityTarget:
-		return mutation.Target
-	case activityreplication.EntitySession:
-		return mutation.Session
-	case activityreplication.EntityTurn:
-		return mutation.Turn
-	case activityreplication.EntityInteraction:
-		return mutation.Interaction
+		return activityreplication.Mutation{}, false, nil
 	case activityreplication.EntityMessage:
-		return mutation.Message
+		page, found, err := b.store.ListSessionMessages(ctx, storesqlite.ListSessionMessagesInput{
+			WorkspaceID: descriptor.workspaceID, AgentSessionID: descriptor.key.AgentSessionID, Limit: 100,
+		})
+		if err != nil || !found {
+			return activityreplication.Mutation{}, found, err
+		}
+		for _, stored := range page.Messages {
+			if stored.MessageID == descriptor.key.MessageID {
+				mutation.Message, err = messageSnapshot(descriptor.workspaceID, stored)
+				return mutation, err == nil, err
+			}
+		}
+		return activityreplication.Mutation{}, false, nil
 	default:
-		return nil
+		return activityreplication.Mutation{}, false, fmt.Errorf("unsupported SQLite projection entity %q", descriptor.entityType)
+	}
+	return mutation, true, nil
+}
+
+func turnSnapshot(stored storesqlite.Turn) *activityreplication.Turn {
+	return &activityreplication.Turn{
+		WorkspaceID: stored.WorkspaceID, AgentSessionID: stored.AgentSessionID, TurnID: stored.TurnID,
+		Phase: stored.Phase, Outcome: nullable(stored.Outcome), Error: structuredResult(stored.ErrorMessage, stored.ErrorCode),
+		FileChanges: rawObject(stored.FileChanges), CompletedCommand: structuredResult(stored.CompletedCommandKind, stored.CompletedCommandStatus),
+		Backfilled: stored.Backfilled, Origin: stored.Origin, SourceGoalOperationID: nullable(stored.SourceGoalOperationID),
+		SourceGoalRevision:    nullableInt64(stored.SourceGoalOperationID, stored.SourceGoalRevision),
+		SourceGoalRepairEpoch: nullableInt64(stored.SourceGoalOperationID, stored.SourceGoalRepairEpoch),
+		StartedAtUnixMS:       stored.StartedAtUnixMS, SettledAtUnixMS: nullableInt64(stored.Outcome, stored.SettledAtUnixMS),
+		CreatedAtUnixMS: stored.CreatedAtUnixMS, UpdatedAtUnixMS: stored.UpdatedAtUnixMS,
+		RootProviderTurnID: nullable(stored.RootProviderTurnID), RootProviderTurnPhase: nullable(stored.RootProviderTurnPhase),
+		RootProviderTurnOutcome:          nullable(stored.RootProviderTurnOutcome),
+		RootProviderTurnError:            structuredResult(stored.RootProviderTurnErrorMessage, stored.RootProviderTurnErrorCode),
+		RootProviderTurnCompletedCommand: structuredResult(stored.RootProviderTurnCompletedCommandKind, stored.RootProviderTurnCompletedCommandStatus),
+		RootProviderTurnUpdatedAtUnixMS:  stored.RootProviderTurnUpdatedAtUnixMS,
 	}
 }
 
-func snapshotKey(entityType activityreplication.EntityType, key activityreplication.EntityKey) string {
-	raw, _ := json.Marshal(key)
-	return string(entityType) + ":" + string(raw)
+func interactionSnapshot(stored storesqlite.Interaction) (*activityreplication.Interaction, error) {
+	input, err := marshalObject(stored.Input)
+	if err != nil {
+		return nil, err
+	}
+	output, err := marshalObject(stored.Output)
+	if err != nil {
+		return nil, err
+	}
+	metadata, err := marshalObject(stored.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	return &activityreplication.Interaction{
+		WorkspaceID: stored.WorkspaceID, AgentSessionID: stored.AgentSessionID, RequestID: stored.RequestID,
+		TurnID: stored.TurnID, Kind: stored.Kind, Status: stored.Status, ToolName: stored.ToolName,
+		Input: input, Output: output, Metadata: metadata, CreatedAtUnixMS: stored.CreatedAtUnixMS, UpdatedAtUnixMS: stored.UpdatedAtUnixMS,
+	}, nil
+}
+
+func messageSnapshot(workspaceID string, stored storesqlite.Message) (*activityreplication.Message, error) {
+	semantics, err := json.Marshal(stored.Semantics)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := marshalObject(stored.Payload)
+	if err != nil {
+		return nil, err
+	}
+	return &activityreplication.Message{
+		ID: stored.ID, WorkspaceID: workspaceID, AgentSessionID: stored.AgentSessionID, MessageID: stored.MessageID,
+		Version: stored.Version, TurnID: nullable(stored.TurnID), Role: stored.Role, Kind: stored.Kind, Status: stored.Status,
+		Semantics: semantics, Payload: payload, OccurredAtUnixMS: stored.OccurredAtUnixMS,
+		StartedAtUnixMS: stored.StartedAtUnixMS, CompletedAtUnixMS: stored.CompletedAtUnixMS,
+		CreatedAtUnixMS: stored.CreatedAtUnixMS, UpdatedAtUnixMS: stored.UpdatedAtUnixMS,
+	}, nil
+}
+
+func sourceDeviceID(descriptor projectionDescriptor) string {
+	if descriptor.targetScope != nil {
+		return descriptor.targetScope.OwnerDeviceID
+	}
+	if descriptor.sessionScope != nil {
+		return descriptor.sessionScope.SourceDeviceID
+	}
+	return ""
 }
 
 func decodeObject(raw json.RawMessage) (map[string]any, error) {
@@ -330,11 +438,41 @@ func decodeObject(raw json.RawMessage) (map[string]any, error) {
 	return value, nil
 }
 
+func marshalObject(value map[string]any) (json.RawMessage, error) {
+	if value == nil {
+		return json.RawMessage(`{}`), nil
+	}
+	return json.Marshal(value)
+}
+
+func rawObject(value map[string]any) json.RawMessage {
+	if len(value) == 0 {
+		return nil
+	}
+	raw, _ := json.Marshal(value)
+	return raw
+}
+
+func structuredResult(first, second string) json.RawMessage {
+	if first == "" && second == "" {
+		return nil
+	}
+	raw, _ := json.Marshal(map[string]string{"kind": first, "status": second})
+	return raw
+}
+
 func dereference(value *string) string {
 	if value == nil {
 		return ""
 	}
 	return *value
+}
+
+func nullable(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func dereferenceInt64(value *int64) int64 {
@@ -344,22 +482,25 @@ func dereferenceInt64(value *int64) int64 {
 	return *value
 }
 
-func TestMutationIdentityIgnoresRetryTransactionOnly(t *testing.T) {
-	t.Parallel()
+func nullableInt64(presence string, value int64) *int64 {
+	if presence == "" {
+		return nil
+	}
+	return &value
+}
 
-	left := activityreplication.Mutation{SourceDeviceID: "device", WorkspaceID: "workspace", EntityType: activityreplication.EntitySession,
-		Operation: activityreplication.OperationUpsert, Key: activityreplication.EntityKey{AgentSessionID: "session"}, TransactionID: "first"}
-	right := left
-	right.TransactionID = "retry"
-	leftIdentity, err := mutationIdentity(left)
-	if err != nil {
-		t.Fatal(err)
+func cloneTargetScope(scope *activityreplication.TargetScope) *activityreplication.TargetScope {
+	if scope == nil {
+		return nil
 	}
-	rightIdentity, err := mutationIdentity(right)
-	if err != nil {
-		t.Fatal(err)
+	copy := *scope
+	return &copy
+}
+
+func cloneSessionScope(scope *activityreplication.SessionScope) *activityreplication.SessionScope {
+	if scope == nil {
+		return nil
 	}
-	if !reflect.DeepEqual(leftIdentity, rightIdentity) {
-		t.Fatalf("retry transaction changed identity: %q != %q", leftIdentity, rightIdentity)
-	}
+	copy := *scope
+	return &copy
 }

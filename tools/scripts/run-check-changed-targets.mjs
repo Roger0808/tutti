@@ -7,6 +7,7 @@ const GO_MODULE_ROOTS = [
   "packages/agent/daemon",
   "packages/agent/runtimeprep",
   "packages/agent/store-sqlite",
+  "packages/agent/store-sqlite/canonical",
   "packages/appcli/core",
   "packages/auth/bridge-go",
   "packages/events/stream-go",
@@ -110,7 +111,7 @@ export function buildGoLintLane({
     command: [
       "bash",
       "-lc",
-      `cd ${shellQuote(moduleRoot)} && golangci-lint run --config ${shellQuote(golangciConfigPath)} ${targetList}`
+      `cd ${shellQuote(moduleRoot)} && golangci-lint run --allow-parallel-runners --config ${shellQuote(golangciConfigPath)} ${targetList}`
     ]
   };
 }

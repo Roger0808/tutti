@@ -8,7 +8,10 @@ package activityreplication
 
 import "encoding/json"
 
-const SchemaVersion = 1
+const (
+	SchemaVersion     = 1
+	MaxBatchMutations = 500
+)
 
 type EntityType string
 

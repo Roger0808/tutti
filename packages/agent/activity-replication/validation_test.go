@@ -42,6 +42,7 @@ func TestValidateMutationAcceptsEveryProjectionSnapshot(t *testing.T) {
 				mutation := base(activityreplication.EntitySession, activityreplication.EntityKey{AgentSessionID: "session-1"})
 				mutation.Session = &activityreplication.Session{
 					WorkspaceID: "workspace-1", AgentSessionID: "session-1", Kind: canonical.SessionKindRoot,
+					Origin:   "runtime",
 					Settings: json.RawMessage(`{}`), SessionMetadata: json.RawMessage(`{}`),
 					InternalRuntimeContext: json.RawMessage(`{}`), RailSectionKey: "conversations",
 				}

@@ -56,3 +56,25 @@ func TestAcknowledgementSemantics(t *testing.T) {
 		t.Fatalf("SummarizeAcknowledgements() = %#v", result)
 	}
 }
+
+func TestPermanentRejectionsPreserveMutationAndTransactionIdentity(t *testing.T) {
+	t.Parallel()
+
+	mutation := activityreplication.Mutation{MutationID: "mutation-1", TransactionID: "transaction-1"}
+	for _, kind := range []activityreplication.RejectionKind{
+		activityreplication.RejectionSchema,
+		activityreplication.RejectionIdentity,
+		activityreplication.RejectionPermission,
+	} {
+		kind := kind
+		t.Run(string(kind), func(t *testing.T) {
+			t.Parallel()
+			err := activityreplication.NewPermanentRejection(kind, mutation, errors.New("rejected"))
+			var rejection *activityreplication.PermanentRejection
+			if !errors.As(err, &rejection) || rejection.Kind != kind || rejection.MutationID != mutation.MutationID ||
+				rejection.TransactionID != mutation.TransactionID {
+				t.Fatalf("NewPermanentRejection() = %#v", err)
+			}
+		})
+	}
+}

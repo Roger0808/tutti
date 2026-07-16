@@ -40,8 +40,10 @@ packages/agent/activity-replication
 owner-local canonical activity store into a cloud read model. It owns batch,
 mutation, entity-key, scope, and snapshot JSON shapes; structural validation;
 duplicate and stale acknowledgement semantics; and backend-neutral
-conformance fixtures. The SQLite canonical store runs those fixtures in this
-repository, and external builders and MySQL sinks consume the same fixtures.
+conformance fixtures. Source/projection and sink/acknowledgement harnesses are
+separate: the SQLite canonical store runs the source fixtures in this
+repository, while external builders and MySQL sinks consume the matching side
+of the same wire cases.
 
 It imports the canonical activity vocabulary from
 `packages/agent/store-sqlite/canonical`; it must not redefine turn phase,

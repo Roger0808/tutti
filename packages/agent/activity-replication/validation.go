@@ -22,7 +22,7 @@ var (
 )
 
 func ValidateBatch(batch ChangeBatch) error {
-	if batch.SchemaVersion != SchemaVersion || len(batch.Mutations) == 0 || len(batch.Mutations) > 500 {
+	if batch.SchemaVersion != SchemaVersion || len(batch.Mutations) == 0 || len(batch.Mutations) > MaxBatchMutations {
 		if len(batch.Mutations) > 0 {
 			return NewPermanentRejection(RejectionSchema, batch.Mutations[0], ErrInvalidBatch)
 		}
