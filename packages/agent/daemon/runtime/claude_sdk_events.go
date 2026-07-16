@@ -75,12 +75,27 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 	case "approval_resolved", "user_input_resolved":
 		return a.claudeSDKInteractiveResolved(adapterSession, session, rootTurnID, event.Payload), false, nil
 	case "compact_started":
-		return []activityshared.Event{adapterSession.compactMessageEvent(session, rootTurnID, messageStreamStateStreaming, firstNonEmpty(payloadString(event.Payload, "content"), "Compacting..."))}, false, nil
+		compact, ok := a.compactMessageEvent(adapterSession, session, rootTurnID, messageStreamStateStreaming, "running", "")
+		if !ok {
+			return nil, false, nil
+		}
+		return []activityshared.Event{compact}, false, nil
 	case "compact_completed":
-		return []activityshared.Event{adapterSession.compactMessageEvent(session, rootTurnID, messageStreamStateCompleted, firstNonEmpty(payloadString(event.Payload, "content"), "Compacting completed."))}, false, nil
+		compact, ok := a.compactMessageEvent(adapterSession, session, rootTurnID, messageStreamStateCompleted, "completed", "")
+		if !ok {
+			return nil, false, nil
+		}
+		return []activityshared.Event{compact}, false, nil
 	case "compact_failed":
-		content := firstNonEmpty(payloadString(event.Payload, "content"), "Compacting failed.")
-		return []activityshared.Event{adapterSession.compactMessageEvent(session, rootTurnID, messageStreamStateFailed, content)}, false, nil
+		detail := payloadString(event.Payload, "reason")
+		if detail == "" {
+			detail = strings.TrimSpace(strings.TrimPrefix(payloadString(event.Payload, "content"), "Compacting failed:"))
+		}
+		compact, ok := a.compactMessageEvent(adapterSession, session, rootTurnID, messageStreamStateFailed, "failed", detail)
+		if !ok {
+			return nil, false, nil
+		}
+		return []activityshared.Event{compact}, false, nil
 	case "assistant_delta":
 		messageID := firstNonEmptyString(payloadString(event.Payload, "messageId"), adapterSession.assistantMessageID(providerTurnID))
 		content := firstNonEmpty(payloadString(event.Payload, "snapshot"), payloadString(event.Payload, "content"))

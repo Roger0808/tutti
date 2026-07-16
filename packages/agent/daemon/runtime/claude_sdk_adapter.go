@@ -43,7 +43,7 @@ type claudeSDKAdapterSession struct {
 	childSessions     map[string]claudeSDKChildSession
 	assistantMessages map[string]string
 	thinkingMessages  map[string]string
-	compactMessages   map[string]string
+	compactMessages   map[string]claudeSDKCompactMessage
 	pendingRequests   map[string]*pendingInteractiveRequest
 	pendingResponses  map[string]chan claudeSDKSidecarEvent
 	turns             map[string]*claudeSDKTurnWaiter
@@ -87,6 +87,15 @@ type claudeSDKAdapterSession struct {
 	// transcript content, so their assistant/thinking projection is suppressed
 	// before persistence. Guarded by the adapter mutex.
 	goalClearControlTurns map[string]struct{}
+}
+
+type claudeSDKCompactMessage struct {
+	messageID string
+	active    bool
+	// terminalStatus makes the first explicit or synthesized terminal update
+	// authoritative. A late sidecar result must not overwrite a canceled turn.
+	// Guarded by the adapter mutex.
+	terminalStatus string
 }
 
 type claudeSDKChildSession struct {

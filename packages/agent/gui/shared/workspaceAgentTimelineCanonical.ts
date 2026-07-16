@@ -158,7 +158,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
     if (role === "agent" && body) {
       const payload = normalizedPayload(item.payload);
       const visibleError = visibleErrorFromPayload(payload);
-      const systemNotice = systemNoticeFromPayload(payload);
+      const systemNotice = systemNoticeFromPayload(payload, item);
       const status = firstPresentString(
         item.status,
         stringRecordValue(payload, "status")

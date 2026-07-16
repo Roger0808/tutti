@@ -670,19 +670,65 @@ func claudeSDKCallBodyKey(eventType string) string {
 	}
 }
 
-func (s *claudeSDKAdapterSession) compactMessageEvent(session Session, turnID string, streamState string, content string) activityshared.Event {
-	if s.compactMessages == nil {
-		s.compactMessages = make(map[string]string)
+func (a *ClaudeCodeSDKAdapter) compactMessageEvent(
+	adapterSession *claudeSDKAdapterSession,
+	session Session,
+	turnID string,
+	streamState string,
+	noticeStatus string,
+	detail string,
+) (activityshared.Event, bool) {
+	a.mu.Lock()
+	compact := adapterSession.compactMessages[turnID]
+	if compact.messageID == "" {
+		compact.messageID = "claude-sdk:compact:" + turnID
 	}
-	messageID := s.compactMessages[turnID]
-	if messageID == "" {
-		messageID = "claude-sdk:compact:" + turnID
-		s.compactMessages[turnID] = messageID
+	if compact.terminalStatus != "" {
+		a.mu.Unlock()
+		return activityshared.Event{}, false
 	}
-	return newTurnActivityEventWithID(session, messageID, EventMessage, turnID, streamState, RoleAssistant, content, map[string]any{
-		"adapter":     claudeSDKSidecarAdapterName,
-		"messageId":   messageID,
-		"contentMode": messageContentModeSnapshot,
-		"source":      "compact",
-	})
+	if noticeStatus == "running" {
+		compact.active = true
+	} else {
+		compact.active = false
+		compact.terminalStatus = noticeStatus
+	}
+	if adapterSession.compactMessages == nil {
+		adapterSession.compactMessages = make(map[string]claudeSDKCompactMessage)
+	}
+	adapterSession.compactMessages[turnID] = compact
+	a.mu.Unlock()
+	return claudeSDKCompactMessageEvent(session, turnID, compact.messageID, streamState, noticeStatus, detail), true
+}
+
+func claudeSDKCompactMessageEvent(
+	session Session,
+	turnID string,
+	messageID string,
+	streamState string,
+	noticeStatus string,
+	detail string,
+) activityshared.Event {
+	title := appServerCompactingContextTitle
+	if noticeStatus == "completed" {
+		title = appServerContextCompactedTitle
+	}
+	if noticeStatus == "failed" || noticeStatus == "canceled" {
+		title = appServerCompactionInterruptedTitle
+	}
+	metadata := map[string]any{
+		"adapter":             claudeSDKSidecarAdapterName,
+		"messageId":           messageID,
+		"contentMode":         messageContentModeSnapshot,
+		"source":              "compact",
+		"kind":                "agent_system_notice",
+		"noticeKind":          "system_notice",
+		"noticeCommand":       "compact",
+		"noticeCommandStatus": noticeStatus,
+		"title":               title,
+	}
+	if strings.TrimSpace(detail) != "" {
+		metadata["detail"] = strings.TrimSpace(detail)
+	}
+	return newTurnActivityEventWithID(session, messageID, EventMessage, turnID, streamState, RoleAssistant, title, metadata)
 }
