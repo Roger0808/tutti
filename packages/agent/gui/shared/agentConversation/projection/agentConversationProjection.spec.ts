@@ -241,6 +241,148 @@ describe("projectAgentConversationVM", () => {
     ).toBe(false);
   });
 
+  it("removes final Markdown that repeats a generated-image artifact", () => {
+    const savedPath = "/workspace/output/generated-corgi.png";
+    const imageCall = {
+      id: "call:image-deduplicated",
+      name: "Generate image",
+      toolName: "image_generation",
+      callType: "tool",
+      status: "Completed",
+      statusKind: "completed" as const,
+      summary: "Generated image",
+      payload: {
+        input: {
+          prompt: "A friendly corgi"
+        },
+        output: {
+          savedPath,
+          content: [
+            {
+              type: "image",
+              uri: savedPath,
+              mimeType: "image/png"
+            }
+          ]
+        }
+      }
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-image-deduplicated",
+            userMessage: { id: "user-image", body: "Generate a corgi" },
+            userMessages: [{ id: "user-image", body: "Generate a corgi" }],
+            agentMessages: [
+              {
+                id: "assistant-image",
+                body: `Done.\n\n![generated corgi](${savedPath})`
+              }
+            ],
+            toolCalls: [imageCall],
+            toolCallCount: 1,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "tool-calls",
+                id: "tools-image",
+                toolCalls: [imageCall],
+                toolCallCount: 1,
+                hasFailedToolCall: false
+              },
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-image",
+                  body: `Done.\n\n![generated corgi](${savedPath})`
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    expect(
+      conversation.rows.filter((row) => row.kind === "generated-image")
+    ).toHaveLength(1);
+    expect(
+      conversation.rows
+        .filter(
+          (row): row is Extract<typeof row, { kind: "message" }> =>
+            row.kind === "message" && row.speaker === "assistant"
+        )
+        .flatMap((row) => row.messages.map((message) => message.body))
+    ).toEqual(["Done."]);
+  });
+
+  it("keeps assistant Markdown images that are not generated artifacts", () => {
+    const generatedPath = "/workspace/output/generated-corgi.png";
+    const otherPath = "/workspace/reference/reference-corgi.png";
+    const imageCall = {
+      id: "call:image-keep-other",
+      name: "Generate image",
+      toolName: "image_generation",
+      callType: "tool",
+      status: "Completed",
+      statusKind: "completed" as const,
+      summary: "Generated image",
+      payload: {
+        output: {
+          savedPath: generatedPath,
+          content: [
+            {
+              type: "image",
+              uri: generatedPath,
+              mimeType: "image/png"
+            }
+          ]
+        }
+      }
+    };
+    const body = `![generated](${generatedPath})\n\n![reference](${otherPath})`;
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-image-keep-other",
+            userMessage: { id: "user-image", body: "Generate a corgi" },
+            userMessages: [{ id: "user-image", body: "Generate a corgi" }],
+            agentMessages: [{ id: "assistant-image", body }],
+            toolCalls: [imageCall],
+            toolCallCount: 1,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "tool-calls",
+                id: "tools-image",
+                toolCalls: [imageCall],
+                toolCallCount: 1,
+                hasFailedToolCall: false
+              },
+              {
+                kind: "message",
+                message: { id: "assistant-image", body }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    expect(
+      conversation.rows
+        .filter(
+          (row): row is Extract<typeof row, { kind: "message" }> =>
+            row.kind === "message" && row.speaker === "assistant"
+        )
+        .flatMap((row) => row.messages.map((message) => message.body))
+    ).toEqual([`![reference](${otherPath})`]);
+  });
+
   const tailChainConversation = (latestTail: {
     status: string;
     statusKind: "completed" | "working" | "waiting";

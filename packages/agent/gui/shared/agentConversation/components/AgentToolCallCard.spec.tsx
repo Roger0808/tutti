@@ -556,7 +556,7 @@ describe("Agent specialized tool cards", () => {
     expect(screen.getByText("completed")).toBeTruthy();
   });
 
-  it("renders image generation prompt and preview output", async () => {
+  it("renders the image generation prompt without duplicating artifact output", async () => {
     setAgentGuiI18nTestLocale("en");
     const readFile = vi.fn().mockResolvedValue({
       bytes: new Uint8Array([137, 80, 78, 71])
@@ -610,15 +610,13 @@ describe("Agent specialized tool cards", () => {
 
     expect(screen.getByText(/Revised prompt:/)).toBeTruthy();
     expect(
-      await screen.findByRole("img", { name: "Image generation preview" })
-    ).toHaveAttribute("src", "blob:tool-image-preview");
-    expect(screen.getByText("Output")).toBeTruthy();
-    expect(readFile).toHaveBeenCalledWith({
-      path: "/workspace/output/generated.png"
-    });
+      screen.queryByRole("img", { name: "Image generation preview" })
+    ).toBeNull();
+    expect(screen.queryByText("Output")).toBeNull();
+    expect(readFile).not.toHaveBeenCalled();
   });
 
-  it("renders historical Codex image output from savedPath", async () => {
+  it("does not duplicate historical Codex image output from savedPath", async () => {
     setAgentGuiI18nTestLocale("en");
     const savedPath =
       "/Users/demo/.tutti/agent/runs/session/codex-home/generated_images/thread/ig_legacy.png";
@@ -660,9 +658,9 @@ describe("Agent specialized tool cards", () => {
     );
 
     expect(
-      await screen.findByRole("img", { name: "Image generation preview" })
-    ).toHaveAttribute("src", "blob:legacy-tool-image-preview");
-    expect(readFile).toHaveBeenCalledWith({ path: savedPath });
+      screen.queryByRole("img", { name: "Image generation preview" })
+    ).toBeNull();
+    expect(readFile).not.toHaveBeenCalled();
   });
 
   it("does not show an output loading placeholder for active image generation cards", async () => {
@@ -716,14 +714,10 @@ describe("Agent specialized tool cards", () => {
     expect(
       screen.queryByRole("img", { name: "Image generation preview" })
     ).toBeNull();
-    await waitFor(() => {
-      expect(readFile).toHaveBeenCalledWith({
-        path: "/workspace/output/generated.png"
-      });
-    });
+    expect(readFile).not.toHaveBeenCalled();
   });
 
-  it("renders image generation preview even when the tool output has no prompt text", async () => {
+  it("does not render image-only output inside the tool call card", async () => {
     setAgentGuiI18nTestLocale("en");
     const readFile = vi.fn().mockResolvedValue({
       bytes: new Uint8Array([137, 80, 78, 71])
@@ -768,13 +762,11 @@ describe("Agent specialized tool cards", () => {
     );
 
     expect(
-      await screen.findByRole("img", { name: "Image generation preview" })
-    ).toHaveAttribute("src", "blob:image-only-preview");
+      screen.queryByRole("img", { name: "Image generation preview" })
+    ).toBeNull();
     expect(screen.queryByText("Input")).toBeNull();
-    expect(screen.getByText("Output")).toBeTruthy();
-    expect(readFile).toHaveBeenCalledWith({
-      path: "/workspace/output/generated-only.png"
-    });
+    expect(screen.queryByText("Output")).toBeNull();
+    expect(readFile).not.toHaveBeenCalled();
   });
 
   it("does not allow expanding web fetch cards without displayable content", async () => {
