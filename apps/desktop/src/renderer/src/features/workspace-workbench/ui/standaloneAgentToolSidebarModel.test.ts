@@ -8,6 +8,7 @@ import {
   reduceStandaloneAgentToolSidebarState,
   resolveStandaloneAgentToolPanelExpansionReset,
   resolveStandaloneAgentToolPanelExpansionTransfer,
+  resolveStandaloneAgentToolPanelPreferredWidth,
   resolveStandaloneAgentToolSidebarLayoutWidth,
   resolveStandaloneAgentToolSidebarWidth,
   resolveStandaloneAgentToolPanelMaxWidth,
@@ -204,6 +205,33 @@ test("standalone agent browser and apps open at the same roomy default width", (
       width: standaloneAgentToolPanelDefaultWidthById.apps
     }),
     720
+  );
+});
+
+test("standalone agent tool panels reuse the latest manual width across panels", () => {
+  assert.equal(
+    resolveStandaloneAgentToolPanelPreferredWidth({
+      isExpanded: false,
+      manuallyResizedWidth: 936,
+      panelWidth: standaloneAgentToolPanelDefaultWidthById.browser
+    }),
+    936
+  );
+  assert.equal(
+    resolveStandaloneAgentToolPanelPreferredWidth({
+      isExpanded: true,
+      manuallyResizedWidth: 936,
+      panelWidth: Number.MAX_SAFE_INTEGER
+    }),
+    Number.MAX_SAFE_INTEGER
+  );
+  assert.equal(
+    resolveStandaloneAgentToolPanelPreferredWidth({
+      isExpanded: false,
+      manuallyResizedWidth: null,
+      panelWidth: standaloneAgentToolPanelDefaultWidthById.browser
+    }),
+    standaloneAgentToolPanelDefaultWidthById.browser
   );
 });
 

@@ -293,6 +293,21 @@ export function resolveStandaloneAgentToolSidebarWidth(input: {
   });
 }
 
+export function resolveStandaloneAgentToolPanelPreferredWidth(input: {
+  isExpanded: boolean;
+  manuallyResizedWidth?: number | null;
+  panelWidth: number;
+}): number {
+  if (
+    !input.isExpanded &&
+    typeof input.manuallyResizedWidth === "number" &&
+    Number.isFinite(input.manuallyResizedWidth)
+  ) {
+    return input.manuallyResizedWidth;
+  }
+  return input.panelWidth;
+}
+
 export function resolveStandaloneAgentToolSidebarLayoutWidth(input: {
   baselineViewportWidth: number;
   panelWidth: number;

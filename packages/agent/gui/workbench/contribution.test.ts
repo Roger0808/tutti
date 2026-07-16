@@ -1943,6 +1943,9 @@ describe("agent GUI workbench contribution copy", () => {
     expect(css).toMatch(
       /\.agent-gui-conversation__interactive-feedback-composer\s+\.agent-gui-conversation__interactive-prompt-textarea\s*{[^}]*min-height:\s*36px;[^}]*border:\s*0;[^}]*padding:\s*9px 10px;/s
     );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__interactive-feedback-send-button\s+\.agent-gui-conversation__interactive-option-spinner\s*{[^}]*position:\s*static;[^}]*top:\s*auto;[^}]*right:\s*auto;[^}]*transform:\s*none;/s
+    );
   });
 
   it("keeps provider manager drag hit boxes stable while previewing insertion", () => {

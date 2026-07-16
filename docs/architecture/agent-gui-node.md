@@ -596,7 +596,11 @@ enough for their embedded location, list, and detail columns. Browser and Apps
 share the same roomy default width so switching between them does not move the
 panel boundary. Message Center aligns its default host width with its standard
 embedded content width so it neither clips card content nor leaves unused
-right-side space. Browser and Terminal share one dropdown trigger in the header:
+right-side space. After the user manually resizes any right-sidebar tool, that
+latest manual width becomes the shared preferred width for subsequent tool
+switches; a Browser opened after Files therefore keeps the user's width instead
+of restoring Browser's default. Browser and Terminal share one dropdown trigger
+in the header:
 the entire tool control opens the menu, and choosing an item opens that tool.
 Do not split the control into a primary action and a separate menu-arrow action.
 The standalone

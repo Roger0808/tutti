@@ -3616,6 +3616,9 @@ aside.workspace-agents-status-panel
 .agent-gui-conversation__interactive-feedback-send-button
   .agent-gui-conversation__interactive-option-spinner {
   position: static;
+  top: auto;
+  right: auto;
+  transform: none;
 }
 
 .agent-gui-conversation__interactive-prompt-footer {
