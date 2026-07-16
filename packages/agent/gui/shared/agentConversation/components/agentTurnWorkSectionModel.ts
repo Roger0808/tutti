@@ -40,7 +40,7 @@ export function resolveAgentTurnTiming(
   }
 
   if (turn.phase !== "settled") {
-    return isActiveTurn
+    return turn.phase === "running" && isActiveTurn
       ? { kind: "live", startedAtUnixMs: turn.startedAtUnixMs }
       : null;
   }

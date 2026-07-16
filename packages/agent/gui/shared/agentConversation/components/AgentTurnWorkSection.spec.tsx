@@ -105,6 +105,45 @@ describe("AgentTurnWorkSection", () => {
     }
   });
 
+  it("stops the live timer when a running turn transitions to waiting", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(50_000);
+    const renderRow = (row: AgentTranscriptRowVM, rowIndex: number) => (
+      <div key={`${row.id}:${rowIndex}`}>{row.id}</div>
+    );
+
+    try {
+      const { rerender } = render(
+        <AgentTurnWorkSection
+          group={turnGroup()}
+          sessionId="session-1"
+          turn={canonicalTurn({ phase: "running" })}
+          isActiveTurn
+          disclosureStore={disclosureStore}
+          renderRow={renderRow}
+        />
+      );
+      expect(screen.getByText("Processed for 45s")).toBeTruthy();
+      expect(vi.getTimerCount()).toBe(1);
+
+      rerender(
+        <AgentTurnWorkSection
+          group={turnGroup()}
+          sessionId="session-1"
+          turn={canonicalTurn({ phase: "waiting" })}
+          isActiveTurn
+          disclosureStore={disclosureStore}
+          renderRow={renderRow}
+        />
+      );
+
+      expect(screen.queryByText(/Processed for/)).toBeNull();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("clears the live timer and freezes timing when the turn settles", () => {
     vi.useFakeTimers();
     vi.setSystemTime(50_000);
