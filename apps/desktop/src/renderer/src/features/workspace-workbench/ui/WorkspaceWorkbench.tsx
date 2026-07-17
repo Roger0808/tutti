@@ -743,7 +743,8 @@ function ReadyWorkspaceWorkbenchWithSession({
         missionControl={{
           mode: runtime.missionControl.mode,
           nodeIds: runtime.missionControl.nodeIds ?? undefined,
-          onRequestClose: runtime.missionControl.close
+          onRequestClose: runtime.missionControl.close,
+          onRequestMode: (mode) => runtime.missionControl.open(mode, "button")
         }}
         minimizeAnimation={runtime.minimizeAnimation}
         nodes={hostInput.nodes}
